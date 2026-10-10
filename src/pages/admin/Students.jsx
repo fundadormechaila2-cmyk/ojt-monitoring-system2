@@ -1,145 +1,414 @@
-﻿import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Eye,
-  GraduationCap,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  UserRound,
-  Users,
-  X,
-} from "lucide-react";
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
+import { Eye, KeyRound, Plus, Search, X } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
 import { COURSES } from "../../constants/courses";
+import { db } from "../../services/firebase";
+import { createManagedUser } from "../../services/userManagementSevice";
+import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
 
-const initialStudents = [
-  { id: "STU-2023-0184", name: "Maria Santos", course: "Bachelor of Science in Information Technology", company: "Isabela Tech Solutions", hours: 320, target: 486, status: "DEPLOYED", email: "maria.santos@lccian.edu.ph", phone: "0917 555 0184" },
-  { id: "STU-2023-0091", name: "Juan Dela Cruz", course: "Bachelor of Science in Business Administration Major in Financial Management", company: "LCCI Cooperative", hours: 486, target: 486, status: "COMPLETED", email: "juan.delacruz@lccian.edu.ph", phone: "0917 555 0091" },
-  { id: "STU-2023-0068", name: "Angela Reyes", course: "Bachelor of Science in Business Administration Major in Marketing Management", company: "F. Manalo Accounting", hours: 198, target: 486, status: "DEPLOYED", email: "angela.reyes@lccian.edu.ph", phone: "0917 555 0068" },
-  { id: "STU-2023-0143", name: "Carlo Mendoza", course: "Bachelor of Science in Elementary Education", company: "Not yet assigned", hours: 0, target: 486, status: "PROCESSING", email: "carlo.mendoza@lccian.edu.ph", phone: "0917 555 0143" },
-  { id: "STU-2023-0212", name: "Sofia Garcia", course: "Bachelor of Science in Information Technology", company: "North Valley Digital", hours: 412, target: 486, status: "DEPLOYED", email: "sofia.garcia@lccian.edu.ph", phone: "0917 555 0212" },
-  { id: "STU-2023-0039", name: "Paolo Navarro", course: "Bachelor of Science in Hospitality Management", company: "Villa Isabela Hotel", hours: 264, target: 486, status: "DEPLOYED", email: "paolo.navarro@lccian.edu.ph", phone: "0917 555 0039" },
-  { id: "STU-2023-0117", name: "Bea Villanueva", course: "Bachelor of Science in Business Administration Major in Marketing Management", company: "Provincial Capitol", hours: 76, target: 486, status: "PROCESSING", email: "bea.villanueva@lccian.edu.ph", phone: "0917 555 0117" },
-  { id: "STU-2023-0151", name: "Nico Alvarez", course: "Bachelor of Science in Information Technology", company: "Pixel North Studio", hours: 486, target: 486, status: "COMPLETED", email: "nico.alvarez@lccian.edu.ph", phone: "0917 555 0151" },
-  { id: "STU-2023-0088", name: "Lara Domingo", course: "Bachelor of Science in Secondary Education", company: "LCCI Integrated School", hours: 151, target: 486, status: "DEPLOYED", email: "lara.domingo@lccian.edu.ph", phone: "0917 555 0088" },
-  { id: "STU-2023-0044", name: "Miguel Flores", course: "Bachelor of Science in Business Administration Major in Financial Management", company: "Cabreros & Co.", hours: 486, target: 486, status: "COMPLETED", email: "miguel.flores@lccian.edu.ph", phone: "0917 555 0044" },
-  { id: "STU-2023-0102", name: "Ella Ramos", course: "Bachelor of Science in Hospitality Management", company: "Casa Del Rio", hours: 38, target: 486, status: "PROCESSING", email: "ella.ramos@lccian.edu.ph", phone: "0917 555 0102" },
-];
-
-const statusClass = {
-  DEPLOYED: "deployed",
-  PROCESSING: "processing",
-  COMPLETED: "completed",
+const avatarColors = ["blue", "green", "purple", "orange", "teal", "slate"];
+const emptyNewStudent = {
+  firstName: "",
+  lastName: "",
+  studentId: "",
+  email: "",
+  phone: "",
+  course: "",
+  company: "",
+  requiredHours: "486",
 };
 
-const avatarColors = ["blue", "green", "purple", "orange", "teal", "slate"];
+function splitName(student) {
+  const fullName = String(student.name || "").trim().split(/\s+/);
+  return {
+    firstName: student.firstName || fullName.shift() || "",
+    lastName: student.lastName || fullName.join(" "),
+  };
+}
+
+function accountForStudent(student, users) {
+  const studentId = String(student.studentId || "").trim().toLowerCase();
+  const email = String(student.email || "").trim().toLowerCase();
+
+  return users.find((account) => {
+    if (account.role !== "student") return false;
+    return (
+      account.id === student.studentUid ||
+      account.id === student.userUid ||
+      account.id === student.accountUid ||
+      account.studentRecordId === student.id ||
+      (studentId &&
+        String(account.studentId || "").trim().toLowerCase() === studentId) ||
+      (email && String(account.email || "").trim().toLowerCase() === email)
+    );
+  });
+}
 
 function Students() {
-  const [students, setStudents] = useState(initialStudents);
+  const { user } = useAuth();
+  const [students, setStudents] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sourceErrors, setSourceErrors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [courseFilter, setCourseFilter] = useState("All courses");
   const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [page, setPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [accountStudent, setAccountStudent] = useState(null);
+  const [addingStudent, setAddingStudent] = useState(false);
+  const [newStudent, setNewStudent] = useState(emptyNewStudent);
+  const [accountForm, setAccountForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  const courses = COURSES;
-  const filteredStudents = useMemo(
-    () =>
-      students.filter((student) => {
-        const query = searchTerm.toLowerCase().trim();
-        const matchesSearch =
-          !query ||
-          `${student.name} ${student.id} ${student.course}`
-            .toLowerCase()
-            .includes(query);
-        const matchesCourse =
-          courseFilter === "All courses" || student.course === courseFilter;
-        const matchesStatus =
-          statusFilter === "All statuses" || student.status === statusFilter;
-        return matchesSearch && matchesCourse && matchesStatus;
-      }),
-    [courseFilter, searchTerm, statusFilter, students],
-  );
+  useEffect(() => {
+    const snapshots = { students: false, users: false };
+    const updateLoading = () => {
+      if (snapshots.students && snapshots.users) setLoading(false);
+    };
+    const unsubscribeStudents = onSnapshot(
+      collection(db, "students"),
+      (snapshot) => {
+        setStudents(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
+        snapshots.students = true;
+        setSourceErrors((current) => {
+          const next = { ...current };
+          delete next.students;
+          return next;
+        });
+        updateLoading();
+      },
+      (snapshotError) => {
+        console.error("Unable to load enrolled students:", snapshotError);
+        snapshots.students = true;
+        setSourceErrors((current) => ({
+          ...current,
+          students: "Enrolled student records could not be loaded.",
+        }));
+        updateLoading();
+      },
+    );
+    const unsubscribeUsers = onSnapshot(
+      collection(db, "users"),
+      (snapshot) => {
+        setUsers(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
+        snapshots.users = true;
+        setSourceErrors((current) => {
+          const next = { ...current };
+          delete next.users;
+          return next;
+        });
+        updateLoading();
+      },
+      (snapshotError) => {
+        console.error("Unable to load student accounts:", snapshotError);
+        snapshots.users = true;
+        setSourceErrors((current) => ({
+          ...current,
+          users: "Student accounts could not be checked. Account creation is disabled.",
+        }));
+        updateLoading();
+      },
+    );
 
+    return () => {
+      unsubscribeStudents();
+      unsubscribeUsers();
+    };
+  }, []);
+
+  const records = useMemo(() => normalizedStudents(students, []), [students]);
+  const courses = useMemo(
+    () =>
+      [...new Set([...COURSES, ...records.map((student) => student.course)])]
+        .filter(Boolean)
+        .sort(),
+    [records],
+  );
+  const filteredStudents = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    return records.filter((student) => {
+      const account = accountForStudent(student, users);
+      return (
+        (!query ||
+          `${student.name} ${student.studentId} ${student.course} ${student.email || ""}`
+            .toLowerCase()
+            .includes(query)) &&
+        (courseFilter === "All courses" || student.course === courseFilter) &&
+        (statusFilter === "All statuses" ||
+          statusFilter === "No account" ||
+          student.status === statusFilter) &&
+        (statusFilter !== "No account" || !account)
+      );
+    });
+  }, [courseFilter, records, searchTerm, statusFilter, users]);
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const visibleStudents = filteredStudents.slice(
     (page - 1) * pageSize,
     page * pageSize,
   );
-
-  const counts = students.reduce(
+  const accountCount = records.filter((student) =>
+    accountForStudent(student, users),
+  ).length;
+  const counts = records.reduce(
     (result, student) => {
-      result[student.status] += 1;
+      result[student.status] = (result[student.status] || 0) + 1;
       return result;
     },
     { DEPLOYED: 0, PROCESSING: 0, COMPLETED: 0 },
   );
-
-  const showNotice = (message) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2600);
-  };
 
   const updateFilter = (setter, value) => {
     setter(value);
     setPage(1);
   };
 
-  const deleteStudent = (student) => {
-    setStudents((current) => current.filter((item) => item.id !== student.id));
-    setSelectedStudent(null);
-    showNotice(`${student.name} was removed from the student list.`);
+  const openAccountForm = (student) => {
+    const { firstName, lastName } = splitName(student);
+    setAccountStudent(student);
+    setAccountForm({
+      firstName,
+      lastName,
+      email: student.email || student.emailAddress || "",
+    });
+    setError("");
   };
+
+  const createStudentAccount = async (event) => {
+    event.preventDefault();
+    if (!accountStudent) return;
+    if (sourceErrors.users) {
+      setError("Student accounts could not be checked. Reload the page and try again.");
+      return;
+    }
+    if (accountForStudent(accountStudent, users)) {
+      setError("This student already has a linked login account.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    let managedUser;
+    try {
+      managedUser = await createManagedUser({
+        firstName: accountForm.firstName,
+        lastName: accountForm.lastName,
+        email: accountForm.email,
+        role: "student",
+        createdBy: user?.uid || null,
+        studentId: accountStudent.studentId || "",
+        studentRecordId: accountStudent.id,
+        course: accountStudent.course || "",
+        company: accountStudent.company || "",
+      });
+
+      await updateDoc(doc(db, "students", accountStudent.id), {
+        studentUid: managedUser.uid,
+        accountEmail: accountForm.email.trim(),
+      });
+
+      setNotice(`Login account created for ${accountStudent.name}.`);
+      window.alert(
+        `Account created for ${accountStudent.name}.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
+      );
+      setAccountStudent(null);
+    } catch (saveError) {
+      console.error("Unable to create or link student account:", saveError);
+      setError(
+        managedUser
+          ? `The login was created, but its student record could not be fully linked. Give the student their temporary password and retry linking after checking Firestore. ${saveError.message}`
+          : saveError.message || "Unable to create the student account.",
+      );
+      if (managedUser) {
+        window.alert(
+          `The login account was created for ${accountStudent.name}, but the student record could not be fully linked.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}\n\n${saveError.message}`,
+        );
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createStudentAndAccount = async (event) => {
+    event.preventDefault();
+    if (sourceErrors.users) {
+      setError("Student accounts could not be checked. Reload the page and try again.");
+      return;
+    }
+
+    const studentId = newStudent.studentId.trim();
+    const email = newStudent.email.trim();
+    const normalizedEmail = email.toLowerCase();
+    if (
+      studentId &&
+      records.some(
+        (student) =>
+          String(student.studentId || "").trim().toLowerCase() ===
+          studentId.toLowerCase(),
+      )
+    ) {
+      setError("A student with this student ID already exists.");
+      return;
+    }
+    if (
+      users.some(
+        (account) => String(account.email || "").trim().toLowerCase() === normalizedEmail,
+      )
+    ) {
+      setError("An account with this email address already exists.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    let studentReference;
+    let managedUser;
+    const name = `${newStudent.firstName.trim()} ${newStudent.lastName.trim()}`;
+    const requiredHours = Number(newStudent.requiredHours);
+
+    try {
+      studentReference = await addDoc(collection(db, "students"), {
+        name,
+        firstName: newStudent.firstName.trim(),
+        lastName: newStudent.lastName.trim(),
+        studentId,
+        email,
+        phone: newStudent.phone.trim(),
+        course: newStudent.course,
+        company: newStudent.company.trim(),
+        requiredHours,
+        completedHours: 0,
+        ojtStatus: "PROCESSING",
+        createdBy: user?.uid || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      managedUser = await createManagedUser({
+        firstName: newStudent.firstName,
+        lastName: newStudent.lastName,
+        email,
+        phone: newStudent.phone,
+        role: "student",
+        createdBy: user?.uid || null,
+        studentId,
+        studentRecordId: studentReference.id,
+        course: newStudent.course,
+        company: newStudent.company,
+      });
+
+      await updateDoc(doc(db, "students", studentReference.id), {
+        studentUid: managedUser.uid,
+        accountEmail: email,
+        updatedAt: serverTimestamp(),
+      });
+
+      setNotice(`Student and login account created for ${name}.`);
+      window.alert(
+        `Student and account created.\n\nName: ${name}\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
+      );
+      setAddingStudent(false);
+      setNewStudent(emptyNewStudent);
+    } catch (saveError) {
+      console.error("Unable to create student and login account:", saveError);
+      const partialMessage = managedUser
+        ? `The account was created but the student record could not be fully linked. Email: ${managedUser.email}. Temporary password: ${managedUser.temporaryPassword}.`
+        : studentReference
+          ? "The student roster record was saved, but the login account could not be created. You can create the account from this student's row."
+          : "";
+      setError(
+        [saveError.message || "Unable to create student.", partialMessage]
+          .filter(Boolean)
+          .join(" "),
+      );
+      if (managedUser) {
+        window.alert(
+          `The account was created but linking did not complete.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}\n\n${saveError.message}`,
+        );
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setCourseFilter("All courses");
+    setStatusFilter("All statuses");
+    setPage(1);
+  };
+
+  if (loading) {
+    return <main className="students-page students-state">Loading enrolled students...</main>;
+  }
 
   return (
     <main className="students-page">
-      <style>{`.students-page{--student-blue:#2868c7;--student-ink:#172033;--student-muted:#718096;color:var(--student-ink);padding-bottom:28px;animation:students-enter .4s ease-out both}.students-page *{box-sizing:border-box}.students-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:24px}.students-eyebrow{margin:0 0 6px;color:#8995a7;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.students-header h1{margin:0 0 7px;color:var(--student-ink);font-size:clamp(28px,3vw,38px);letter-spacing:-.03em;line-height:1.1}.students-subtitle{margin:0;color:var(--student-muted);font-size:14px}.students-primary{display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border:0;border-radius:8px;background:var(--student-blue);color:#fff;font:800 13px 'Trebuchet MS','Segoe UI',sans-serif;cursor:pointer;white-space:nowrap}.students-primary:hover{background:#1f58ad}.students-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.students-stat{display:flex;align-items:center;gap:13px;min-height:88px;padding:16px;border:1px solid #e3e9f1;border-radius:10px;background:#fff}.students-stat-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:10px}.students-stat-icon.blue{color:#2868c7;background:#e8f0ff}.students-stat-icon.green{color:#16866f;background:#e2f6ef}.students-stat-icon.amber{color:#b4771b;background:#fff2d8}.students-stat-icon.indigo{color:#6954bd;background:#eeeaff}.students-stat p{margin:0 0 5px;color:#7c899b;font-size:11px}.students-stat strong{font-size:23px}.students-panel{overflow:hidden;border:1px solid #e3e9f1;border-radius:10px;background:#fff;box-shadow:0 7px 22px #18263f0a}.students-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 19px;border-bottom:1px solid #edf0f4}.students-search{display:flex;align-items:center;gap:9px;width:min(410px,100%);padding:10px 12px;border:1px solid #dbe3ed;border-radius:8px;color:#8c99aa}.students-search:focus-within{border-color:#78a5e2;box-shadow:0 0 0 3px #2868c71a}.students-search input{width:100%;border:0;outline:0;color:var(--student-ink);font:13px 'Trebuchet MS','Segoe UI',sans-serif}.students-search input::placeholder{color:#a0aabb}.students-filters{display:flex;gap:9px;flex-wrap:wrap}.students-select{padding:10px;border:1px solid #dbe3ed;border-radius:8px;background:#fff;color:#536176;font:600 12px 'Trebuchet MS','Segoe UI',sans-serif}.students-table-wrap{overflow-x:auto}.students-table{width:100%;min-width:1020px;border-collapse:collapse;text-align:left}.students-table th{padding:12px 19px;background:#fbfcfe;color:#8a96a7;font-size:10px;letter-spacing:.06em;text-align:left;text-transform:uppercase;white-space:nowrap}.students-table td{padding:14px 19px;border-top:1px solid #edf0f4;color:#536176;font-size:12px;vertical-align:middle}.students-table tbody tr:hover{background:#fbfdff}.student-profile{display:flex;align-items:center;gap:10px;min-width:220px}.student-avatar{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;font-size:11px;font-weight:900}.student-avatar.blue{color:#3576d3;background:#e2edff}.student-avatar.green{color:#168870;background:#dcf4ed}.student-avatar.purple{color:#7654c7;background:#eee7ff}.student-avatar.orange{color:#c1742b;background:#ffebd9}.student-avatar.teal{color:#238e8a;background:#dff4f2}.student-avatar.slate{color:#65748a;background:#e9edf3}.student-profile strong{display:block;color:var(--student-ink);font-size:13px}.student-profile span{display:block;margin-top:3px;color:#8995a7;font-size:11px}.student-id,.student-company{display:block;color:#536176;font-size:12px}.student-id{font-weight:700;white-space:nowrap}.student-company{white-space:nowrap}.hours-cell{min-width:150px}.hours-label{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;color:#718096;font-size:11px}.hours-label strong{color:#344258}.hours-track{height:6px;overflow:hidden;border-radius:999px;background:#e9eef5}.hours-fill{height:100%;border-radius:inherit;background:#2868c7}.hours-fill.complete{background:#16866f}.student-status{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800}.student-status:before{width:6px;height:6px;border-radius:50%;background:currentColor;content:""}.student-status.deployed{color:#2868c7;background:#e8f0ff}.student-status.processing{color:#b4771b;background:#fff2d8}.student-status.completed{color:#16866f;background:#e2f6ef}.student-actions{display:flex;gap:4px}.student-action{display:grid;place-items:center;width:30px;height:30px;border:1px solid transparent;border-radius:7px;background:transparent;color:#7d8a9e;cursor:pointer}.student-action:hover{border-color:#dbe3ed;background:#f7faff;color:var(--student-blue)}.student-action.delete:hover{color:#c24c52;background:#fff6f6}.students-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 19px;color:#8a96a7;font-size:12px}.student-pagination{display:flex;align-items:center;gap:5px}.student-page-button{display:grid;place-items:center;width:29px;height:29px;border:1px solid #dbe3ed;border-radius:7px;background:#fff;color:#607086;cursor:pointer}.student-page-button:disabled{cursor:not-allowed;opacity:.4}.student-page-button.current{border-color:var(--student-blue);background:var(--student-blue);color:#fff;font-weight:800}.students-empty{padding:46px;text-align:center;color:#7e8ca0}.students-empty strong,.students-empty span{display:block}.students-empty strong{margin:10px 0 4px;color:var(--student-ink)}.students-modal-backdrop{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:20px;background:#17203366}.students-modal{width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;border-radius:12px;background:#fff;box-shadow:0 20px 60px #17203340}.students-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;padding:22px 24px;border-bottom:1px solid #edf0f4}.students-modal-header h2{margin:0 0 5px;color:var(--student-ink);font-size:20px}.students-modal-header p{margin:0;color:#8995a7;font-size:12px}.students-modal-close{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:7px;background:#f4f6f9;color:#69788e;cursor:pointer}.students-modal-body{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:22px 24px}.student-detail{padding:13px;border:1px solid #edf0f4;border-radius:8px}.student-detail label{display:block;margin-bottom:6px;color:#8995a7;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.student-detail strong,.student-detail p{margin:0;color:#344258;font-size:13px;line-height:1.5}.student-detail.full{grid-column:1/-1}.students-notice{position:fixed;right:24px;bottom:24px;z-index:15;padding:13px 16px;border:1px solid #c8e7db;border-radius:8px;background:#f0fbf6;color:#176b57;box-shadow:0 10px 28px #18263f22;font-size:13px}@keyframes students-enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}@media(max-width:900px){.students-summary{grid-template-columns:repeat(2,1fr)}.students-toolbar{align-items:stretch;flex-direction:column}.students-search{width:100%}.students-filters{display:grid;grid-template-columns:repeat(2,1fr)}.students-select{width:100%}}@media(max-width:600px){.students-header{align-items:stretch;flex-direction:column}.students-primary{justify-content:center}.students-summary{grid-template-columns:1fr 1fr;gap:9px}.students-stat{padding:12px;gap:9px}.students-stat strong{font-size:20px}.students-stat-icon{width:34px;height:34px}.students-filters{grid-template-columns:1fr}.students-footer{align-items:flex-start;flex-direction:column}.students-modal-body{grid-template-columns:1fr;padding:18px}.student-detail.full{grid-column:auto}.students-modal-header{padding:18px}.students-notice{right:14px;bottom:14px;left:14px}}@media(max-width:420px){.students-summary{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.students-page{animation:none}}`}</style>
-
       <header className="students-header">
         <div>
           <p className="students-eyebrow">OJT management</p>
-          <h1>Students</h1>
-          <p className="students-subtitle">View and manage student information and OJT progress</p>
+          <h1>Enrolled Students</h1>
+          <p className="students-subtitle">
+            Create accounts for students ready to take practicum or internship.
+            The coordinator roster uses these same live student records.
+          </p>
         </div>
-        <button type="button" className="students-primary" onClick={() => showNotice("The student registration form is ready to connect.")}>
-          <Plus size={17} /> Add Student
+        <button
+          type="button"
+          className="students-primary"
+          disabled={Boolean(sourceErrors.users)}
+          onClick={() => {
+            setNewStudent(emptyNewStudent);
+            setError("");
+            setAddingStudent(true);
+          }}
+        >
+          <Plus size={16} /> Add Student
         </button>
       </header>
 
-      <section className="students-summary" aria-label="Student summary">
+      {(error || Object.values(sourceErrors).length > 0) && (
+        <div className="students-error" role="alert">
+          {error || Object.values(sourceErrors).join(" ")}
+        </div>
+      )}
+
+      <section className="students-summary" aria-label="Student account summary">
         <article className="students-stat">
-          <span className="students-stat-icon blue"><Users size={19} /></span>
-          <div>
-            <p>Total Students</p>
-            <strong>{students.length}</strong>
-          </div>
+          <span className="students-stat-icon blue"><Search size={19} /></span>
+          <div><p>Enrolled Students</p><strong>{records.length}</strong></div>
         </article>
         <article className="students-stat">
-          <span className="students-stat-icon green"><UserRound size={19} /></span>
-          <div>
-            <p>Deployed Students</p>
-            <strong>{counts.DEPLOYED}</strong>
-          </div>
+          <span className="students-stat-icon green"><KeyRound size={19} /></span>
+          <div><p>Accounts Created</p><strong>{accountCount}</strong></div>
         </article>
         <article className="students-stat">
-          <span className="students-stat-icon amber"><Clock3 size={19} /></span>
-          <div>
-            <p>Processing Students</p>
-            <strong>{counts.PROCESSING}</strong>
-          </div>
+          <span className="students-stat-icon amber"><KeyRound size={19} /></span>
+          <div><p>No Account Yet</p><strong>{records.length - accountCount}</strong></div>
         </article>
         <article className="students-stat">
-          <span className="students-stat-icon indigo"><GraduationCap size={19} /></span>
-          <div>
-            <p>Completed OJT</p>
-            <strong>{counts.COMPLETED}</strong>
-          </div>
+          <span className="students-stat-icon indigo"><Eye size={19} /></span>
+          <div><p>On Practicum / Internship</p><strong>{counts.DEPLOYED}</strong></div>
         </article>
       </section>
 
@@ -147,9 +416,9 @@ function Students() {
         <div className="students-toolbar">
           <label className="students-search">
             <Search size={17} />
-            <span className="sr-only">Search students</span>
+            <span className="sr-only">Search enrolled students</span>
             <input
-              placeholder="Search student name, ID, or course..."
+              placeholder="Search name, student ID, email, or course"
               value={searchTerm}
               onChange={(event) => updateFilter(setSearchTerm, event.target.value)}
             />
@@ -162,13 +431,11 @@ function Students() {
               onChange={(event) => updateFilter(setCourseFilter, event.target.value)}
             >
               <option>All courses</option>
-              {courses.map((course) => (
-                <option key={course}>{course}</option>
-              ))}
+              {courses.map((course) => <option key={course}>{course}</option>)}
             </select>
             <select
               className="students-select"
-              aria-label="Filter by OJT status"
+              aria-label="Filter by student status"
               value={statusFilter}
               onChange={(event) => updateFilter(setStatusFilter, event.target.value)}
             >
@@ -176,6 +443,7 @@ function Students() {
               <option>DEPLOYED</option>
               <option>PROCESSING</option>
               <option>COMPLETED</option>
+              <option>No account</option>
             </select>
           </div>
         </div>
@@ -187,87 +455,80 @@ function Students() {
                 <th>Student</th>
                 <th>Student ID</th>
                 <th>Course</th>
-                <th>Status</th>
-                <th>
-                  <span className="sr-only">Actions</span>
-                </th>
+                <th>OJT Status</th>
+                <th>Account</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {visibleStudents.map((student, index) => (
-                <tr key={student.id}>
-                  <td>
-                    <div className="student-profile">
-                      <span className={`student-avatar ${avatarColors[index % avatarColors.length]}`}>
-                        {student.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")}
-                      </span>
-                      <div>
-                        <strong>{student.name}</strong>
-                        <span>{student.email}</span>
+              {visibleStudents.map((student, index) => {
+                const account = accountForStudent(student, users);
+                const statusClass = student.status.toLowerCase();
+                return (
+                  <tr key={student.id}>
+                    <td>
+                      <div className="student-profile">
+                        <span className={`student-avatar ${avatarColors[index % avatarColors.length]}`}>
+                          {student.name.split(/\s+/).map((part) => part[0]).join("")}
+                        </span>
+                        <div>
+                          <strong>{student.name}</strong>
+                          <span>{student.email || student.accountEmail || "Email not provided"}</span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="student-id">{student.id}</span>
-                  </td>
-                  <td>{student.course}</td>
-                  <td>
-                    <span className={`student-status ${statusClass[student.status]}`}>
-                      {student.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="student-actions">
-                      <button
-                        type="button"
-                        className="student-action"
-                        title="View student"
-                        aria-label={`View ${student.name}`}
-                        onClick={() => setSelectedStudent(student)}
-                      >
-                        <Eye size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="student-action"
-                        title="Edit student"
-                        aria-label={`Edit ${student.name}`}
-                        onClick={() => showNotice(`Editing ${student.id} is ready to connect.`)}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="student-action delete"
-                        title="Delete student"
-                        aria-label={`Delete ${student.name}`}
-                        onClick={() => deleteStudent(student)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td><span className="student-id">{student.studentId || "—"}</span></td>
+                    <td>{student.course}</td>
+                    <td><span className={`student-status ${statusClass}`}>{student.status}</span></td>
+                    <td>
+                      <span className={`student-account ${account ? "linked" : ""}`}>
+                        {account ? "Account created" : "No account"}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="student-actions">
+                        <button
+                          type="button"
+                          className="student-action"
+                          title="View student"
+                          aria-label={`View ${student.name}`}
+                          onClick={() => setSelectedStudent(student)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        {!account && (
+                          <button
+                            type="button"
+                            className="student-action"
+                            title="Create student login"
+                            aria-label={`Create login for ${student.name}`}
+                            disabled={Boolean(sourceErrors.users)}
+                            onClick={() => openAccountForm(student)}
+                          >
+                            <KeyRound size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-
           {visibleStudents.length === 0 && (
             <div className="students-empty">
               <Search size={24} />
-              <strong>No interns found</strong>
-              <span>Try changing your search or filters.</span>
+              <strong>{sourceErrors.students ? "Student records unavailable" : "No students found"}</strong>
+              <span>{sourceErrors.students || "Try changing your search or filters."}</span>
+              {!sourceErrors.students && <button type="button" onClick={clearFilters}>Clear filters</button>}
             </div>
           )}
         </div>
 
         <footer className="students-footer">
           <span>
-            Showing {filteredStudents.length === 0 ? 0 : (page - 1) * pageSize + 1}–
-            {Math.min(page * pageSize, filteredStudents.length)} of {filteredStudents.length} interns
+            Showing {filteredStudents.length ? (page - 1) * pageSize + 1 : 0}–
+            {Math.min(page * pageSize, filteredStudents.length)} of {filteredStudents.length} students
           </span>
           <div className="student-pagination">
             <button
@@ -277,14 +538,9 @@ function Students() {
               disabled={page === 1}
               onClick={() => setPage((current) => current - 1)}
             >
-              <ChevronLeft size={15} />
+              ‹
             </button>
-            <button
-              type="button"
-              className="student-page-button current"
-              aria-label="Current page"
-              disabled
-            >
+            <button type="button" className="student-page-button current" aria-label="Current page" disabled>
               {page}
             </button>
             <button
@@ -294,68 +550,231 @@ function Students() {
               disabled={page === totalPages}
               onClick={() => setPage((current) => current + 1)}
             >
-              <ChevronRight size={15} />
+              ›
             </button>
           </div>
         </footer>
       </section>
 
       {selectedStudent && (
-        <div
-          className="students-modal-backdrop"
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setSelectedStudent(null);
-          }}
-        >
+        <div className="students-modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setSelectedStudent(null)}>
           <section className="students-modal" role="dialog" aria-modal="true" aria-labelledby="student-modal-title">
             <header className="students-modal-header">
               <div>
                 <h2 id="student-modal-title">{selectedStudent.name}</h2>
-                <p>
-                  {selectedStudent.id} · {selectedStudent.course}
-                </p>
+                <p>{selectedStudent.studentId || "No student ID"} · {selectedStudent.course}</p>
               </div>
-              <button
-                type="button"
-                className="students-modal-close"
-                aria-label="Close student details"
-                onClick={() => setSelectedStudent(null)}
-              >
-                <X size={17} />
-              </button>
+              <button type="button" className="students-modal-close" aria-label="Close student details" onClick={() => setSelectedStudent(null)}><X size={17} /></button>
             </header>
             <div className="students-modal-body">
-              <div className="student-detail">
-                <label>Contact information</label>
-                <p>
-                  {selectedStudent.email}
-                  <br />
-                  {selectedStudent.phone}
-                </p>
-              </div>
-              <div className="student-detail">
-                <label>OJT status</label>
-                <span className={`student-status ${statusClass[selectedStudent.status]}`}>
-                  {selectedStudent.status}
-                </span>
-              </div>
-              <div className="student-detail">
-                <label>Partner company</label>
-                <strong>{selectedStudent.company}</strong>
-              </div>
-              <div className="student-detail">
-                <label>Hours progress</label>
-                <strong>
-                  {selectedStudent.hours} of {selectedStudent.target} hours
-                </strong>
-              </div>
+              <div className="student-detail"><label>Contact email</label><strong>{selectedStudent.email || "Not provided"}</strong></div>
+              <div className="student-detail"><label>OJT status</label><strong>{selectedStudent.status}</strong></div>
+              <div className="student-detail"><label>Partner company</label><strong>{selectedStudent.company}</strong></div>
+              <div className="student-detail"><label>Hours progress</label><strong>{selectedStudent.completed} of {selectedStudent.required} hours</strong></div>
             </div>
           </section>
         </div>
       )}
 
-      {notice && <div className="students-notice">{notice}</div>}
+      {accountStudent && (
+        <div className="students-modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && !saving && setAccountStudent(null)}>
+          <section className="students-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+            <header className="students-modal-header">
+              <div>
+                <h2 id="account-modal-title">Create student login</h2>
+                <p>{accountStudent.name} · {accountStudent.studentId || accountStudent.course}</p>
+              </div>
+              <button type="button" className="students-modal-close" aria-label="Close account form" disabled={saving} onClick={() => setAccountStudent(null)}><X size={17} /></button>
+            </header>
+            <form className="students-account-form" onSubmit={createStudentAccount}>
+              <label>First name<input required value={accountForm.firstName} onChange={(event) => setAccountForm((current) => ({ ...current, firstName: event.target.value }))} /></label>
+              <label>Last name<input required value={accountForm.lastName} onChange={(event) => setAccountForm((current) => ({ ...current, lastName: event.target.value }))} /></label>
+              <label>Email address<input type="email" required value={accountForm.email} onChange={(event) => setAccountForm((current) => ({ ...current, email: event.target.value }))} /></label>
+              <p>A temporary password will be generated. The account will be linked to this enrolled student record.</p>
+              <footer>
+                <button type="button" className="students-secondary" disabled={saving} onClick={() => setAccountStudent(null)}>Cancel</button>
+                <button type="submit" className="students-primary" disabled={saving}>{saving ? "Creating account..." : "Create account"}</button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {addingStudent && (
+        <div
+          className="students-modal-backdrop"
+          role="presentation"
+          onClick={(event) =>
+            event.target === event.currentTarget &&
+            !saving &&
+            setAddingStudent(false)
+          }
+        >
+          <section
+            className="students-modal students-add-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-student-title"
+          >
+            <header className="students-modal-header">
+              <div>
+                <h2 id="add-student-title">Add Student</h2>
+                <p>Create an enrolled student record and login account.</p>
+              </div>
+              <button
+                type="button"
+                className="students-modal-close"
+                aria-label="Close add student form"
+                disabled={saving}
+                onClick={() => setAddingStudent(false)}
+              >
+                <X size={17} />
+              </button>
+            </header>
+            <form
+              className="students-account-form students-add-form"
+              onSubmit={createStudentAndAccount}
+            >
+              <label>
+                First name
+                <input
+                  required
+                  value={newStudent.firstName}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      firstName: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  required
+                  value={newStudent.lastName}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      lastName: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Student ID
+                <input
+                  required
+                  value={newStudent.studentId}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      studentId: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Email address
+                <input
+                  type="email"
+                  required
+                  value={newStudent.email}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Phone
+                <input
+                  type="tel"
+                  value={newStudent.phone}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Course / Program
+                <select
+                  required
+                  value={newStudent.course}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      course: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select a course</option>
+                  {COURSES.map((course) => (
+                    <option key={course} value={course}>
+                      {course}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Partner company
+                <input
+                  value={newStudent.company}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      company: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Required OJT hours
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={newStudent.requiredHours}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      requiredHours: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <p>
+                A temporary password will be generated. The student will appear
+                on the coordinator roster automatically.
+              </p>
+              <footer>
+                <button
+                  type="button"
+                  className="students-secondary"
+                  disabled={saving}
+                  onClick={() => setAddingStudent(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="students-primary"
+                  disabled={saving}
+                >
+                  {saving ? "Creating student..." : "Create student & account"}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {notice && <div className="students-notice" role="status">{notice}</div>}
     </main>
   );
 }
