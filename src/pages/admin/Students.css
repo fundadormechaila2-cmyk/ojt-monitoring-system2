@@ -384,10 +384,16 @@
 .students-modal {
   width: min(620px, 100%);
   max-height: calc(100vh - 40px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 20px 60px #17203340;
+}
+
+.students-modal,
+.students-modal * {
+  box-sizing: border-box;
 }
 
 .students-add-modal {
@@ -463,7 +469,9 @@
 }
 
 .students-add-form {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 22px 24px 24px;
 }
 
 .students-add-form > p,
@@ -473,19 +481,31 @@
 
 .students-account-form label {
   display: grid;
+  min-width: 0;
   gap: 7px;
   color: #536176;
   font-size: 12px;
   font-weight: 700;
 }
 
-.students-account-form input {
+.students-account-form input,
+.students-account-form select {
   width: 100%;
-  padding: 10px 11px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 11px;
   border: 1px solid #dbe3ed;
   border-radius: 7px;
+  background: #fff;
   color: var(--student-ink);
   font: 13px "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.students-account-form input:focus,
+.students-account-form select:focus {
+  border-color: #78a5e2;
+  outline: 0;
+  box-shadow: 0 0 0 3px #2868c71a;
 }
 
 .students-account-form > p {
@@ -558,7 +578,7 @@
   .students-select { max-width: none; }
   .students-footer { align-items: flex-start; flex-direction: column; }
   .students-modal-body { grid-template-columns: 1fr; padding: 18px; }
-  .students-add-form { grid-template-columns: 1fr; }
+  .students-add-form { grid-template-columns: minmax(0, 1fr); }
   .students-add-form > p,
   .students-add-form footer { grid-column: auto; }
   .students-account-form footer { flex-direction: column-reverse; }
