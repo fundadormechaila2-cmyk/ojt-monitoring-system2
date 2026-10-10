@@ -1,82 +1,414 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
 import {
-  Building2,
+  AlertCircle,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Eye,
-  GraduationCap,
-  Mail,
-  Pencil,
   Plus,
   Search,
-  Trash2,
   Users,
   X,
 } from "lucide-react";
 import { COURSES } from "../../constants/courses";
+import { useAuth } from "../../context/useAuth";
+import { db } from "../../services/firebase";
+import { createManagedUser } from "../../services/userManagementSevice";
+import "./OJTCoordinators.css";
 
-const initialCoordinators = [
-  { id: "COORD-001", name: "Dr. Maria Lourdes Santos", department: "Bachelor of Science in Information Technology", email: "mlsantos@lccian.edu.ph", phone: "0917 555 1001", students: 28, companies: 7, status: "Active", activity: "Reviewed 6 applications today" },
-  { id: "COORD-002", name: "Ms. Patricia Anne Lim", department: "Bachelor of Science in Business Administration Major in Financial Management", email: "palim@lccian.edu.ph", phone: "0917 555 1002", students: 24, companies: 5, status: "Active", activity: "Updated 12 attendance records" },
-  { id: "COORD-003", name: "Mr. Ramon Villanueva", department: "Bachelor of Science in Business Administration Major in Marketing Management", email: "rvillanueva@lccian.edu.ph", phone: "0917 555 1003", students: 19, companies: 4, status: "On Leave", activity: "Last active 2 days ago" },
-  { id: "COORD-004", name: "Ms. Lara Mendoza", department: "Bachelor of Science in Secondary Education", email: "lmendoza@lccian.edu.ph", phone: "0917 555 1004", students: 31, companies: 8, status: "Active", activity: "Completed 4 student evaluations" },
-  { id: "COORD-005", name: "Mr. Daniel Reyes", department: "Bachelor of Science in Hospitality Management", email: "dreyes@lccian.edu.ph", phone: "0917 555 1005", students: 16, companies: 3, status: "Active", activity: "Added a new partner company" },
-  { id: "COORD-006", name: "Ms. Beatriz Navarro", department: "Bachelor of Science in Elementary Education", email: "bnavarro@lccian.edu.ph", phone: "0917 555 1006", students: 12, companies: 3, status: "Inactive", activity: "No recent activity" },
-  { id: "COORD-007", name: "Mr. Nestor Santos", department: "Bachelor of Science in Information Technology", email: "nsantos@lccian.edu.ph", phone: "0917 555 1007", students: 22, companies: 6, status: "Active", activity: "Submitted weekly OJT report" },
-];
+const emptyForm = {
+  coordinatorId: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  department: "",
+};
 
-const statusClass = { Active: "active", "On Leave": "leave", Inactive: "inactive" };
-const avatarColors = ["blue", "green", "purple", "orange", "teal", "slate"];
+function coordinatorName(coordinator) {
+  return (
+    `${coordinator.firstName || ""} ${coordinator.lastName || ""}`.trim() ||
+    coordinator.fullName ||
+    coordinator.displayName ||
+    "Unnamed coordinator"
+  );
+}
+
+function coordinatorIdentifier(coordinator) {
+  return coordinator.coordinatorId || coordinator.id;
+}
 
 function OJTCoordinators() {
-  const [coordinators, setCoordinators] = useState(initialCoordinators);
+  const { user } = useAuth();
+  const [coordinators, setCoordinators] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("All departments");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [selectedCoordinator, setSelectedCoordinator] = useState(null);
-  const [activeTab, setActiveTab] = useState("students");
-  const [page, setPage] = useState(1);
-  const [notice, setNotice] = useState("");
-  const pageSize = 5;
+  const [addingCoordinator, setAddingCoordinator] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
-  const departments = [...new Set([...COURSES, ...coordinators.map((coordinator) => coordinator.department)])];
-  const filteredCoordinators = useMemo(() => coordinators.filter((coordinator) => {
-    const query = searchTerm.toLowerCase().trim();
-    const matchesSearch = !query || `${coordinator.name} ${coordinator.id} ${coordinator.department}`.toLowerCase().includes(query);
-    const matchesDepartment = departmentFilter === "All departments" || coordinator.department === departmentFilter;
-    const matchesStatus = statusFilter === "All statuses" || coordinator.status === statusFilter;
-    return matchesSearch && matchesDepartment && matchesStatus;
-  }), [coordinators, departmentFilter, searchTerm, statusFilter]);
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, "users"),
+      (snapshot) => {
+        setCoordinators(
+          snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .filter((item) => item.role === "coordinator"),
+        );
+        setLoadError("");
+        setLoading(false);
+      },
+      (snapshotError) => {
+        console.error("Unable to load coordinator accounts:", snapshotError);
+        setLoadError("Coordinator accounts could not be loaded. Check Firestore permissions.");
+        setLoading(false);
+      },
+    );
+  }, []);
 
-  const totalPages = Math.max(1, Math.ceil(filteredCoordinators.length / pageSize));
-  const visibleCoordinators = filteredCoordinators.slice((page - 1) * pageSize, page * pageSize);
-  const totals = coordinators.reduce((summary, coordinator) => ({
-    total: summary.total + 1,
-    active: summary.active + (coordinator.status === "Active" ? 1 : 0),
-    students: summary.students + coordinator.students,
-  }), { total: 0, active: 0, students: 0 });
+  const departments = useMemo(
+    () => [
+      ...new Set([
+        ...COURSES,
+        ...coordinators.map((coordinator) => coordinator.department).filter(Boolean),
+      ]),
+    ],
+    [coordinators],
+  );
 
-  const updateFilter = (setter, value) => { setter(value); setPage(1); };
-  const showNotice = (message) => { setNotice(message); window.setTimeout(() => setNotice(""), 2600); };
-  const deleteCoordinator = (coordinator) => {
-    setCoordinators((current) => current.filter((item) => item.id !== coordinator.id));
-    setSelectedCoordinator(null);
-    showNotice(`${coordinator.name} was removed from the coordinator list.`);
+  const filteredCoordinators = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    return coordinators.filter((coordinator) => {
+      const matchesSearch =
+        !query ||
+        `${coordinatorName(coordinator)} ${coordinatorIdentifier(coordinator)} ${coordinator.email || ""} ${coordinator.department || ""}`
+          .toLowerCase()
+          .includes(query);
+      const status = String(coordinator.status || "ACTIVE").toUpperCase();
+      const matchesStatus =
+        statusFilter === "All statuses" || status === statusFilter;
+      const matchesDepartment =
+        departmentFilter === "All departments" ||
+        coordinator.department === departmentFilter;
+      return matchesSearch && matchesStatus && matchesDepartment;
+    });
+  }, [coordinators, departmentFilter, searchTerm, statusFilter]);
+
+  const activeCount = coordinators.filter(
+    (coordinator) => String(coordinator.status || "ACTIVE").toUpperCase() === "ACTIVE",
+  ).length;
+  const pendingPasswordChanges = coordinators.filter(
+    (coordinator) => coordinator.mustChangePassword,
+  ).length;
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
   };
+
+  const closeForm = () => {
+    if (saving) return;
+    setAddingCoordinator(false);
+    setForm(emptyForm);
+    setError("");
+  };
+
+  const createCoordinator = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+
+    let managedUser;
+    try {
+      managedUser = await createManagedUser({
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        role: "coordinator",
+        createdBy: user?.uid || null,
+        coordinatorId: form.coordinatorId.trim(),
+        department: form.department,
+      });
+
+      setAddingCoordinator(false);
+      setForm(emptyForm);
+      setNotice(`Coordinator account created for ${form.firstName.trim()} ${form.lastName.trim()}.`);
+      window.setTimeout(() => setNotice(""), 5000);
+      window.alert(
+        `Coordinator account created.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
+      );
+    } catch (createError) {
+      console.error("Unable to create coordinator account:", createError);
+      setError(
+        managedUser
+          ? `The account exists, but the coordinator profile could not be fully saved. Temporary password: ${managedUser.temporaryPassword}. ${createError.message}`
+          : createError.message || "Unable to create coordinator account.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="coordinators-page coordinators-state">
+        Loading coordinator accounts...
+      </main>
+    );
+  }
 
   return (
     <main className="coordinators-page">
-      <style>{`.coordinators-page{--coord-blue:#2868c7;--coord-ink:#172033;--coord-muted:#718096;color:var(--coord-ink);padding-bottom:28px;animation:coord-enter .4s ease-out both}.coordinators-page *{box-sizing:border-box}.coord-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:24px}.coord-eyebrow{margin:0 0 6px;color:#8995a7;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.coord-header h1{margin:0 0 7px;font-size:clamp(28px,3vw,38px);letter-spacing:-.03em}.coord-subtitle{margin:0;color:var(--coord-muted);font-size:14px}.coord-primary{display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border:0;border-radius:8px;background:var(--coord-blue);color:#fff;font:800 13px 'Trebuchet MS','Segoe UI',sans-serif;cursor:pointer;white-space:nowrap}.coord-primary:hover{background:#1f58ad}.coord-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.coord-stat{display:flex;align-items:center;gap:13px;min-height:88px;padding:16px;border:1px solid #e3e9f1;border-radius:10px;background:#fff;box-shadow:0 7px 22px #18263f0a}.coord-stat-icon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;border-radius:10px}.coord-stat-icon.blue{color:#2868c7;background:#e8f0ff}.coord-stat-icon.green{color:#16866f;background:#e2f6ef}.coord-stat-icon.amber{color:#b4771b;background:#fff2d8}.coord-stat-icon.indigo{color:#6954bd;background:#eeeaff}.coord-stat p{margin:0 0 5px;color:#7c899b;font-size:11px}.coord-stat strong{font-size:23px}.coord-panel{overflow:hidden;border:1px solid #e3e9f1;border-radius:10px;background:#fff;box-shadow:0 7px 22px #18263f0a}.coord-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 19px;border-bottom:1px solid #edf0f4}.coord-search{display:flex;align-items:center;gap:9px;width:min(410px,100%);padding:10px 12px;border:1px solid #dbe3ed;border-radius:8px;color:#8c99aa}.coord-search:focus-within{border-color:#78a5e2;box-shadow:0 0 0 3px #2868c71a}.coord-search input{width:100%;border:0;outline:0;color:var(--coord-ink);font:13px 'Trebuchet MS','Segoe UI',sans-serif}.coord-search input::placeholder{color:#a0aabb}.coord-filters{display:flex;gap:9px;flex-wrap:wrap}.coord-select{padding:10px;border:1px solid #dbe3ed;border-radius:8px;background:#fff;color:#536176;font:600 12px 'Trebuchet MS','Segoe UI',sans-serif}.coord-table-wrap{overflow-x:auto}.coord-table{width:100%;min-width:1080px;border-collapse:collapse;text-align:left}.coord-table th{padding:12px 19px;background:#fbfcfe;color:#8a96a7;font-size:10px;letter-spacing:.06em;text-align:left;text-transform:uppercase;white-space:nowrap}.coord-table td{padding:14px 19px;border-top:1px solid #edf0f4;color:#536176;font-size:12px;vertical-align:middle}.coord-table tbody tr:hover{background:#fbfdff}.coord-profile{display:flex;align-items:center;gap:10px;min-width:245px}.coord-avatar{display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;border-radius:9px;font-size:11px;font-weight:900}.coord-avatar.blue{color:#3576d3;background:#e2edff}.coord-avatar.green{color:#168870;background:#dcf4ed}.coord-avatar.purple{color:#7654c7;background:#eee7ff}.coord-avatar.orange{color:#c1742b;background:#ffebd9}.coord-avatar.teal{color:#238e8a;background:#dff4f2}.coord-avatar.slate{color:#65748a;background:#e9edf3}.coord-profile strong{display:block;color:var(--coord-ink);font-size:13px}.coord-profile span,.coord-contact span{display:block;margin-top:3px;color:#8995a7;font-size:11px}.coord-id{color:#536176;font-weight:700;white-space:nowrap}.coord-contact strong{font-size:12px;color:#44536b}.coord-count{color:var(--coord-ink);font-weight:800}.coord-status{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}.coord-status:before{width:6px;height:6px;border-radius:50%;background:currentColor;content:""}.coord-status.active{color:#13836b;background:#e5f7f0}.coord-status.leave{color:#ae7615;background:#fff3d9}.coord-status.inactive{color:#718096;background:#eef1f5}.coord-actions{display:flex;gap:4px}.coord-action{display:grid;place-items:center;width:30px;height:30px;border:1px solid transparent;border-radius:7px;background:transparent;color:#7d8a9e;cursor:pointer}.coord-action:hover{border-color:#dbe3ed;background:#f7faff;color:var(--coord-blue)}.coord-action.delete:hover{color:#c24c52;background:#fff6f6}.coord-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 19px;color:#8a96a7;font-size:12px}.coord-pagination{display:flex;align-items:center;gap:5px}.coord-page-button{display:grid;place-items:center;width:29px;height:29px;border:1px solid #dbe3ed;border-radius:7px;background:#fff;color:#607086;cursor:pointer}.coord-page-button:disabled{cursor:not-allowed;opacity:.4}.coord-modal-backdrop{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:20px;background:#17203366}.coord-modal{width:min(680px,100%);max-height:calc(100vh - 40px);overflow:auto;border-radius:12px;background:#fff;box-shadow:0 20px 60px #17203340}.coord-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;padding:22px 24px;border-bottom:1px solid #edf0f4}.coord-modal-heading{display:flex;align-items:center;gap:12px}.coord-modal-heading h2{margin:0 0 5px;color:var(--coord-ink);font-size:20px}.coord-modal-heading p{margin:0;color:#8995a7;font-size:12px}.coord-modal-close{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:7px;background:#f4f6f9;color:#69788e;cursor:pointer}.coord-tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid #edf0f4}.coord-tab{padding:13px 4px;margin-right:18px;border:0;border-bottom:2px solid transparent;background:transparent;color:#8995a7;font:700 12px 'Trebuchet MS','Segoe UI',sans-serif;cursor:pointer}.coord-tab.active{border-color:var(--coord-blue);color:var(--coord-blue)}.coord-details{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:22px 24px}.coord-detail{padding:13px;border:1px solid #edf0f4;border-radius:8px}.coord-detail.full{grid-column:1/-1}.coord-detail label{display:block;margin-bottom:6px;color:#8995a7;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.coord-detail strong,.coord-detail p{margin:0;color:#344258;font-size:13px;line-height:1.5}.coord-list{display:grid;gap:8px}.coord-list-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;background:#f7faff;color:#536176;font-size:12px}.coord-list-item svg{color:var(--coord-blue)}.coord-notice{position:fixed;right:24px;bottom:24px;z-index:15;padding:13px 16px;border:1px solid #c8e7db;border-radius:8px;background:#f0fbf6;color:#176b57;box-shadow:0 10px 28px #18263f22;font-size:13px}@keyframes coord-enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}@media(max-width:950px){.coord-summary{grid-template-columns:repeat(2,1fr)}.coord-toolbar{align-items:stretch;flex-direction:column}.coord-search{width:100%}.coord-filters{display:grid;grid-template-columns:1fr 1fr}.coord-select{width:100%}}@media(max-width:600px){.coord-header{align-items:stretch;flex-direction:column}.coord-primary{justify-content:center}.coord-summary{grid-template-columns:1fr 1fr;gap:9px}.coord-stat{padding:12px;gap:9px}.coord-stat strong{font-size:20px}.coord-stat-icon{width:34px;height:34px;flex-basis:34px}.coord-filters{grid-template-columns:1fr}.coord-footer{align-items:flex-start;flex-direction:column}.coord-modal-header{padding:18px}.coord-details{grid-template-columns:1fr;padding:18px}.coord-detail.full{grid-column:auto}.coord-tabs{overflow:auto;padding:0 18px}.coord-tab{white-space:nowrap}.coord-notice{right:14px;bottom:14px;left:14px}}@media(max-width:420px){.coord-summary{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.coordinators-page{animation:none}}`}</style>
+      <header className="coordinators-header">
+        <div>
+          <p className="coordinators-eyebrow">OJT management</p>
+          <h1>OJT Coordinators</h1>
+          <p className="coordinators-subtitle">
+            Create and manage coordinator profiles and login access.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="coordinators-primary"
+          onClick={() => {
+            setForm(emptyForm);
+            setError("");
+            setAddingCoordinator(true);
+          }}
+        >
+          <Plus size={17} /> Add Coordinator
+        </button>
+      </header>
 
-      <header className="coord-header"><div><p className="coord-eyebrow">OJT management</p><h1>OJT Coordinators</h1><p className="coord-subtitle">Manage OJT coordinators and their assigned students</p></div><button type="button" className="coord-primary" onClick={() => showNotice("The coordinator form is ready to connect.")}><Plus size={17} /> Add Coordinator</button></header>
-      <section className="coord-summary" aria-label="Coordinator summary"><article className="coord-stat"><span className="coord-stat-icon blue"><Users size={19} /></span><div><p>Total Coordinators</p><strong>{totals.total}</strong></div></article><article className="coord-stat"><span className="coord-stat-icon green"><CheckCircle2 size={19} /></span><div><p>Active Coordinators</p><strong>{totals.active}</strong></div></article><article className="coord-stat"><span className="coord-stat-icon amber"><GraduationCap size={19} /></span><div><p>Total Assigned Students</p><strong>{totals.students}</strong></div></article></section>
-      <section className="coord-panel"><div className="coord-toolbar"><label className="coord-search"><Search size={17} /><span className="sr-only">Search coordinators</span><input placeholder="Search coordinator name, ID, or department..." value={searchTerm} onChange={(event) => updateFilter(setSearchTerm, event.target.value)} /></label><div className="coord-filters"><select className="coord-select" aria-label="Filter by department" value={departmentFilter} onChange={(event) => updateFilter(setDepartmentFilter, event.target.value)}><option>All departments</option>{departments.map((department) => <option key={department}>{department}</option>)}</select><select className="coord-select" aria-label="Filter by coordinator status" value={statusFilter} onChange={(event) => updateFilter(setStatusFilter, event.target.value)}><option>All statuses</option><option>Active</option><option>On Leave</option><option>Inactive</option></select></div></div>
-        <div className="coord-table-wrap"><table className="coord-table"><thead><tr><th>Coordinator</th><th>Coordinator ID</th><th>Department</th><th>Email Address</th><th>Contact Number</th><th>Assigned Students</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visibleCoordinators.map((coordinator, index) => <tr key={coordinator.id}><td><div className="coord-profile"><span className={`coord-avatar ${avatarColors[index % avatarColors.length]}`}>{coordinator.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("")}</span><div><strong>{coordinator.name}</strong><span>{coordinator.department}</span></div></div></td><td><span className="coord-id">{coordinator.id}</span></td><td>{coordinator.department}</td><td><div className="coord-contact"><strong>{coordinator.email}</strong><span>Official LCCI account</span></div></td><td>{coordinator.phone}</td><td className="coord-count">{coordinator.students}</td><td><span className={`coord-status ${statusClass[coordinator.status]}`}>{coordinator.status}</span></td><td><div className="coord-actions"><button type="button" className="coord-action" title="View coordinator details" aria-label={`View ${coordinator.name}`} onClick={() => setSelectedCoordinator(coordinator)}><Eye size={15} /></button><button type="button" className="coord-action" title="Edit coordinator" aria-label={`Edit ${coordinator.name}`} onClick={() => showNotice(`Editing ${coordinator.name} is ready to connect.`)}><Pencil size={15} /></button><button type="button" className="coord-action" title="View assigned students" aria-label={`View students assigned to ${coordinator.name}`} onClick={() => { setSelectedCoordinator(coordinator); setActiveTab("students"); }}><GraduationCap size={15} /></button><button type="button" className="coord-action delete" title="Delete coordinator" aria-label={`Delete ${coordinator.name}`} onClick={() => deleteCoordinator(coordinator)}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table>{visibleCoordinators.length === 0 && <div className="coord-details"><p>No coordinators found. Try changing your filters.</p></div>}</div>
-        <footer className="coord-footer"><span>Showing {filteredCoordinators.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredCoordinators.length)} of {filteredCoordinators.length} coordinators</span><div className="coord-pagination"><button type="button" className="coord-page-button" aria-label="Previous page" disabled={page === 1} onClick={() => setPage((current) => current - 1)}><ChevronLeft size={16} /></button><span>Page {page} of {totalPages}</span><button type="button" className="coord-page-button" aria-label="Next page" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}><ChevronRight size={16} /></button></div></footer>
+      {(loadError || error) && (
+        <div className="coordinators-alert" role="alert">
+          <AlertCircle size={17} />
+          <span>{error || loadError}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div className="coordinators-notice" role="status">
+          <CheckCircle2 size={17} /> {notice}
+        </div>
+      )}
+
+      <section className="coordinators-summary" aria-label="Coordinator summary">
+        <article>
+          <span className="coordinators-summary-icon blue"><Users size={19} /></span>
+          <div><p>Total Coordinators</p><strong>{coordinators.length}</strong></div>
+        </article>
+        <article>
+          <span className="coordinators-summary-icon green"><CheckCircle2 size={19} /></span>
+          <div><p>Active Accounts</p><strong>{activeCount}</strong></div>
+        </article>
+        <article>
+          <span className="coordinators-summary-icon amber"><AlertCircle size={19} /></span>
+          <div><p>First Login Password Changes</p><strong>{pendingPasswordChanges}</strong></div>
+        </article>
       </section>
 
-      {selectedCoordinator && <div className="coord-modal-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setSelectedCoordinator(null); }}><section className="coord-modal" role="dialog" aria-modal="true" aria-labelledby="coord-modal-title"><header className="coord-modal-header"><div className="coord-modal-heading"><span className="coord-avatar blue">{selectedCoordinator.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("")}</span><div><h2 id="coord-modal-title">{selectedCoordinator.name}</h2><p>{selectedCoordinator.id} · {selectedCoordinator.department}</p></div></div><button type="button" className="coord-modal-close" aria-label="Close coordinator details" onClick={() => setSelectedCoordinator(null)}><X size={17} /></button></header><div className="coord-tabs"><button type="button" className={`coord-tab ${activeTab === "students" ? "active" : ""}`} onClick={() => setActiveTab("students")}>Assigned Students</button>      <button type="button" className={`coord-tab ${activeTab === "companies" ? "active" : ""}`} onClick={() => setActiveTab("companies")}>OJT Supervisors</button><button type="button" className={`coord-tab ${activeTab === "activity" ? "active" : ""}`} onClick={() => setActiveTab("activity")}>OJT Monitoring Activity</button></div><div className="coord-details"><div className="coord-detail"><label>Contact information</label><p><Mail size={13} /> {selectedCoordinator.email}<br />{selectedCoordinator.phone}</p></div><div className="coord-detail"><label>Coordinator status</label><span className={`coord-status ${statusClass[selectedCoordinator.status]}`}>{selectedCoordinator.status}</span></div><div className="coord-detail"><label>Assigned students</label><strong>{selectedCoordinator.students} students</strong></div>      <div className="coord-detail"><label>Assigned supervisors</label><strong>{selectedCoordinator.companies} OJT supervisors</strong></div><div className="coord-detail full"><label>{activeTab === "students" ? "Assigned students" : activeTab === "companies" ? "OJT supervisors" : "Recent activity"}</label><div className="coord-list">{(activeTab === "students" ? ["Maria Santos", "Juan Dela Cruz", "Angela Reyes"] : activeTab === "companies" ? ["Isabela Tech Solutions", "LCCI Cooperative", "North Valley Digital"] : [selectedCoordinator.activity, "Submitted weekly monitoring report", "Updated assigned OJT records"]).map((item) => <div className="coord-list-item" key={item}>{activeTab === "students" ? <GraduationCap size={14} /> : activeTab === "companies" ? <Building2 size={14} /> : <CheckCircle2 size={14} />}{item}</div>)}</div></div></div></section></div>}      {notice && <div className="coord-notice">{notice}</div>}    </main>
+      <section className="coordinators-panel">
+        <div className="coordinators-toolbar">
+          <label className="coordinators-search">
+            <Search size={16} />
+            <span className="sr-only">Search coordinators</span>
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search name, ID, email, or department"
+            />
+          </label>
+          <div className="coordinators-filters">
+            <select
+              aria-label="Filter by department"
+              value={departmentFilter}
+              onChange={(event) => setDepartmentFilter(event.target.value)}
+            >
+              <option>All departments</option>
+              {departments.map((department) => (
+                <option key={department} value={department}>{department}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter by account status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option>All statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="coordinators-table-wrap">
+          <table className="coordinators-table">
+            <thead>
+              <tr>
+                <th>Coordinator</th>
+                <th>Coordinator ID</th>
+                <th>Department</th>
+                <th>Email</th>
+                <th>Contact</th>
+                <th>Status</th>
+                <th>Account</th>
+                <th><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCoordinators.map((coordinator) => {
+                const status = String(coordinator.status || "ACTIVE").toUpperCase();
+                return (
+                  <tr key={coordinator.id}>
+                    <td><strong>{coordinatorName(coordinator)}</strong></td>
+                    <td>{coordinatorIdentifier(coordinator)}</td>
+                    <td>{coordinator.department || "—"}</td>
+                    <td>{coordinator.email || "—"}</td>
+                    <td>{coordinator.phone || "—"}</td>
+                    <td>
+                      <span className={`coordinators-status ${status.toLowerCase()}`}>
+                        {status === "ACTIVE" ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td>{coordinator.mustChangePassword ? "Password change required" : "Ready"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="coordinators-icon-button"
+                        title="View coordinator details"
+                        aria-label={`View ${coordinatorName(coordinator)}`}
+                        onClick={() => setSelectedCoordinator(coordinator)}
+                      >
+                        <Eye size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!filteredCoordinators.length && (
+            <div className="coordinators-empty">
+              {loadError
+                ? "Coordinator records are unavailable."
+                : coordinators.length
+                  ? "No coordinators match these filters."
+                  : "No coordinator accounts yet. Add a coordinator to get started."}
+            </div>
+          )}
+        </div>
+        <footer className="coordinators-footer">
+          Showing {filteredCoordinators.length} of {coordinators.length} coordinators
+        </footer>
+      </section>
+
+      {addingCoordinator && (
+        <div
+          className="coordinators-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeForm();
+          }}
+        >
+          <section
+            className="coordinators-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-coordinator-title"
+          >
+            <header>
+              <div>
+                <p>Coordinator account</p>
+                <h2 id="add-coordinator-title">Add Coordinator</h2>
+                <span>Create the coordinator profile and login credentials.</span>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                disabled={saving}
+                onClick={closeForm}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <form className="coordinators-form" onSubmit={createCoordinator}>
+              <label>
+                First name
+                <input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
+              </label>
+              <label>
+                Last name
+                <input required value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
+              </label>
+              <label>
+                Email address
+                <input type="email" required value={form.email} onChange={(event) => updateField("email", event.target.value)} />
+              </label>
+              <label>
+                Coordinator ID
+                <input value={form.coordinatorId} onChange={(event) => updateField("coordinatorId", event.target.value)} />
+              </label>
+              <label>
+                Contact number
+                <input type="tel" value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />
+              </label>
+              <label>
+                Department
+                <select required value={form.department} onChange={(event) => updateField("department", event.target.value)}>
+                  <option value="">Select department</option>
+                  {COURSES.map((department) => (
+                    <option key={department} value={department}>{department}</option>
+                  ))}
+                </select>
+              </label>
+              <p className="coordinators-form-note">
+                A temporary password will be generated. The coordinator will be asked to change it after signing in.
+              </p>
+              <footer>
+                <button type="button" className="coordinators-secondary" disabled={saving} onClick={closeForm}>Cancel</button>
+                <button type="submit" className="coordinators-primary" disabled={saving}>
+                  {saving ? "Creating account..." : "Create coordinator"}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {selectedCoordinator && (
+        <div
+          className="coordinators-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSelectedCoordinator(null);
+          }}
+        >
+          <section className="coordinators-dialog" role="dialog" aria-modal="true" aria-labelledby="coordinator-details-title">
+            <header>
+              <div>
+                <p>Coordinator details</p>
+                <h2 id="coordinator-details-title">{coordinatorName(selectedCoordinator)}</h2>
+                <span>{coordinatorIdentifier(selectedCoordinator)}</span>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setSelectedCoordinator(null)}><X size={18} /></button>
+            </header>
+            <dl className="coordinators-details">
+              <div><dt>Email</dt><dd>{selectedCoordinator.email || "—"}</dd></div>
+              <div><dt>Contact number</dt><dd>{selectedCoordinator.phone || "—"}</dd></div>
+              <div><dt>Department</dt><dd>{selectedCoordinator.department || "—"}</dd></div>
+              <div><dt>Status</dt><dd>{String(selectedCoordinator.status || "ACTIVE").toUpperCase()}</dd></div>
+            </dl>
+          </section>
+        </div>
+      )}
+    </main>
   );
 }
 

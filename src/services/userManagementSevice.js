@@ -37,6 +37,8 @@ export const createManagedUser = async ({
   studentRecordId,
   course,
   company,
+  coordinatorId,
+  department,
 }) => {
   // VALIDATION
   if (!firstName?.trim()) {
@@ -90,6 +92,8 @@ export const createManagedUser = async ({
       ...(studentRecordId ? { studentRecordId } : {}),
       ...(course ? { course } : {}),
       ...(company ? { company } : {}),
+      ...(coordinatorId ? { coordinatorId } : {}),
+      ...(department ? { department } : {}),
       createdAt: serverTimestamp(),
       createdBy: createdBy || null,
       updatedAt: serverTimestamp(),
@@ -204,4 +208,3 @@ export const completePasswordChange = async (user, newPassword) => {
     });
   }
 };
-
