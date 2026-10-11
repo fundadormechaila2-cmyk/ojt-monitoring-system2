@@ -56,6 +56,30 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /studentLoginActivity/{activityId} {
+      allow read: if isAdmin() || isCoordinator();
+      allow create: if hasRole("student") &&
+        request.resource.data.keys().hasOnly([
+          "userId",
+          "studentName",
+          "studentId",
+          "email",
+          "loggedInAt"
+        ]) &&
+        request.resource.data.keys().hasAll([
+          "userId",
+          "studentName",
+          "studentId",
+          "email",
+          "loggedInAt"
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.studentName is string &&
+        request.resource.data.studentId is string &&
+        request.resource.data.email is string &&
+        request.resource.data.loggedInAt == request.time;
+    }
+
     match /applications/{applicationId} {
       allow read: if isAdmin() || isCoordinator() || isSupervisor() || isStaff();
       allow create: if isAdmin() || isSupervisor() || isStaff();

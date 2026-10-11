@@ -8,8 +8,6 @@ import StudentDashboardPage from "../pages/student/StudentsDashboard";
 import StudentAttendancePage from "../pages/student/Attendance";
 import StudentProfilePage from "../pages/student/Profile";
 import StudentReportsPage from "../pages/student/StudentReports";
-import StudentDocumentsPage from "../pages/student/StudentsDocuments";
-import StudentProgressPage from "../pages/student/StudentsProgress";
 import StudentSettingsPage from "../pages/student/Settings";
 import Students from "../pages/admin/Students";
 import OJTCoordinators from "../pages/admin/OJTCoordinators";
@@ -26,9 +24,6 @@ import SupervisorDashboard from "../pages/supervisor/Dashboard";
 import SupervisorStudents from "../pages/supervisor/Trainess";
 import SupervisorAttendance from "../pages/supervisor/Attendance";
 import SupervisorHours from "../pages/supervisor/OJTHours";
-import SupervisorEvaluation from "../pages/supervisor/Evaluation";
-import SupervisorReports from "../pages/supervisor/Reports";
-import SupervisorRequirements from "../pages/supervisor/Requirements";
 import SupervisorSettings from "../pages/supervisor/Settings";
 import SupervisorDailyLogs from "../pages/supervisor/DailyLogs";
 import ScanStudentQR from "../pages/supervisor/ScanStudentQR";
@@ -108,8 +103,6 @@ function AppRoutes() {
           <Route path="profile" element={<StudentProfilePage />} />
           <Route path="attendance" element={<StudentAttendancePage />} />
           <Route path="ojtreports" element={<StudentReportsPage />} />
-          <Route path="documents" element={<StudentDocumentsPage />} />
-          <Route path="progress" element={<StudentProgressPage />} />
           <Route path="settings" element={<StudentSettingsPage />} />
         </Route>
 
@@ -130,9 +123,6 @@ function AppRoutes() {
           <Route path="students" element={<SupervisorStudents />} />
           <Route path="attendance" element={<SupervisorAttendance />} />
           <Route path="ojthours" element={<SupervisorHours />} />
-          <Route path="evaluations" element={<SupervisorEvaluation />} />
-          <Route path="reports" element={<SupervisorReports />} />
-          <Route path="requirements" element={<SupervisorRequirements />} />
           <Route path="dailylogs" element={<SupervisorDailyLogs />} />
           <Route path="settings" element={<SupervisorSettings />} />
         </Route>

@@ -4,12 +4,34 @@ import { Search } from "lucide-react";
 import { db } from "../../services/firebase";
 import { PageHeader } from "./SupervisorComponents";
 
-const attendancePeriods = [
-  { value: "amIn", label: "AM / IN" },
-  { value: "amOut", label: "AM / OUT" },
-  { value: "pmIn", label: "PM / IN" },
-  { value: "pmOut", label: "PM / OUT" },
+const attendanceGroups = [
+  {
+    value: "am",
+    label: "AM",
+    columns: [
+      { value: "amIn", label: "IN" },
+      { value: "amOut", label: "OUT" },
+    ],
+  },
+  {
+    value: "pm",
+    label: "PM",
+    columns: [
+      { value: "pmIn", label: "IN" },
+      { value: "pmOut", label: "OUT" },
+    ],
+  },
+  {
+    value: "overtime",
+    label: "OVERTIME",
+    columns: [
+      { value: "overtimeIn", label: "IN" },
+      { value: "overtimeOut", label: "OUT" },
+    ],
+  },
 ];
+
+const attendancePeriods = attendanceGroups.flatMap((group) => group.columns);
 
 function getLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -47,6 +69,8 @@ function attendanceTime(record, period) {
     amOut: record.morningTimeOut,
     pmIn: record.afternoonTimeIn,
     pmOut: record.timeOut || record.afternoonTimeOut,
+    overtimeIn: record.overtimeIn || record.otIn,
+    overtimeOut: record.overtimeOut || record.otOut,
   };
   return record[period] || legacyFields[period] || "";
 }
@@ -163,15 +187,25 @@ function Attendance() {
           <table className="supervisor-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Student</th>
-                <th>ID Number</th>
-                <th>AM / IN</th>
-                <th>AM / OUT</th>
-                <th>PM / IN</th>
-                <th>PM / OUT</th>
-                <th>Hours</th>
-                <th>Status</th>
+                <th rowSpan={2}>Date</th>
+                <th rowSpan={2}>Student</th>
+                <th rowSpan={2}>ID Number</th>
+                {attendanceGroups.map((group) => (
+                  <th key={group.value} colSpan={group.columns.length} className="text-center">
+                    {group.label}
+                  </th>
+                ))}
+                <th rowSpan={2}>Hours</th>
+                <th rowSpan={2}>Status</th>
+              </tr>
+              <tr>
+                {attendanceGroups.flatMap((group) =>
+                  group.columns.map((column) => (
+                    <th key={`${group.value}-${column.value}`} className="text-center">
+                      {column.label}
+                    </th>
+                  )),
+                )}
               </tr>
             </thead>
             <tbody>

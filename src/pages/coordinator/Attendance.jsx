@@ -1,14 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
-import { CalendarDays, UserRound } from "lucide-react";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { Clock3 } from "lucide-react";
 import { db } from "../../services/firebase";
+import { PageHeader, SearchBox, Status } from "../supervisor/SupervisorComponents";
 
-const attendancePeriods = [
-  { value: "amIn", label: "AM / IN", short: "AM IN" },
-  { value: "amOut", label: "AM / OUT", short: "AM OUT" },
-  { value: "pmIn", label: "PM / IN", short: "PM IN" },
-  { value: "pmOut", label: "PM / OUT", short: "PM OUT" },
+const recentLoginLimit = 8;
+const attendanceGroups = [
+  {
+    value: "am",
+    label: "AM",
+    columns: [
+      { value: "amIn", label: "IN" },
+      { value: "amOut", label: "OUT" },
+    ],
+  },
+  {
+    value: "pm",
+    label: "PM",
+    columns: [
+      { value: "pmIn", label: "IN" },
+      { value: "pmOut", label: "OUT" },
+    ],
+  },
+  {
+    value: "overtime",
+    label: "OVERTIME",
+    columns: [
+      { value: "overtimeIn", label: "IN" },
+      { value: "overtimeOut", label: "OUT" },
+    ],
+  },
 ];
+const attendancePeriods = attendanceGroups.flatMap((group) => group.columns);
 
 function getLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -39,31 +62,88 @@ function getStudentId(student) {
   );
 }
 
+function attendanceDateOf(record) {
+  if (typeof record.date === "string") {
+    return record.date.slice(0, 10);
+  }
+
+  const date = record.date?.toDate?.() || record.date;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function getPeriodTime(record, period) {
   const legacyValues = {
     amIn: record.timeIn || record.morningTimeIn,
     amOut: record.morningTimeOut,
     pmIn: record.afternoonTimeIn,
     pmOut: record.timeOut || record.afternoonTimeOut,
+    overtimeIn:
+      record.overtimeTimeIn || record.overtimeIn || record.overTimeIn || record.otIn,
+    overtimeOut:
+      record.overtimeTimeOut || record.overtimeOut || record.overTimeOut || record.otOut,
   };
   return record[period] || legacyValues[period] || "";
 }
 
-function dateLabel(value) {
-  if (!value) return "—";
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function hoursForRecord(record) {
+  const savedHours = Number(record.totalHours ?? record.hours);
+  if (Number.isFinite(savedHours)) return savedHours;
+
+  const hoursBetween = (start, end) => {
+    const parseTime = (value) => {
+      const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
+      if (!match) return null;
+
+      let hour = Number(match[1]) % 12;
+      if (match[3].toUpperCase() === "PM") hour += 12;
+      return hour * 60 + Number(match[2]);
+    };
+    const startMinutes = parseTime(start);
+    const endMinutes = parseTime(end);
+
+    return startMinutes === null || endMinutes === null
+      ? 0
+      : Math.max(0, endMinutes - startMinutes) / 60;
+  };
+
+  return (
+    hoursBetween(getPeriodTime(record, "amIn"), getPeriodTime(record, "amOut")) +
+    hoursBetween(getPeriodTime(record, "pmIn"), getPeriodTime(record, "pmOut")) +
+    hoursBetween(
+      getPeriodTime(record, "overtimeIn"),
+      getPeriodTime(record, "overtimeOut"),
+    )
+  );
+}
+
+function loginTimeLabel(timestamp) {
+  const date = timestamp?.toDate?.() || (timestamp ? new Date(timestamp) : null);
+  if (!date || Number.isNaN(date.getTime())) return "Time unavailable";
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function Attendance() {
   const [students, setStudents] = useState([]);
   const [records, setRecords] = useState([]);
+  const [loginActivity, setLoginActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loginActivityError, setLoginActivityError] = useState("");
+  const [loginActivityLoading, setLoginActivityLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(getLocalDate);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let studentsLoaded = false;
@@ -104,10 +184,32 @@ function Attendance() {
         finishLoading();
       },
     );
+    const unsubscribeLoginActivity = onSnapshot(
+      query(
+        collection(db, "studentLoginActivity"),
+        orderBy("loggedInAt", "desc"),
+        limit(recentLoginLimit),
+      ),
+      (snapshot) => {
+        setLoginActivity(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
+        setLoginActivityLoading(false);
+        setLoginActivityError("");
+      },
+      (snapshotError) => {
+        console.error("Unable to load student sign-in activity:", snapshotError);
+        setLoginActivityLoading(false);
+        setLoginActivityError(
+          "Student sign-ins could not be loaded. Check Firestore permissions.",
+        );
+      },
+    );
 
     return () => {
       unsubscribeStudents();
       unsubscribeAttendance();
+      unsubscribeLoginActivity();
     };
   }, []);
 
@@ -115,163 +217,173 @@ function Attendance() {
     () => new Map(students.map((student) => [getStudentId(student), student])),
     [students],
   );
-  const attendanceForDate = useMemo(
-    () => records.filter((record) => record.date === selectedDate),
-    [records, selectedDate],
-  );
+  const visibleRecords = useMemo(() => {
+    const queryText = search.trim().toLowerCase();
 
-  const rowsForDate = (dateRecords) =>
-    dateRecords.map((record) => {
-      const student =
-        studentById.get(String(record.studentId || "")) ||
-        students.find((item) => item.id === record.studentUid);
-      return {
-        ...record,
-        displayName:
-          record.studentName || record.student || getStudentName(student || {}),
-        displayId: record.studentId || getStudentId(student || {}) || "—",
-      };
-    });
+    return records
+      .filter((record) => attendanceDateOf(record) === selectedDate)
+      .map((record) => {
+        const student =
+          studentById.get(String(record.studentId || "")) ||
+          students.find((item) => item.id === record.studentUid);
+        return {
+          ...record,
+          displayName:
+            record.studentName || record.student || getStudentName(student || {}),
+          displayId: record.studentId || getStudentId(student || {}) || "—",
+        };
+      })
+      .filter((record) =>
+        `${record.displayName} ${record.displayId} ${record.company || ""}`
+          .toLowerCase()
+          .includes(queryText),
+      )
+      .sort((left, right) =>
+        `${right.date || ""}${right.updatedAt?.seconds || ""}`.localeCompare(
+          `${left.date || ""}${left.updatedAt?.seconds || ""}`,
+        ),
+      );
+  }, [records, search, selectedDate, studentById, students]);
 
   return (
-    <main className="min-h-full bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-7">
-        <header>
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-            LCCI · OJT Monitoring System
-          </p>
-          <h1 className="m-0 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-            Attendance Records
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-500">
-            Review students&apos; daily time records by date.
-          </p>
-        </header>
+    <main className="supervisor-page space-y-6">
+      <PageHeader
+        eyebrow="Coordinator workspace · Attendance"
+        title="Attendance Records"
+        description="Review student attendance records by date and search."
+      />
 
-        {error && (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">
-            {error}
-          </p>
-        )}
+      {error && (
+        <p className="supervisor-error" role="alert">
+          {error}
+        </p>
+      )}
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-xl bg-teal-50 text-teal-700">
-                <UserRound size={20} />
-              </span>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">
-                  Daily time record
-                </p>
-                <h2 className="m-0 mt-1 text-lg font-bold text-slate-900">
-                  Attendance by student
-                </h2>
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <CalendarDays size={17} className="text-slate-400" />
-              <span className="sr-only">Filter attendance by date</span>
-              <input
-                aria-label="Filter attendance by date"
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-700 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
-                type="date"
-                value={selectedDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="p-4 sm:p-6">
-            <AttendanceTable
-              title={`Attendance records · ${dateLabel(selectedDate)}`}
-              records={rowsForDate(attendanceForDate)}
-              loading={loading}
-              emptyText="No attendance records for this date."
+      <section className="supervisor-panel supervisor-table-panel">
+        <div className="supervisor-toolbar">
+          <SearchBox
+            value={search}
+            onChange={setSearch}
+            placeholder="Search student name or ID"
+          />
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+            Date
+            <input
+              aria-label="Filter attendance by date"
+              className="supervisor-select"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
             />
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
+          </label>
+        </div>
 
-function AttendanceTable({
-  title,
-  records,
-  loading,
-  emptyText,
-}) {
-  return (
-    <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200">
-      <header className="flex items-center gap-2 border-b border-slate-100 px-4 py-4">
-        <UserRound className="text-slate-400" size={17} />
-        <h3 className="m-0 text-sm font-bold uppercase tracking-wide text-slate-700">
-          {title}
-        </h3>
-      </header>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[670px] border-collapse text-left">
-          <thead>
-            <tr className="bg-slate-50">
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                Name of Student
-              </th>
-              {attendancePeriods.map((period) => (
-                <th
-                  className="px-3 py-3 text-center text-xs font-bold uppercase tracking-wide text-slate-500"
-                  key={period.value}
-                >
-                  {period.short}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+        <div className="supervisor-table-wrap">
+          <table className="supervisor-table">
+            <thead>
               <tr>
-                <td
-                  className="px-4 py-8 text-center text-sm text-slate-500"
-                  colSpan={5}
-                >
-                  Loading attendance…
-                </td>
+                <th rowSpan={2}>Date</th>
+                <th rowSpan={2}>Student</th>
+                <th rowSpan={2}>ID Number</th>
+                {attendanceGroups.map((group) => (
+                  <th
+                    className="text-center"
+                    colSpan={group.columns.length}
+                    key={group.value}
+                  >
+                    {group.label}
+                  </th>
+                ))}
+                <th rowSpan={2}>Hours</th>
+                <th rowSpan={2}>Status</th>
               </tr>
-            ) : records.length === 0 ? (
               <tr>
-                <td
-                  className="px-4 py-8 text-center text-sm text-slate-500"
-                  colSpan={5}
-                >
-                  {emptyText}
-                </td>
+                {attendanceGroups.flatMap((group) =>
+                  group.columns.map((column) => (
+                    <th className="text-center" key={`${group.value}-${column.value}`}>
+                      {column.label}
+                    </th>
+                  )),
+                )}
               </tr>
-            ) : (
-              records.map((record) => (
-                <tr className="border-t border-slate-100" key={record.id}>
-                  <td className="px-4 py-3">
-                    <strong className="block text-sm font-semibold text-slate-800">
-                      {record.displayName}
-                    </strong>
-                    <span className="mt-0.5 block text-xs text-slate-500">
-                      {record.displayId}
-                    </span>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td className="supervisor-empty" colSpan={11}>
+                    Loading attendance records...
                   </td>
-                  {attendancePeriods.map((period) => (
-                    <td
-                      className="px-3 py-3 text-center text-sm font-medium text-slate-700"
-                      key={period.value}
-                    >
-                      {getPeriodTime(record, period.value) || "—"}
-                    </td>
-                  ))}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+              ) : visibleRecords.length === 0 ? (
+                <tr>
+                  <td className="supervisor-empty" colSpan={11}>
+                    {error
+                      ? "Attendance records are unavailable."
+                      : "No attendance records found for this date."}
+                  </td>
+                </tr>
+              ) : (
+                visibleRecords.map((record) => (
+                  <tr key={record.id}>
+                    <td>{attendanceDateOf(record) || "—"}</td>
+                    <td><strong>{record.displayName}</strong></td>
+                    <td>{record.displayId}</td>
+                    {attendancePeriods.map((period) => (
+                      <td key={period.value}>{getPeriodTime(record, period.value) || "—"}</td>
+                    ))}
+                    <td>
+                      {hoursForRecord(record).toFixed(2)}
+                    </td>
+                    <td>
+                      <Status value={String(record.status || "Pending")} />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <footer className="px-5 py-3 text-xs text-slate-500">
+          Showing {visibleRecords.length} attendance record
+          {visibleRecords.length === 1 ? "" : "s"}
+        </footer>
+      </section>
+
+      <section className="supervisor-panel">
+        <div className="supervisor-panel-heading">
+          <div>
+            <h2>Recent student sign-ins</h2>
+            <p>Latest {recentLoginLimit} student account logins</p>
+          </div>
+          <Clock3 size={18} className="text-slate-400" aria-hidden="true" />
+        </div>
+
+        {loginActivityError ? (
+          <p className="supervisor-error" role="alert">{loginActivityError}</p>
+        ) : loginActivityLoading ? (
+          <p className="supervisor-muted" role="status">Loading student sign-ins...</p>
+        ) : loginActivity.length === 0 ? (
+          <p className="supervisor-muted">No student sign-ins have been recorded yet.</p>
+        ) : (
+          <ul className="supervisor-list">
+            {loginActivity.map((activity) => (
+              <li className="supervisor-list-item" key={activity.id}>
+                <div>
+                  <strong>{activity.studentName || activity.email || "Student"}</strong>
+                  <span>
+                    {activity.studentId ? `ID: ${activity.studentId} · ` : ""}
+                    {activity.email || "Student account"}
+                  </span>
+                </div>
+                <time className="supervisor-muted">
+                  {loginTimeLabel(activity.loggedInAt)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
   );
 }
 

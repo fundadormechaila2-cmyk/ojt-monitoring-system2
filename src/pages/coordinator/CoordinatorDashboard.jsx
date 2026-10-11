@@ -23,11 +23,11 @@ function CoordinatorDashboard() {
       ready.add(source);
       if (ready.size === sources.length) setLoading(false);
     }, (error) => {
-      console.error(`Unable to load coordinator dashboard ${source}:`, error);
-      setFailedSources((current) => current.includes(source) ? current : [...current, source]);
-      ready.add(source);
-      if (ready.size === sources.length) setLoading(false);
-    }));
+        console.error(`Unable to load coordinator dashboard ${source}:`, error);
+        setFailedSources((current) => current.includes(source) ? current : [...current, source]);
+        ready.add(source);
+        if (ready.size === sources.length) setLoading(false);
+      }));
 
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, []);

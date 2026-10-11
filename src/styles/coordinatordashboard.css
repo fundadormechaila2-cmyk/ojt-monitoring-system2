@@ -200,6 +200,13 @@
   font-size: 13px;
 }
 
+.coordinator-list-item time {
+  flex-shrink: 0;
+  color: #718096;
+  font-size: 12px;
+  text-align: right;
+}
+
 .coordinator-status {
   padding: 5px 9px;
   border-radius: 999px;

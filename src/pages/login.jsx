@@ -5,6 +5,7 @@ import { login } from "../services/authService";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { getUserData } from "../services/userService";
+import { recordStudentLogin } from "../services/studentLoginActivityService";
 import { Eye, EyeOff } from "lucide-react";
 
 function Login() {
@@ -35,6 +36,19 @@ function Login() {
       if (!profile) {
         alert("User profile not found.");
         return;
+      }
+
+      if (profile.role === "student" && !String(sessionUser?.uid || "").startsWith("demo-")) {
+        try {
+          await recordStudentLogin(sessionUser, profile);
+        } catch (activityError) {
+          console.error("Unable to record student sign-in activity:", activityError);
+          alert(
+            `Sign-in succeeded, but the coordinator could not be notified of this login. ${
+              activityError.message || "Check your connection and Firestore permissions."
+            }`,
+          );
+        }
       }
 
       if (profile.role === "admin") {
