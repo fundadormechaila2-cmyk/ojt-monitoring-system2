@@ -38,7 +38,7 @@ function Login() {
         return;
       }
 
-      if (profile.role === "student" && !String(sessionUser?.uid || "").startsWith("demo-")) {
+      if (profile.role === "student") {
         try {
           await recordStudentLogin(sessionUser, profile);
         } catch (activityError) {

@@ -6,12 +6,28 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function studentPath(studentId) {
+      return /databases/$(database)/documents/students/$(studentId);
+    }
+
+    function companyPath(companyId) {
+      return /databases/$(database)/documents/partnerCompanies/$(companyId);
+    }
+
+    function hasProfile() {
+      return signedIn() && exists(userPath(request.auth.uid));
+    }
+
     function profile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return get(userPath(request.auth.uid)).data;
     }
 
     function hasRole(role) {
-      return signedIn() && profile().data.role == role;
+      return hasProfile() && profile().role == role;
     }
 
     function isAdmin() {
@@ -26,35 +42,114 @@ service cloud.firestore {
       return hasRole("supervisor");
     }
 
-    function isStaff() {
-      return hasRole("staff");
+    function isStudent() {
+      return hasRole("student");
+    }
+
+    function coordinatorOwns(data) {
+      return isCoordinator() &&
+        "coordinatorUid" in data &&
+        data.coordinatorUid == request.auth.uid;
+    }
+
+    function validSupervisorAssignment(data) {
+      return !("supervisorUid" in data) ||
+        data.supervisorUid == null ||
+        (data.supervisorUid is string &&
+          existsAfter(userPath(data.supervisorUid)) &&
+          getAfter(userPath(data.supervisorUid)).data.role == "supervisor" &&
+          getAfter(userPath(data.supervisorUid)).data.department == profile().department);
+    }
+
+    function supervisorOwnsStudent(studentUid) {
+      return isSupervisor() &&
+        studentUid is string &&
+        exists(userPath(studentUid)) &&
+        get(userPath(studentUid)).data.role == "student" &&
+        (get(userPath(studentUid)).data.supervisorUid == request.auth.uid ||
+          ("studentRecordId" in get(userPath(studentUid)).data &&
+            exists(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)) &&
+            get(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)).data.supervisorUid == request.auth.uid)) &&
+        get(userPath(studentUid)).data.coordinatorUid is string &&
+        exists(userPath(get(userPath(studentUid)).data.coordinatorUid)) &&
+        get(userPath(get(userPath(studentUid)).data.coordinatorUid)).data.role == "coordinator" &&
+        profile().department == get(userPath(get(userPath(studentUid)).data.coordinatorUid)).data.department;
+    }
+
+    function isOwnStudent(studentUid) {
+      return isStudent() && studentUid == request.auth.uid;
     }
 
     match /users/{userId} {
       allow read: if isAdmin() ||
-        (isCoordinator() && resource.data.role == "supervisor") ||
-        (signedIn() && request.auth.uid == userId);
+        (signedIn() && request.auth.uid == userId) ||
+        (isCoordinator() && resource.data.role == "student" &&
+          resource.data.coordinatorUid == request.auth.uid) ||
+        (isCoordinator() && resource.data.role == "supervisor" &&
+          resource.data.department == profile().department) ||
+        (isSupervisor() && resource.data.role == "student" &&
+          supervisorOwnsStudent(userId));
       allow create: if isAdmin() ||
         (isCoordinator() &&
           request.resource.data.role == "supervisor" &&
-          request.resource.data.createdBy == request.auth.uid);
-      allow update, delete: if isAdmin();
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.department == profile().department &&
+          request.resource.data.assignedStudentRecordId is string &&
+          exists(studentPath(request.resource.data.assignedStudentRecordId)) &&
+          get(studentPath(request.resource.data.assignedStudentRecordId)).data.coordinatorUid == request.auth.uid &&
+          request.resource.data.company is string &&
+          request.resource.data.company.size() > 0 &&
+          (request.resource.data.partnerCompanyId == null ||
+            (request.resource.data.partnerCompanyId is string &&
+              exists(companyPath(request.resource.data.partnerCompanyId)))));
+      allow update: if isAdmin() ||
+        (coordinatorOwns(resource.data) &&
+          resource.data.role == "student" &&
+          request.resource.data.coordinatorUid == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "supervisorUid", "updatedAt"
+          ]) && validSupervisorAssignment(request.resource.data)) ||
+        (signedIn() && request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "role", "department", "coordinatorUid", "supervisorUid",
+            "studentRecordId", "studentId", "status", "createdBy",
+            "createdAt", "mustChangePassword", "temporaryPassword"
+          ]));
+      allow delete: if isAdmin();
     }
 
     match /students/{studentId} {
       allow read: if isAdmin() ||
-        (isCoordinator() && resource.data.coordinatorUid == request.auth.uid) ||
-        isSupervisor() ||
-        (signedIn() && request.auth.uid == studentId);
-      allow create, update, delete: if isAdmin();
+        coordinatorOwns(resource.data) ||
+        (isStudent() && (resource.data.studentUid == request.auth.uid ||
+          studentId == request.auth.uid)) ||
+        (resource.data.studentUid is string &&
+          supervisorOwnsStudent(resource.data.studentUid));
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (coordinatorOwns(resource.data) &&
+          request.resource.data.coordinatorUid == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "supervisorUid", "supervisorName", "partnerCompanyId", "company", "updatedAt"
+          ]) &&
+          validSupervisorAssignment(request.resource.data) &&
+          request.resource.data.supervisorUid is string &&
+          getAfter(userPath(request.resource.data.supervisorUid)).data.assignedStudentRecordId == studentId &&
+          getAfter(userPath(request.resource.data.supervisorUid)).data.partnerCompanyId == request.resource.data.partnerCompanyId &&
+          getAfter(userPath(request.resource.data.supervisorUid)).data.company == request.resource.data.company &&
+          request.resource.data.company is string &&
+          request.resource.data.company.size() > 0 &&
+          (request.resource.data.partnerCompanyId == null ||
+            exists(companyPath(request.resource.data.partnerCompanyId))));
     }
 
     match /attendance/{attendanceId} {
       allow read: if isAdmin() ||
-        (isCoordinator() && resource.data.coordinatorUid == request.auth.uid) ||
-        isSupervisor() || isStaff() ||
-        (signedIn() && resource.data.studentUid == request.auth.uid);
-      allow create, update, delete: if isAdmin() || isCoordinator() || isStaff();
+        coordinatorOwns(resource.data) ||
+        isOwnStudent(resource.data.studentUid) ||
+        (resource.data.studentUid is string &&
+          supervisorOwnsStudent(resource.data.studentUid));
+      allow create, update, delete: if isAdmin();
     }
 
     match /attendanceQrScans/{scanId} {
@@ -62,49 +157,63 @@ service cloud.firestore {
     }
 
     match /studentLoginActivity/{activityId} {
-      allow read: if isAdmin() ||
-        (isCoordinator() && resource.data.coordinatorUid == request.auth.uid);
-      allow create: if hasRole("student") &&
+      allow read: if isAdmin() || coordinatorOwns(resource.data);
+      allow create: if isStudent() &&
         request.resource.data.keys().hasOnly([
-          "userId",
-          "studentName",
-          "studentId",
-          "email",
-          "coordinatorUid",
-          "loggedInAt"
+          "userId", "studentName", "studentId", "email",
+          "coordinatorUid", "loggedInAt"
         ]) &&
         request.resource.data.keys().hasAll([
-          "userId",
-          "studentName",
-          "studentId",
-          "email",
-          "loggedInAt"
+          "userId", "studentName", "studentId", "email", "loggedInAt"
         ]) &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.studentName is string &&
         request.resource.data.studentId is string &&
         request.resource.data.email is string &&
         (!("coordinatorUid" in request.resource.data) ||
-          request.resource.data.coordinatorUid == profile().data.coordinatorUid) &&
+          request.resource.data.coordinatorUid == profile().coordinatorUid) &&
         request.resource.data.loggedInAt == request.time;
-      allow update: if isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     match /applications/{applicationId} {
-      allow read: if isAdmin() || isCoordinator() || isSupervisor() || isStaff();
-      allow create: if isAdmin() || isSupervisor() || isStaff();
-      allow update: if isAdmin() || isCoordinator() || isSupervisor() || isStaff();
+      allow read: if isAdmin() || coordinatorOwns(resource.data) ||
+        (resource.data.studentUid is string &&
+          (isOwnStudent(resource.data.studentUid) ||
+            supervisorOwnsStudent(resource.data.studentUid)));
+      allow create: if isAdmin() ||
+        (isCoordinator() && coordinatorOwns(request.resource.data)) ||
+        (isSupervisor() && request.resource.data.studentUid is string &&
+          supervisorOwnsStudent(request.resource.data.studentUid));
+      allow update: if isAdmin() ||
+        (isCoordinator() && coordinatorOwns(resource.data) &&
+          coordinatorOwns(request.resource.data)) ||
+        (isSupervisor() && resource.data.studentUid is string &&
+          supervisorOwnsStudent(resource.data.studentUid) &&
+          request.resource.data.studentUid == resource.data.studentUid);
       allow delete: if isAdmin();
     }
 
     match /evaluations/{evaluationId} {
-      allow read: if isAdmin() || isCoordinator() || isSupervisor() || isStaff();
-      allow create, update: if isAdmin() || isCoordinator() || isSupervisor() || isStaff();
+      allow read: if isAdmin() || coordinatorOwns(resource.data) ||
+        (resource.data.studentUid is string &&
+          (isOwnStudent(resource.data.studentUid) ||
+            supervisorOwnsStudent(resource.data.studentUid)));
+      allow create: if isAdmin() ||
+        (isCoordinator() && coordinatorOwns(request.resource.data)) ||
+        (isSupervisor() && request.resource.data.studentUid is string &&
+          supervisorOwnsStudent(request.resource.data.studentUid));
+      allow update: if isAdmin() ||
+        (isCoordinator() && coordinatorOwns(resource.data) &&
+          coordinatorOwns(request.resource.data)) ||
+        (isSupervisor() && resource.data.studentUid is string &&
+          supervisorOwnsStudent(resource.data.studentUid) &&
+          request.resource.data.studentUid == resource.data.studentUid);
       allow delete: if isAdmin();
     }
 
     match /partnerCompanies/{companyId} {
-      allow read: if isAdmin() || isCoordinator() || isSupervisor() || isStaff();
+      allow read: if isAdmin() || isCoordinator() || isSupervisor();
       allow create, update, delete: if isAdmin();
     }
 

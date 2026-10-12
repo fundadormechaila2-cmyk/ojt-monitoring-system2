@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Search } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { PageHeader } from "./SupervisorComponents";
 
@@ -76,6 +77,7 @@ function attendanceTime(record, period) {
 }
 
 function Attendance() {
+  const { user } = useAuth();
   const [records, setRecords] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,8 +86,12 @@ function Attendance() {
   const [dateFilter, setDateFilter] = useState(getLocalDate);
 
   useEffect(() => {
+    if (!user?.uid) return undefined;
     const unsubscribeRecords = onSnapshot(
-      collection(db, "attendance"),
+      query(
+        collection(db, "attendance"),
+        where("supervisorId", "==", user.uid),
+      ),
       (snapshot) => {
         setRecords(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
@@ -101,7 +107,10 @@ function Attendance() {
     );
 
     const unsubscribeStudents = onSnapshot(
-      collection(db, "students"),
+      query(
+        collection(db, "students"),
+        where("supervisorUid", "==", user.uid),
+      ),
       (snapshot) => {
         setStudents(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
@@ -117,7 +126,7 @@ function Attendance() {
       unsubscribeRecords();
       unsubscribeStudents();
     };
-  }, []);
+  }, [user?.uid]);
 
   const studentById = useMemo(
     () => new Map(students.map((student) => [studentIdOf(student), student])),

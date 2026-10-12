@@ -1,10 +1,11 @@
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   updateProfile,
   signOut,
 } from "firebase/auth";
 
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 
 import { secondaryAuth } from "./secondatyAuth";
 import { db } from "./firebase";
@@ -40,6 +41,9 @@ export const createManagedUser = async ({
   coordinatorId,
   coordinatorUid,
   department,
+  assignedStudentRecordId,
+  partnerCompanyId,
+  position,
 }) => {
   // VALIDATION
   if (!firstName?.trim()) {
@@ -59,6 +63,8 @@ export const createManagedUser = async ({
   }
  // GENERATE TEMPORARY PASSWORD
   const temporaryPassword = generateTemporaryPassword(12);
+  let firebaseUser;
+  let profileSaved = false;
 
   try {
     // CREATE FIREBASE AUTH ACCOUNT
@@ -69,7 +75,7 @@ export const createManagedUser = async ({
       temporaryPassword,
     );
 
-    const firebaseUser = credential.user;
+    firebaseUser = credential.user;
 
     //SET DISPLAY NAME
     await updateProfile(firebaseUser, {
@@ -79,7 +85,7 @@ export const createManagedUser = async ({
     //FIRESTORE DOCUMENT
     // users/{Firebase UID}
     const userRef = doc(db, "users", firebaseUser.uid);
-    await setDoc(userRef, {
+    const profile = {
       uid: firebaseUser.uid,
       email: email.trim(),
       firstName: firstName.trim(),
@@ -87,23 +93,63 @@ export const createManagedUser = async ({
       phone: phone?.trim() || "",
       role,
       status: "ACTIVE",
-      temporaryPassword,
       mustChangePassword: true,
       ...(studentId ? { studentId } : {}),
       ...(studentRecordId ? { studentRecordId } : {}),
+      ...(coordinatorId ? { coordinatorId } : {}),
       ...(course ? { course } : {}),
       ...(company ? { company } : {}),
-      ...(coordinatorId ? { coordinatorId } : {}),
       ...(coordinatorUid ? { coordinatorUid } : {}),
       ...(department ? { department } : {}),
+      ...(assignedStudentRecordId ? { assignedStudentRecordId } : {}),
+      ...(role === "supervisor"
+        ? { partnerCompanyId: partnerCompanyId || null }
+        : partnerCompanyId
+          ? { partnerCompanyId }
+          : {}),
+      ...(position ? { position: position.trim() } : {}),
       createdAt: serverTimestamp(),
       createdBy: createdBy || null,
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (role === "supervisor" && assignedStudentRecordId) {
+      const studentRef = doc(db, "students", assignedStudentRecordId);
+      await runTransaction(db, async (transaction) => {
+        const studentSnapshot = await transaction.get(studentRef);
+        if (!studentSnapshot.exists()) {
+          throw new Error("The selected OJT student no longer exists.");
+        }
+
+        const student = studentSnapshot.data();
+        if (student.coordinatorUid !== createdBy) {
+          throw new Error("You can only assign supervisors to students in your department.");
+        }
+        if (student.supervisorUid) {
+          throw new Error("This student already has an assigned supervisor.");
+        }
+
+        transaction.set(userRef, profile);
+        transaction.update(studentRef, {
+          supervisorUid: firebaseUser.uid,
+          supervisorName: `${firstName.trim()} ${lastName.trim()}`,
+          partnerCompanyId: partnerCompanyId || null,
+          company,
+          updatedAt: serverTimestamp(),
+        });
+      });
+    } else {
+      await setDoc(userRef, profile);
+    }
+    profileSaved = true;
 
     //SIGN OUT SECONDARY AUTH
     //This keeps the ADMIN logged into the primary auth.
-    await signOut(secondaryAuth);
+    try {
+      await signOut(secondaryAuth);
+    } catch (signOutError) {
+      console.warn("Supervisor profile was created, but secondary Auth sign-out failed:", signOutError);
+    }
 
     // RETURN INFORMATION TO ADMIN PAGE
     return {
@@ -114,6 +160,14 @@ export const createManagedUser = async ({
     };
   } catch (error) {
     console.error("Create managed user error:", error);
+
+    if (firebaseUser && !profileSaved) {
+      try {
+        await deleteUser(firebaseUser);
+      } catch (cleanupError) {
+        console.error("Unable to remove the unlinked supervisor Auth account:", cleanupError);
+      }
+    }
 
     // Make sure secondary auth isn't left logged in.
     try {

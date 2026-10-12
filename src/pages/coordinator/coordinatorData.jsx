@@ -12,6 +12,12 @@ export const coordinatorSources = [
   "evaluations",
   "partnerCompanies",
 ];
+const departmentScopedSources = [
+  "students",
+  "applications",
+  "attendance",
+  "evaluations",
+];
 
 export function useCoordinatorData(sources = coordinatorSources) {
   const { user } = useAuth();
@@ -26,7 +32,7 @@ export function useCoordinatorData(sources = coordinatorSources) {
       onSnapshot(
         user?.role === "coordinator" &&
           user.uid &&
-          ["students", "attendance"].includes(source)
+          departmentScopedSources.includes(source)
           ? query(
               collection(db, source),
               where("coordinatorUid", "==", user.uid),

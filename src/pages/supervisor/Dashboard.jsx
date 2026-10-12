@@ -5,7 +5,6 @@ import { ArrowRight, CalendarCheck, ClipboardCheck, Clock3, Users } from "lucide
 import { useAuth } from "../../context/useAuth";
 import { PageHeader, StatCard, Status } from "./SupervisorComponents";
 import { db } from "../../services/firebase";
-import { students } from "./SupervisorData";
 
 function getLocalDate() {
 	return new Intl.DateTimeFormat("en-CA", {
@@ -20,28 +19,48 @@ function Dashboard() {
 	const { user } = useAuth();
 	const navigate = useNavigate();
 	const [attendance, setAttendance] = useState([]);
+	const [students, setStudents] = useState([]);
 	const [attendanceError, setAttendanceError] = useState("");
 	const [attendanceLoading, setAttendanceLoading] = useState(true);
 	const today = useMemo(() => getLocalDate(), []);
 
-	useEffect(() => onSnapshot(
-		query(collection(db, "attendance"), where("date", "==", today)),
-		(snapshot) => {
+	useEffect(() => {
+		if (!user?.uid) return undefined;
+		const unsubscribeAttendance = onSnapshot(
+			query(
+				collection(db, "attendance"),
+				where("supervisorId", "==", user.uid),
+				where("date", "==", today),
+			),
+			(snapshot) => {
 			const records = snapshot.docs
 				.map((document) => ({ id: document.id, ...document.data() }))
 				.sort((left, right) => (right.updatedAt?.toMillis?.() || 0) - (left.updatedAt?.toMillis?.() || 0));
 			setAttendance(records);
 			setAttendanceLoading(false);
 			setAttendanceError("");
-		},
-		(error) => {
+			},
+			(error) => {
 			console.error("Unable to load live supervisor attendance:", error);
 			setAttendanceError("Live attendance records could not be loaded. Check Firestore permissions.");
 			setAttendanceLoading(false);
-		},
-	), [today]);
+			},
+		);
+		const unsubscribeStudents = onSnapshot(
+			query(collection(db, "students"), where("supervisorUid", "==", user.uid)),
+			(snapshot) => setStudents(snapshot.docs.map((document) => ({ id: document.id, ...document.data() }))),
+			(error) => {
+				console.error("Unable to load assigned supervisor students:", error);
+				setAttendanceError("Assigned student records could not be loaded. Check Firestore permissions.");
+			},
+		);
+		return () => {
+			unsubscribeAttendance();
+			unsubscribeStudents();
+		};
+	}, [today, user?.uid]);
 
-	const attention = students.filter((student) => student.status === "Needs attention").length;
+	const attention = students.filter((student) => student.ojtStatus === "Needs attention" || student.status === "Needs attention").length;
 	const attendanceIssues = attendance.filter((record) =>
 		record.status !== "Present" || !(record.timeIn || record.morningTimeIn) || !(record.timeOut || record.afternoonTimeOut)
 	).length;

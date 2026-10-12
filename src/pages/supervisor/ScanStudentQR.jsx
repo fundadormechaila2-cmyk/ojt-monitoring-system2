@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import {
   AlertCircle,
   CalendarDays,
@@ -12,6 +12,7 @@ import {
   ScanLine,
 } from "lucide-react";
 import { db } from "../../services/firebase";
+import { useAuth } from "../../context/useAuth";
 import {
   recordManualStudentAttendance,
   scanStudentAttendanceQr,
@@ -59,6 +60,7 @@ function studentNameOf(student) {
 }
 
 function ScanStudentQR() {
+  const { user } = useAuth();
   const [scannerOpen, setScannerOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -68,12 +70,15 @@ function ScanStudentQR() {
   const [studentId, setStudentId] = useState("");
   const [manualDate, setManualDate] = useState(getLocalDate);
   const [period, setPeriod] = useState("amIn");
-  const [time, setTime] = useState("");
   const [savingManual, setSavingManual] = useState(false);
 
   useEffect(() => {
+    if (!user?.uid) return undefined;
     return onSnapshot(
-      collection(db, "students"),
+      query(
+        collection(db, "students"),
+        where("supervisorUid", "==", user.uid),
+      ),
       (snapshot) => {
         setStudents(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
@@ -89,7 +94,7 @@ function ScanStudentQR() {
         });
       },
     );
-  }, []);
+  }, [user?.uid]);
 
   const handleScan = useCallback(async (token) => {
     setScannerOpen(false);
@@ -123,7 +128,7 @@ function ScanStudentQR() {
     event.preventDefault();
     setManualFeedback(null);
 
-    if (!studentId.trim() || !time || !manualDate) {
+    if (!studentId.trim() || !manualDate) {
       setManualFeedback({
         type: "error",
         text: "Enter a student ID, date, and attendance time.",
@@ -137,14 +142,12 @@ function ScanStudentQR() {
         studentId: studentId.trim(),
         date: manualDate,
         period,
-        time,
       });
       setManualFeedback({
         type: "success",
         text: `${result.period} recorded for ${result.studentName} at ${result.time}.`,
       });
       setStudentId("");
-      setTime("");
     } catch (error) {
       console.error("Unable to manually record attendance:", error);
       setManualFeedback({
@@ -224,7 +227,7 @@ function ScanStudentQR() {
                   Manual Recording
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Record attendance manually when a student cannot scan a QR code.
+                  Record attendance for today when a student cannot scan a QR code. The server supplies the timestamp.
                 </p>
               </div>
             </div>
@@ -280,6 +283,8 @@ function ScanStudentQR() {
                     type="date"
                     value={manualDate}
                     onChange={(event) => setManualDate(event.target.value)}
+                    min={getLocalDate()}
+                    max={getLocalDate()}
                     required
                   />
                 </span>
@@ -301,15 +306,14 @@ function ScanStudentQR() {
               </label>
 
               <label className="grid content-start gap-1.5 text-xs font-bold text-slate-600">
-                Time
+                Server time
                 <span className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-slate-400 focus-within:border-teal-500 focus-within:ring-4 focus-within:ring-teal-100">
                   <Clock3 size={16} />
                   <input
                     className="min-w-0 flex-1 border-0 p-0 text-sm font-normal text-slate-800 outline-none focus:ring-0"
-                    type="time"
-                    value={time}
-                    onChange={(event) => setTime(event.target.value)}
-                    required
+                    type="text"
+                    value="Set when recorded"
+                    readOnly
                   />
                 </span>
               </label>

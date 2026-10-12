@@ -1,6 +1,6 @@
 const { createHmac, randomBytes, timingSafeEqual } = require("node:crypto");
 const { initializeApp } = require("firebase-admin/app");
-const { FieldValue, Timestamp, getFirestore } = require("firebase-admin/firestore");
+const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
 
@@ -86,6 +86,49 @@ function getStudentName(profile) {
   return name || profile.email || "Student";
 }
 
+async function getStudentRecord(studentUid, profile) {
+  if (profile.studentRecordId) {
+    const linkedRecord = await db.collection("students").doc(profile.studentRecordId).get();
+    if (linkedRecord.exists) return linkedRecord.data();
+  }
+
+  const matches = await db.collection("students")
+    .where("studentUid", "==", studentUid)
+    .limit(2)
+    .get();
+  if (matches.size > 1) {
+    throw new HttpsError("failed-precondition", "This student has multiple roster records. Contact an administrator.");
+  }
+  if (matches.size === 1) return matches.docs[0].data();
+
+  const legacyRecord = await db.collection("students").doc(studentUid).get();
+  return legacyRecord.exists ? legacyRecord.data() : null;
+}
+
+async function assertSupervisorAssignment(supervisorUid, supervisorProfile, studentUid, studentProfile) {
+  if (supervisorProfile.status && supervisorProfile.status !== "ACTIVE") {
+    throw new HttpsError("permission-denied", "This supervisor account is inactive.");
+  }
+
+  const studentRecord = await getStudentRecord(studentUid, studentProfile);
+  const assignedSupervisorUid = studentProfile.supervisorUid || studentRecord?.supervisorUid;
+  if (assignedSupervisorUid !== supervisorUid) {
+    throw new HttpsError("permission-denied", "This student is not assigned to your supervisor account.");
+  }
+
+  const coordinatorUid = studentProfile.coordinatorUid || studentRecord?.coordinatorUid;
+  const coordinatorProfile = coordinatorUid ? await getUserProfile(coordinatorUid) : null;
+  if (
+    coordinatorProfile?.role !== "coordinator" ||
+    !coordinatorProfile.department ||
+    supervisorProfile.department !== coordinatorProfile.department
+  ) {
+    throw new HttpsError("permission-denied", "The student and supervisor do not share a valid department assignment.");
+  }
+
+  return { studentRecord, coordinatorUid };
+}
+
 function calculateHours(timeIn, timeOut) {
   const parseTime = (value) => {
     const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
@@ -146,8 +189,8 @@ exports.scanStudentAttendanceQr = onCall(
 
     const supervisorUid = request.auth.uid;
     const supervisorProfile = await getUserProfile(supervisorUid);
-    if (!["supervisor", "coordinator"].includes(supervisorProfile?.role)) {
-      throw new HttpsError("permission-denied", "Only supervisors or coordinators can scan student attendance QR codes.");
+    if (supervisorProfile?.role !== "supervisor") {
+      throw new HttpsError("permission-denied", "Only supervisors can scan student attendance QR codes.");
     }
 
     const requestedPeriod = request.data?.period;
@@ -183,6 +226,12 @@ exports.scanStudentAttendanceQr = onCall(
     if (studentProfile?.role !== "student") {
       throw new HttpsError("not-found", "The scanned QR code does not belong to an active student account.");
     }
+    const { coordinatorUid } = await assertSupervisorAssignment(
+      supervisorUid,
+      supervisorProfile,
+      studentUid,
+      studentProfile,
+    );
 
     const studentId = getStudentNumber(studentProfile, studentUid);
     const studentName = getStudentName(studentProfile);
@@ -233,6 +282,26 @@ exports.scanStudentAttendanceQr = onCall(
           );
         }
 
+        const matchingTimeIn = requestedPeriod === "amOut"
+          ? previousAttendance.amIn || previousAttendance.morningTimeIn || previousAttendance.timeIn
+          : requestedPeriod === "pmOut"
+            ? previousAttendance.pmIn || previousAttendance.afternoonTimeIn
+            : null;
+        const matchingTimeOut = requestedPeriod === "amIn"
+          ? previousAttendance.amOut || previousAttendance.morningTimeOut
+          : requestedPeriod === "pmIn"
+            ? previousAttendance.pmOut || previousAttendance.afternoonTimeOut
+            : null;
+        if (requestedPeriod.endsWith("In") && matchingTimeOut) {
+          throw new HttpsError("failed-precondition", `${attendancePeriods[requestedPeriod]} cannot be recorded after its matching time-out.`);
+        }
+        if (requestedPeriod.endsWith("Out") && !matchingTimeIn) {
+          throw new HttpsError("failed-precondition", `${attendancePeriods[requestedPeriod]} requires a matching time-in first.`);
+        }
+        if (requestedPeriod.endsWith("Out") && calculateHours(matchingTimeIn, time) <= 0) {
+          throw new HttpsError("failed-precondition", "Time-out must be later than its matching time-in.");
+        }
+
         const periods = {
           ...previousAttendance,
           [requestedPeriod]: time,
@@ -251,7 +320,7 @@ exports.scanStudentAttendanceQr = onCall(
           studentUid,
           studentId,
           studentName,
-          coordinatorUid: studentProfile.coordinatorUid || null,
+          coordinatorUid: coordinatorUid || null,
           date,
           [requestedPeriod]: time,
           timeIn: amIn || pmIn || previousAttendance.timeIn || "",
@@ -281,6 +350,9 @@ exports.scanStudentAttendanceQr = onCall(
         if (currentTimeIn && currentTimeOut) {
           throw new HttpsError("failed-precondition", `${studentName} already has both Time-In and Time-Out recorded today.`);
         }
+        if (!currentTimeIn && currentTimeOut) {
+          throw new HttpsError("failed-precondition", "A time-out exists without a valid time-in. Contact an administrator.");
+        }
 
         action = currentTimeIn ? "Time-Out" : "Time-In";
         const nextTimeIn = currentTimeIn || (action === "Time-In" ? time : "");
@@ -291,7 +363,7 @@ exports.scanStudentAttendanceQr = onCall(
           studentUid,
           studentId,
           studentName,
-          coordinatorUid: studentProfile.coordinatorUid || null,
+          coordinatorUid: coordinatorUid || null,
           date,
           timeIn: nextTimeIn,
           timeOut: nextTimeOut,
@@ -315,7 +387,7 @@ exports.scanStudentAttendanceQr = onCall(
         action,
         time,
         totalHours,
-        scannedAt: Timestamp.fromMillis(now),
+        scannedAt: FieldValue.serverTimestamp(),
       });
       transaction.set(attendanceRef, attendance);
 
@@ -338,40 +410,26 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
   const studentId = typeof request.data?.studentId === "string"
     ? request.data.studentId.trim()
     : "";
-  const date = request.data?.date;
+  const requestedDate = request.data?.date;
   const period = request.data?.period;
-  const time = request.data?.time;
+  const serverNow = new Date();
+  const date = getLocalDate(serverNow);
+  const time = getLocalTime(serverNow);
   const periodLabels = {
     amIn: "AM / IN",
     amOut: "AM / OUT",
     pmIn: "PM / IN",
     pmOut: "PM / OUT",
   };
-  const parsedDate =
-    typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
-      ? new Date(`${date}T00:00:00.000Z`)
-      : null;
-
   if (!studentId || studentId.length > 128) {
     throw new HttpsError("invalid-argument", "Enter a valid student ID number.");
   }
-  if (
-    !parsedDate ||
-    Number.isNaN(parsedDate.getTime()) ||
-    parsedDate.toISOString().slice(0, 10) !== date
-  ) {
-    throw new HttpsError("invalid-argument", "Select a valid attendance date.");
+  if (requestedDate !== date) {
+    throw new HttpsError("failed-precondition", "Manual attendance can only be recorded for today using the server time.");
   }
   if (!Object.hasOwn(periodLabels, period)) {
     throw new HttpsError("invalid-argument", "Select a valid attendance period.");
   }
-  if (
-    typeof time !== "string" ||
-    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
-  ) {
-    throw new HttpsError("invalid-argument", "Enter a valid attendance time.");
-  }
-
   const userCollection = db.collection("users");
   const matchingProfiles = await Promise.all(
     ["studentId", "studentID", "idNumber"].map((field) =>
@@ -400,6 +458,12 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
   const studentDocument = [...matchesByUid.values()][0];
   const studentUid = studentDocument.id;
   const studentProfile = studentDocument.data();
+  const { coordinatorUid } = await assertSupervisorAssignment(
+    supervisorUid,
+    supervisorProfile,
+    studentUid,
+    studentProfile,
+  );
   const studentName = getStudentName(studentProfile);
   const timeParts = time.split(":").map(Number);
   const hour = timeParts[0] % 12 || 12;
@@ -445,6 +509,26 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
       );
     }
 
+    const matchingTimeIn = period === "amOut"
+      ? existingPeriods.amIn
+      : period === "pmOut"
+        ? existingPeriods.pmIn
+        : null;
+    const matchingTimeOut = period === "amIn"
+      ? existingPeriods.amOut
+      : period === "pmIn"
+        ? existingPeriods.pmOut
+        : null;
+    if (period.endsWith("In") && matchingTimeOut) {
+      throw new HttpsError("failed-precondition", `${periodLabels[period]} cannot be recorded after its matching time-out.`);
+    }
+    if (period.endsWith("Out") && !matchingTimeIn) {
+      throw new HttpsError("failed-precondition", `${periodLabels[period]} requires a matching time-in first.`);
+    }
+    if (period.endsWith("Out") && calculateHours(matchingTimeIn, formattedTime) <= 0) {
+      throw new HttpsError("failed-precondition", "Time-out must be later than its matching time-in.");
+    }
+
     const periods = { ...existingPeriods, [period]: formattedTime };
     const totalHours =
       calculateHours(periods.amIn, periods.amOut) +
@@ -454,7 +538,7 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
       studentUid,
       studentId,
       studentName,
-      coordinatorUid: studentProfile.coordinatorUid || null,
+      coordinatorUid: coordinatorUid || null,
       date,
       ...periods,
       timeIn: periods.amIn || periods.pmIn,

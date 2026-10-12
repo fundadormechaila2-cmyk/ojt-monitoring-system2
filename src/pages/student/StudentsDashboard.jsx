@@ -12,97 +12,149 @@ import {
   Upload,
   UserCheck,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/useAuth";
+import { db } from "../../services/firebase";
 import "../../styles/student-portal.css";
 
-const studentProfile = {
-  name: "Juan Dela Cruz",
-  studentId: "2024-00123",
-  program: "BS Information Technology",
-  yearLevel: "4th Year",
-  company: "ABC Technologies Inc.",
-  companySupervisor: "Maria Santos",
-  facultyCoordinator: "Prof. John Reyes",
-  office: "Software Development Unit",
-  startDate: "2025-06-03",
-  expectedEndDate: "2025-12-15",
-  requiredHours: 486,
-  completedHours: 320,
-  remainingHours: 166,
-  attendance: {
-    present: 18,
-    absences: 2,
-    late: 4,
-    today: "On time",
-  },
-};
+function parseTime(value) {
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
+  if (!match) return null;
+  let hour = Number(match[1]) % 12;
+  if (match[3].toUpperCase() === "PM") hour += 12;
+  return hour * 60 + Number(match[2]);
+}
 
-const attendanceHistory = [
-  { date: "Sep 18, 2026", timeIn: "08:10 AM", timeOut: "05:15 PM", total: "8h 05m", status: "Present" },
-  { date: "Sep 17, 2026", timeIn: "08:28 AM", timeOut: "05:05 PM", total: "7h 37m", status: "Present" },
-  { date: "Sep 16, 2026", timeIn: "08:00 AM", timeOut: "05:00 PM", total: "9h 00m", status: "Present" },
-  { date: "Sep 15, 2026", timeIn: "08:20 AM", timeOut: "04:50 PM", total: "7h 30m", status: "Present" },
-];
+function validHours(record) {
+  const hasPeriodData = record.amIn || record.amOut || record.pmIn || record.pmOut ||
+    record.morningTimeIn || record.morningTimeOut || record.afternoonTimeIn || record.afternoonTimeOut;
+  const sessions = hasPeriodData
+    ? [
+        [record.amIn || record.morningTimeIn, record.amOut || record.morningTimeOut],
+        [record.pmIn || record.afternoonTimeIn, record.pmOut || record.afternoonTimeOut],
+      ]
+    : [[record.timeIn, record.timeOut]];
+  return sessions.reduce((total, [startValue, endValue]) => {
+    const start = parseTime(startValue);
+    const end = parseTime(endValue);
+    return start !== null && end !== null && end > start
+      ? total + (end - start) / 60
+      : total;
+  }, 0);
+}
 
-const recentReports = [
-  { title: "Weekly Accomplishment Report #6", submitted: "Sep 18, 2026", status: "Approved" },
-  { title: "Weekly Accomplishment Report #5", submitted: "Sep 11, 2026", status: "Pending" },
-  { title: "Midterm OJT Reflection", submitted: "Sep 07, 2026", status: "Reviewed" },
-];
-
-const recentDocuments = [
-  { name: "Daily Time Record", date: "Sep 18, 2026", status: "Submitted" },
-  { name: "Endorsement Letter", date: "Sep 12, 2026", status: "Approved" },
-  { name: "Weekly Report PDF", date: "Sep 10, 2026", status: "Pending Review" },
-];
-
-const notifications = [
-  { title: "Report due soon", detail: "Weekly report due this Friday at 5:00 PM", type: "info" },
-  { title: "Supervisor reminder", detail: "Please update your daily attendance before 9:00 AM", type: "warning" },
-  { title: "Documents verified", detail: "Your medical certificate has been approved.", type: "success" },
-];
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 function StudentsDashboard() {
-  const progressPercent = Math.round((studentProfile.completedHours / studentProfile.requiredHours) * 100);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [studentRecord, setStudentRecord] = useState(null);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    let studentLoaded = false;
+    let attendanceLoaded = false;
+    const finishLoading = () => {
+      if (studentLoaded && attendanceLoaded) setLoading(false);
+    };
+    const unsubscribeStudent = onSnapshot(
+      query(collection(db, "students"), where("studentUid", "==", user.uid)),
+      (snapshot) => {
+        setStudentRecord(snapshot.docs[0]
+          ? { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
+          : null);
+        studentLoaded = true;
+        finishLoading();
+      },
+      (error) => {
+        console.error("Unable to load the student roster record:", error);
+        setLoadError("Student information could not be loaded.");
+        studentLoaded = true;
+        finishLoading();
+      },
+    );
+    const unsubscribeAttendance = onSnapshot(
+      query(collection(db, "attendance"), where("studentUid", "==", user.uid)),
+      (snapshot) => {
+        setAttendanceRecords(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        attendanceLoaded = true;
+        finishLoading();
+      },
+      (error) => {
+        console.error("Unable to load student attendance:", error);
+        setLoadError("Attendance information could not be loaded.");
+        attendanceLoaded = true;
+        finishLoading();
+      },
+    );
+    return () => {
+      unsubscribeStudent();
+      unsubscribeAttendance();
+    };
+  }, [user?.uid]);
+
+  const studentProfile = { ...user, ...studentRecord };
+  const name = studentProfile.name || studentProfile.fullName ||
+    `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim() ||
+    user?.email || "Student";
+  const requiredHours = Number(studentProfile.requiredHours || studentProfile.totalRequiredHours || 0);
+  const completedHours = attendanceRecords.reduce((total, record) => total + validHours(record), 0);
+  const remainingHours = Math.max(0, requiredHours - completedHours);
+  const progressPercent = requiredHours ? Math.min(100, Math.round((completedHours / requiredHours) * 100)) : 0;
+  const attendanceHistory = [...attendanceRecords]
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")))
+    .slice(0, 4);
+  const recentReports = [];
+  const recentDocuments = [];
+  const notifications = [];
 
   const summaryStats = useMemo(
     () => [
-      { label: "OJT Status", value: "Active", trend: "positive" },
-      { label: "Completed Hours", value: `${studentProfile.completedHours}h`, trend: "positive" },
-      { label: "Attendance", value: `${Math.round((studentProfile.attendance.present / 22) * 100)}%`, trend: "neutral" },
-      { label: "Remaining", value: `${studentProfile.remainingHours}h`, trend: "neutral" },
+      { label: "OJT Status", value: studentProfile.ojtStatus || studentProfile.status || "Not started", trend: "neutral" },
+      { label: "Completed Hours", value: `${completedHours.toFixed(2)}h`, trend: "positive" },
+      { label: "Attendance", value: `${attendanceRecords.filter((record) => record.status === "Present").length} days`, trend: "neutral" },
+      { label: "Remaining", value: `${remainingHours.toFixed(2)}h`, trend: "neutral" },
     ],
-    []
+    [attendanceRecords, completedHours, remainingHours, studentProfile.ojtStatus, studentProfile.status]
   );
 
-  const [isTimeIn, setIsTimeIn] = useState(false);
-  const [isTimeOut, setIsTimeOut] = useState(false);
-
   const handleTimeIn = () => {
-    setIsTimeIn(true);
-    setIsTimeOut(false);
+    navigate("/Student/attendance");
   };
 
   const handleTimeOut = () => {
-    setIsTimeOut(true);
+    navigate("/Student/attendance");
   };
 
   return (
     <div className="student-portal-page">
+      {loadError && <p className="student-empty-state" role="alert">{loadError}</p>}
+      {loading && <p className="student-meta" role="status">Loading your OJT information...</p>}
       <header className="student-page-header">
         <div>
           <p className="student-meta">Student portal</p>
-          <h1>Welcome back, {studentProfile.name.split(" ")[0]}!</h1>
+          <h1>Welcome back, {name.split(" ")[0]}!</h1>
           <p>Track your OJT progress, attendance, and required submissions.</p>
         </div>
         <div className="student-header-actions">
           <button type="button" className="student-button secondary" onClick={handleTimeIn}>
             <Clock3 size={15} />
-            {isTimeIn ? "Clocked In" : "Time In"}
+            Time In
           </button>
           <button type="button" className="student-button primary" onClick={handleTimeOut}>
             <CheckCircle2 size={15} />
-            {isTimeOut ? "Clocked Out" : "Time Out"}
+            Time Out
           </button>
         </div>
       </header>
@@ -121,14 +173,14 @@ function StudentsDashboard() {
 
       <section className="student-profile-hero">
         <div className="student-card student-profile-summary">
-          <div className="student-avatar">JD</div>
+          <div className="student-avatar">{name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
           <div>
             <div className="student-pills" style={{ marginBottom: "8px" }}>
-              <span className="status-badge active">Active OJT</span>
+              <span className="status-badge active">{studentProfile.ojtStatus || studentProfile.status || "OJT"}</span>
             </div>
-            <h2>{studentProfile.name}</h2>
-            <p>{studentProfile.studentId} • {studentProfile.program}</p>
-            <p>{studentProfile.yearLevel}</p>
+            <h2>{name}</h2>
+            <p>{studentProfile.studentId || "Student ID unavailable"} • {studentProfile.course || studentProfile.program || "Program unavailable"}</p>
+            <p>{studentProfile.yearLevel || ""}</p>
           </div>
         </div>
 
@@ -143,15 +195,15 @@ function StudentsDashboard() {
 
           <div className="student-metric-list">
             <div className="student-metric-item">
-              <strong>{studentProfile.company}</strong>
+              <strong>{studentProfile.company || "Not assigned"}</strong>
               <span className="student-meta">Company</span>
             </div>
             <div className="student-metric-item">
-              <strong>{studentProfile.companySupervisor}</strong>
+              <strong>{studentProfile.supervisorName || studentProfile.supervisorUid || "Not assigned"}</strong>
               <span className="student-meta">Supervisor</span>
             </div>
             <div className="student-metric-item">
-              <strong>{studentProfile.facultyCoordinator}</strong>
+              <strong>{studentProfile.coordinatorName || studentProfile.coordinatorUid || "Not assigned"}</strong>
               <span className="student-meta">Faculty Coordinator</span>
             </div>
           </div>
@@ -182,19 +234,19 @@ function StudentsDashboard() {
             <div className="student-card student-stat-card">
               <p className="student-stat-label">Required</p>
               <div className="student-stat-value">
-                <strong>{studentProfile.requiredHours}</strong>
+                <strong>{requiredHours || "Not set"}</strong>
               </div>
             </div>
             <div className="student-card student-stat-card">
               <p className="student-stat-label">Completed</p>
               <div className="student-stat-value">
-                <strong>{studentProfile.completedHours}</strong>
+                <strong>{completedHours.toFixed(2)}</strong>
               </div>
             </div>
             <div className="student-card student-stat-card">
               <p className="student-stat-label">Remaining</p>
               <div className="student-stat-value">
-                <strong>{studentProfile.remainingHours}</strong>
+                <strong>{remainingHours.toFixed(2)}</strong>
               </div>
             </div>
           </div>
@@ -211,15 +263,15 @@ function StudentsDashboard() {
 
           <div className="student-metric-list">
             <div className="student-metric-item">
-              <strong>{studentProfile.attendance.present}</strong>
+              <strong>{attendanceRecords.filter((record) => record.status === "Present").length}</strong>
               <span className="student-meta">Present days</span>
             </div>
             <div className="student-metric-item">
-              <strong>{studentProfile.attendance.absences}</strong>
+              <strong>Not tracked</strong>
               <span className="student-meta">Absences</span>
             </div>
             <div className="student-metric-item">
-              <strong>{studentProfile.attendance.late}</strong>
+              <strong>Not tracked</strong>
               <span className="student-meta">Late arrivals</span>
             </div>
           </div>
@@ -247,19 +299,20 @@ function StudentsDashboard() {
             </thead>
             <tbody>
               {attendanceHistory.map((record) => (
-                <tr key={record.date}>
-                  <td>{record.date}</td>
-                  <td>{record.timeIn}</td>
-                  <td>{record.timeOut}</td>
+                <tr key={record.id}>
+                  <td>{formatDate(record.date)}</td>
+                  <td>{record.amIn || record.timeIn || record.morningTimeIn || "—"}</td>
+                  <td>{record.pmOut || record.timeOut || record.afternoonTimeOut || "—"}</td>
                   <td>
                     <span className={
-                      record.status === "Present" ? "status-badge active" : "status-badge absent"
+                      record.status === "Present" ? "status-badge active" : "status-badge pending"
                     }>
-                      {record.status}
+                      {record.status || (validHours(record) ? "Present" : "Incomplete")}
                     </span>
                   </td>
                 </tr>
               ))}
+              {!loading && attendanceHistory.length === 0 && <tr><td colSpan="4">No attendance records yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -291,6 +344,7 @@ function StudentsDashboard() {
                 </span>
               </li>
             ))}
+            {recentReports.length === 0 && <li>No report records available.</li>}
           </ul>
         </div>
       </section>
@@ -323,6 +377,7 @@ function StudentsDashboard() {
                 </span>
               </li>
             ))}
+            {recentDocuments.length === 0 && <li>No document records available.</li>}
           </ul>
         </div>
 
@@ -349,6 +404,7 @@ function StudentsDashboard() {
                 </span>
               </li>
             ))}
+            {notifications.length === 0 && <li>No notifications available.</li>}
           </ul>
         </div>
       </section>
