@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Clock3 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { PageHeader, SearchBox, Status } from "../supervisor/SupervisorComponents";
 
@@ -135,6 +136,7 @@ function loginTimeLabel(timestamp) {
 }
 
 function Attendance() {
+  const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [records, setRecords] = useState([]);
   const [loginActivity, setLoginActivity] = useState([]);
@@ -153,7 +155,10 @@ function Attendance() {
     };
 
     const unsubscribeStudents = onSnapshot(
-      collection(db, "students"),
+      query(
+        collection(db, "students"),
+        where("coordinatorUid", "==", user.uid),
+      ),
       (snapshot) => {
         setStudents(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
@@ -169,7 +174,10 @@ function Attendance() {
       },
     );
     const unsubscribeAttendance = onSnapshot(
-      collection(db, "attendance"),
+      query(
+        collection(db, "attendance"),
+        where("coordinatorUid", "==", user.uid),
+      ),
       (snapshot) => {
         setRecords(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
@@ -187,12 +195,18 @@ function Attendance() {
     const unsubscribeLoginActivity = onSnapshot(
       query(
         collection(db, "studentLoginActivity"),
-        orderBy("loggedInAt", "desc"),
-        limit(recentLoginLimit),
+        where("coordinatorUid", "==", user.uid),
       ),
       (snapshot) => {
         setLoginActivity(
-          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+          snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .sort(
+              (left, right) =>
+                (right.loggedInAt?.seconds || 0) -
+                (left.loggedInAt?.seconds || 0),
+            )
+            .slice(0, recentLoginLimit),
         );
         setLoginActivityLoading(false);
         setLoginActivityError("");
@@ -211,7 +225,7 @@ function Attendance() {
       unsubscribeAttendance();
       unsubscribeLoginActivity();
     };
-  }, []);
+  }, [user.uid]);
 
   const studentById = useMemo(
     () => new Map(students.map((student) => [getStudentId(student), student])),

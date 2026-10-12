@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowRight, Building2, CheckCircle2, ClipboardCheck, Users } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
@@ -17,7 +17,11 @@ function CoordinatorDashboard() {
 
   useEffect(() => {
     const ready = new Set();
-    const subscriptions = sources.map((source) => onSnapshot(collection(db, source), (snapshot) => {
+    const subscriptions = sources.map((source) => onSnapshot(
+      ["students", "attendance"].includes(source)
+        ? query(collection(db, source), where("coordinatorUid", "==", user.uid))
+        : collection(db, source),
+      (snapshot) => {
       setData((current) => ({ ...current, [source]: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) }));
       setFailedSources((current) => current.filter((item) => item !== source));
       ready.add(source);
@@ -30,7 +34,7 @@ function CoordinatorDashboard() {
       }));
 
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
-  }, []);
+  }, [user.uid]);
 
   const students = data.students;
   const attendance = data.attendance;

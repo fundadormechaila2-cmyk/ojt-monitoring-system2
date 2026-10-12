@@ -38,6 +38,7 @@ export const createManagedUser = async ({
   course,
   company,
   coordinatorId,
+  coordinatorUid,
   department,
 }) => {
   // VALIDATION
@@ -93,6 +94,7 @@ export const createManagedUser = async ({
       ...(course ? { course } : {}),
       ...(company ? { company } : {}),
       ...(coordinatorId ? { coordinatorId } : {}),
+      ...(coordinatorUid ? { coordinatorUid } : {}),
       ...(department ? { department } : {}),
       createdAt: serverTimestamp(),
       createdBy: createdBy || null,

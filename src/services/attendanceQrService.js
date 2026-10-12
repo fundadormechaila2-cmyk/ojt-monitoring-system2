@@ -11,12 +11,18 @@ export async function issueStudentAttendanceQrToken() {
 
 export async function scanStudentAttendanceQr(token, period) {
   const scanStudentQr = httpsCallable(functions, "scanStudentAttendanceQr");
-  const response = await scanStudentQr({ token, ...(period ? { period } : {}) });
+  const response = await scanStudentQr({
+    token,
+    ...(period ? { period } : {}),
+  });
   return response.data;
 }
 
 export async function recordManualStudentAttendance(record) {
-  const recordAttendance = httpsCallable(functions, "recordManualStudentAttendance");
+  const recordAttendance = httpsCallable(
+    functions,
+    "recordManualStudentAttendance",
+  );
   const response = await recordAttendance(record);
   return response.data;
 }

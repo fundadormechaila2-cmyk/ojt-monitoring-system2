@@ -23,6 +23,9 @@ export async function recordStudentLogin(user, profile) {
       profile.studentId || profile.studentID || profile.idNumber || "",
     ),
     email: user.email || profile.email || "",
+    ...(profile.coordinatorUid
+      ? { coordinatorUid: profile.coordinatorUid }
+      : {}),
     loggedInAt: serverTimestamp(),
   });
 }

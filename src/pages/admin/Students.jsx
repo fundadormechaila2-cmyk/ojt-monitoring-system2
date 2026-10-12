@@ -2,10 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
+  getDocs,
   onSnapshot,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
+  writeBatch,
 } from "firebase/firestore";
 import { Eye, KeyRound, Plus, Search, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
@@ -24,6 +29,7 @@ const emptyNewStudent = {
   phone: "",
   course: "",
   company: "",
+  coordinatorUid: "",
   requiredHours: "486",
 };
 
@@ -63,6 +69,7 @@ function Students() {
   const [courseFilter, setCourseFilter] = useState("All courses");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [coordinatorAssignment, setCoordinatorAssignment] = useState("");
   const [accountStudent, setAccountStudent] = useState(null);
   const [addingStudent, setAddingStudent] = useState(false);
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
@@ -194,6 +201,115 @@ function Students() {
     setError("");
   };
 
+  const openStudentDetails = (student) => {
+    const account = accountForStudent(student, users);
+    setSelectedStudent(student);
+    setCoordinatorAssignment(student.coordinatorUid || account?.coordinatorUid || "");
+    setError("");
+  };
+
+  const saveCoordinatorAssignment = async () => {
+    if (!selectedStudent) return;
+
+    const account = accountForStudent(selectedStudent, users);
+    const studentUid = selectedStudent.studentUid || account?.id;
+    const assignment = coordinatorAssignment
+      ? { coordinatorUid: coordinatorAssignment }
+      : { coordinatorUid: deleteField() };
+    const studentUpdate = {
+      ...assignment,
+      updatedAt: serverTimestamp(),
+    };
+
+    setSaving(true);
+    setError("");
+    try {
+      const assignmentBatch = writeBatch(db);
+      assignmentBatch.update(
+        doc(db, "students", selectedStudent.id),
+        studentUpdate,
+      );
+      if (account) {
+        assignmentBatch.update(doc(db, "users", account.id), {
+          ...assignment,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await assignmentBatch.commit();
+
+      const attendanceQueries = await Promise.all([
+        ...(studentUid
+          ? [
+              getDocs(
+                query(
+                  collection(db, "attendance"),
+                  where("studentUid", "==", studentUid),
+                ),
+              ),
+            ]
+          : []),
+        ...(selectedStudent.studentId
+          ? [
+              getDocs(
+                query(
+                  collection(db, "attendance"),
+                  where("studentId", "==", String(selectedStudent.studentId)),
+                ),
+              ),
+            ]
+          : []),
+      ]);
+      const attendanceRecords = new Map();
+      attendanceQueries.forEach((snapshot) => {
+        snapshot.docs.forEach((record) => {
+          const recordUid = record.data().studentUid;
+          if (!studentUid || !recordUid || recordUid === studentUid) {
+            attendanceRecords.set(record.id, record);
+          }
+        });
+      });
+      const records = [...attendanceRecords.values()];
+
+      for (let offset = 0; offset < records.length; offset += 500) {
+        const batch = writeBatch(db);
+        records.slice(offset, offset + 500).forEach((record) => {
+          batch.update(record.ref, assignment);
+        });
+        await batch.commit();
+      }
+      if (studentUid) {
+        const loginSnapshot = await getDocs(
+          query(
+            collection(db, "studentLoginActivity"),
+            where("userId", "==", studentUid),
+          ),
+        );
+        for (let offset = 0; offset < loginSnapshot.docs.length; offset += 500) {
+          const batch = writeBatch(db);
+          loginSnapshot.docs.slice(offset, offset + 500).forEach((record) => {
+            batch.update(record.ref, assignment);
+          });
+          await batch.commit();
+        }
+      }
+
+      setNotice(
+        coordinatorAssignment
+          ? `Coordinator assignment saved. ${records.length} attendance record${records.length === 1 ? "" : "s"} updated.`
+          : `Coordinator assignment removed. ${records.length} attendance record${records.length === 1 ? "" : "s"} updated.`,
+      );
+      setSelectedStudent(null);
+      window.setTimeout(() => setNotice(""), 5000);
+    } catch (saveError) {
+      console.error("Unable to save coordinator assignment:", saveError);
+      setError(
+        "The coordinator assignment could not be fully saved. Check Firestore permissions and retry. If the student or account was updated before the error, reopen this student and save the assignment again to sync attendance and sign-in history.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const createStudentAccount = async (event) => {
     event.preventDefault();
     if (!accountStudent) return;
@@ -220,6 +336,7 @@ function Students() {
         studentRecordId: accountStudent.id,
         course: accountStudent.course || "",
         company: accountStudent.company || "",
+        coordinatorUid: accountStudent.coordinatorUid || "",
       });
 
       await updateDoc(doc(db, "students", accountStudent.id), {
@@ -296,6 +413,9 @@ function Students() {
         phone: newStudent.phone.trim(),
         course: newStudent.course,
         company: newStudent.company.trim(),
+        ...(newStudent.coordinatorUid
+          ? { coordinatorUid: newStudent.coordinatorUid }
+          : {}),
         requiredHours,
         completedHours: 0,
         ojtStatus: "PROCESSING",
@@ -315,6 +435,7 @@ function Students() {
         studentRecordId: studentReference.id,
         course: newStudent.course,
         company: newStudent.company,
+        coordinatorUid: newStudent.coordinatorUid,
       });
 
       await updateDoc(doc(db, "students", studentReference.id), {
@@ -492,7 +613,7 @@ function Students() {
                           className="student-action"
                           title="View student"
                           aria-label={`View ${student.name}`}
-                          onClick={() => setSelectedStudent(student)}
+                          onClick={() => openStudentDetails(student)}
                         >
                           <Eye size={15} />
                         </button>
@@ -571,7 +692,34 @@ function Students() {
               <div className="student-detail"><label>OJT status</label><strong>{selectedStudent.status}</strong></div>
               <div className="student-detail"><label>Partner company</label><strong>{selectedStudent.company}</strong></div>
               <div className="student-detail"><label>Hours progress</label><strong>{selectedStudent.completed} of {selectedStudent.required} hours</strong></div>
+              <label className="student-detail">
+                <span>Assigned coordinator</span>
+                <select
+                  value={coordinatorAssignment}
+                  disabled={saving}
+                  onChange={(event) => setCoordinatorAssignment(event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {users
+                    .filter((account) => account.role === "coordinator")
+                    .map((coordinator) => (
+                      <option key={coordinator.id} value={coordinator.id}>
+                        {`${coordinator.firstName || ""} ${coordinator.lastName || ""}`.trim() || coordinator.email || coordinator.id}
+                      </option>
+                    ))}
+                </select>
+              </label>
             </div>
+            <footer className="students-modal-footer">
+              <button
+                type="button"
+                className="students-primary"
+                disabled={saving}
+                onClick={saveCoordinatorAssignment}
+              >
+                {saving ? "Saving assignment..." : "Save coordinator"}
+              </button>
+            </footer>
           </section>
         </div>
       )}
@@ -732,6 +880,27 @@ function Students() {
                     }))
                   }
                 />
+              </label>
+              <label>
+                Assigned coordinator
+                <select
+                  value={newStudent.coordinatorUid}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      coordinatorUid: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select a coordinator (optional)</option>
+                  {users
+                    .filter((account) => account.role === "coordinator")
+                    .map((coordinator) => (
+                      <option key={coordinator.id} value={coordinator.id}>
+                        {`${coordinator.firstName || ""} ${coordinator.lastName || ""}`.trim() || coordinator.email || coordinator.id}
+                      </option>
+                    ))}
+                </select>
               </label>
               <label>
                 Required OJT hours

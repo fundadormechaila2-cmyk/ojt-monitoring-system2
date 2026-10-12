@@ -3,8 +3,10 @@ import { Eye, Search } from "lucide-react";
 import { CoordinatorState, normalizedStudents, useCoordinatorData, useFilteredStudents } from "./coordinatorData.jsx";
 import "../../styles/students-data.css";
 
+const studentSources = ["students", "attendance"];
+
 function Students() {
-  const { data, loading, error } = useCoordinatorData(["students", "attendance"]);
+  const { data, loading, error } = useCoordinatorData(studentSources);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [selected, setSelected] = useState(null);

@@ -455,11 +455,39 @@
   text-transform: uppercase;
 }
 
+.student-detail > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #8995a7;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.student-detail select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid #dbe3ed;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--student-ink);
+  font: 12px "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
 .student-detail strong {
   color: #344258;
   font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.students-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 24px 22px;
 }
 
 .students-account-form {

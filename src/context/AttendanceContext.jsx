@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { where } from "firebase/firestore";
 import { AttendanceContext } from "./AttendanceContextDefinition";
 import { createCollectionDocument, deleteCollectionDocument, subscribeToCollection, updateCollectionDocument } from "../services/firestoreDataService";
+import { useAuth } from "./useAuth";
 
 const normalizeAttendance = (record) => ({
   ...record,
@@ -16,12 +18,20 @@ const normalizeAttendance = (record) => ({
 });
 
 export function AttendanceProvider({ children }) {
+  const { user } = useAuth();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
 
-  useEffect(() => subscribeToCollection("attendance", [], (items) => {
+  useEffect(() => subscribeToCollection(
+    "attendance",
+    user?.role === "coordinator"
+      ? [where("coordinatorUid", "==", user.uid)]
+      : user?.role === "student"
+        ? [where("studentUid", "==", user.uid)]
+        : [],
+    (items) => {
     setRecords(items.map(normalizeAttendance));
     setLoading(false);
     setError("");
@@ -30,7 +40,7 @@ export function AttendanceProvider({ children }) {
     setRecords([]);
     setLoading(false);
     setError(snapshotError.code === "permission-denied" ? "You do not have permission to view attendance records." : "Attendance records could not be loaded.");
-  }), [retryKey]);
+  }), [retryKey, user?.role, user?.uid]);
 
   const retry = () => { setLoading(true); setError(""); setRetryKey((key) => key + 1); };
   const updateRecord = (recordId, changes) => updateCollectionDocument("attendance", recordId, changes);

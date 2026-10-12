@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../../services/firebase";
+import { useAuth } from "../../context/useAuth";
 import "../../styles/coordinator-module.css";
 
 export const coordinatorSources = [
@@ -13,6 +14,7 @@ export const coordinatorSources = [
 ];
 
 export function useCoordinatorData(sources = coordinatorSources) {
+  const { user } = useAuth();
   const [data, setData] = useState(
     Object.fromEntries(sources.map((source) => [source, []])),
   );
@@ -22,7 +24,14 @@ export function useCoordinatorData(sources = coordinatorSources) {
     let loaded = 0;
     const unsubscribers = sources.map((source) =>
       onSnapshot(
-        collection(db, source),
+        user?.role === "coordinator" &&
+          user.uid &&
+          ["students", "attendance"].includes(source)
+          ? query(
+              collection(db, source),
+              where("coordinatorUid", "==", user.uid),
+            )
+          : collection(db, source),
         (snapshot) => {
           setData((current) => ({
             ...current,
@@ -47,7 +56,7 @@ export function useCoordinatorData(sources = coordinatorSources) {
       ),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [sources]);
+  }, [sources, user?.role, user?.uid]);
   return { data, loading, error };
 }
 
