@@ -10,14 +10,6 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(uid);
     }
 
-    function studentPath(studentId) {
-      return /databases/$(database)/documents/students/$(studentId);
-    }
-
-    function companyPath(companyId) {
-      return /databases/$(database)/documents/partnerCompanies/$(companyId);
-    }
-
     function hasProfile() {
       return signedIn() && exists(userPath(request.auth.uid));
     }
@@ -56,9 +48,8 @@ service cloud.firestore {
       return !("supervisorUid" in data) ||
         data.supervisorUid == null ||
         (data.supervisorUid is string &&
-          exists(userPath(data.supervisorUid)) &&
-          get(userPath(data.supervisorUid)).data.role == "supervisor" &&
-          get(userPath(data.supervisorUid)).data.department == profile().department);
+          (!exists(userPath(data.supervisorUid)) ||
+            get(userPath(data.supervisorUid)).data.role == "supervisor"));
     }
 
     function supervisorOwnsStudent(studentUid) {
@@ -85,23 +76,14 @@ service cloud.firestore {
         (signedIn() && request.auth.uid == userId) ||
         (isCoordinator() && resource.data.role == "student" &&
           resource.data.coordinatorUid == request.auth.uid) ||
-        (isCoordinator() && resource.data.role == "supervisor" &&
-          resource.data.department == profile().department) ||
+        (isCoordinator() && resource.data.role == "supervisor") ||
         (isSupervisor() && resource.data.role == "student" &&
           supervisorOwnsStudent(userId));
       allow create: if isAdmin() ||
         (isCoordinator() &&
           request.resource.data.role == "supervisor" &&
-          request.resource.data.createdBy == request.auth.uid &&
-          request.resource.data.department == profile().department &&
-          request.resource.data.assignedStudentRecordId is string &&
-          exists(studentPath(request.resource.data.assignedStudentRecordId)) &&
-          get(studentPath(request.resource.data.assignedStudentRecordId)).data.coordinatorUid == request.auth.uid &&
-          request.resource.data.company is string &&
-          request.resource.data.company.size() > 0 &&
-          (request.resource.data.partnerCompanyId == null ||
-            (request.resource.data.partnerCompanyId is string &&
-              exists(companyPath(request.resource.data.partnerCompanyId)))));
+          (request.resource.data.createdBy == request.auth.uid ||
+            !("createdBy" in request.resource.data)));
       allow update: if isAdmin() ||
         (coordinatorOwns(resource.data) &&
           resource.data.role == "student" &&
@@ -109,6 +91,10 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "supervisorUid", "supervisorName", "updatedAt"
           ]) && validSupervisorAssignment(request.resource.data)) ||
+        (isCoordinator() &&
+          resource.data.role == "supervisor" &&
+          (resource.data.createdBy == request.auth.uid ||
+            !("createdBy" in resource.data))) ||
         (signedIn() && request.auth.uid == userId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "role", "department", "coordinatorUid", "supervisorUid",
@@ -222,7 +208,8 @@ service cloud.firestore {
 
     match /partnerCompanies/{companyId} {
       allow read: if isAdmin() || isCoordinator() || isSupervisor();
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isAdmin() || isCoordinator();
+      allow delete: if isAdmin();
     }
 
     match /{document=**} {

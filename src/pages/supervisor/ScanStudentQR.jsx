@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import {
   AlertCircle,
   CalendarDays,
@@ -77,10 +77,19 @@ function ScanStudentQR() {
         collection(db, "students"),
         where("supervisorUid", "==", user.uid),
       ),
-      (snapshot) => {
-        setStudents(
-          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-        );
+      async (snapshot) => {
+        let loaded = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+        if (loaded.length === 0 && user.assignedStudentRecordId) {
+          try {
+            const singleSnap = await getDoc(doc(db, "students", user.assignedStudentRecordId));
+            if (singleSnap.exists()) {
+              loaded = [{ id: singleSnap.id, ...singleSnap.data() }];
+            }
+          } catch {
+            // ignore
+          }
+        }
+        setStudents(loaded);
         setStudentsLoading(false);
       },
       (snapshotError) => {
@@ -92,7 +101,7 @@ function ScanStudentQR() {
         });
       },
     );
-  }, [user?.uid]);
+  }, [user?.uid, user?.assignedStudentRecordId]);
 
   const handleScan = useCallback(async (token) => {
     setScannerOpen(false);

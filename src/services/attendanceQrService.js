@@ -105,7 +105,8 @@ export async function issueStudentAttendanceQrToken(currentUser) {
   };
 }
 
-export async function scanStudentAttendanceQr(token, options = {}) {
+export async function scanStudentAttendanceQr(rawToken, options = {}) {
+  const token = String(rawToken || "").trim();
   let payload;
   try {
     try {
@@ -125,7 +126,8 @@ export async function scanStudentAttendanceQr(token, options = {}) {
     throw new Error("This QR code is not a valid student attendance code.");
   }
 
-  if (payload.exp && Date.now() > payload.exp + 60_000) {
+  // Allow a 5-minute clock-skew buffer between devices
+  if (payload.exp && Date.now() > payload.exp + 5 * 60_000) {
     throw new Error("This student QR code has expired. Ask the student to refresh it.");
   }
 
@@ -172,6 +174,34 @@ export async function scanStudentAttendanceQr(token, options = {}) {
     });
     if (match) {
       studentRecord = { id: match.id, ...match.data() };
+    }
+  }
+
+  if (!studentRecord) {
+    try {
+      const supSnap = await getDoc(doc(db, "users", supervisorUid));
+      if (supSnap.exists()) {
+        const supData = supSnap.data();
+        if (supData.assignedStudentRecordId) {
+          const assignedDoc = await getDoc(
+            doc(db, "students", supData.assignedStudentRecordId),
+          );
+          if (assignedDoc.exists()) {
+            const data = assignedDoc.data();
+            const sId = (data.studentId || data.idNumber || assignedDoc.id || "").toString().trim().toLowerCase();
+            const payloadId = (payload.studentId || "").toString().trim().toLowerCase();
+            if (
+              data.studentUid === payload.studentUid ||
+              assignedDoc.id === payload.studentUid ||
+              (payloadId && sId === payloadId)
+            ) {
+              studentRecord = { id: assignedDoc.id, ...data };
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore
     }
   }
 

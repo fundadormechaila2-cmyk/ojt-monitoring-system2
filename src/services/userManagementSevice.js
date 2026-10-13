@@ -5,7 +5,7 @@ import {
   signOut,
 } from "firebase/auth";
 
-import { doc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 
 import { secondaryAuth } from "./secondatyAuth";
 import { db } from "./firebase";
@@ -116,6 +116,7 @@ export const createManagedUser = async ({
     };
 
     if (role === "supervisor" && assignedStudentRecordId) {
+      let studentUserUid = null;
       const studentRef = doc(db, "students", assignedStudentRecordId);
       await runTransaction(db, async (transaction) => {
         const studentSnapshot = await transaction.get(studentRef);
@@ -124,6 +125,7 @@ export const createManagedUser = async ({
         }
 
         const student = studentSnapshot.data();
+        studentUserUid = student.studentUid || null;
         if (student.coordinatorUid !== createdBy) {
           throw new Error("You can only assign supervisors to students in your department.");
         }
@@ -140,6 +142,18 @@ export const createManagedUser = async ({
           updatedAt: serverTimestamp(),
         });
       });
+
+      if (studentUserUid) {
+        try {
+          await updateDoc(doc(db, "users", studentUserUid), {
+            supervisorUid: firebaseUser.uid,
+            supervisorName: `${firstName.trim()} ${lastName.trim()}`,
+            updatedAt: serverTimestamp(),
+          });
+        } catch (syncError) {
+          console.warn("Unable to sync supervisor assignment to student user account:", syncError);
+        }
+      }
     } else {
       await setDoc(userRef, profile);
     }
