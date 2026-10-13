@@ -444,6 +444,7 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
       }
     });
   });
+
   const studentSnapshot = await userCollection.doc(studentId).get();
   if (studentSnapshot.exists && studentSnapshot.data().role === "student") {
     matchesByUid.set(studentSnapshot.id, studentSnapshot);
@@ -566,3 +567,125 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
     };
   });
 });
+
+exports.saveStudentCoordinatorAssignment = onCall(
+  { timeoutSeconds: 300 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in as an administrator to assign a coordinator.");
+    }
+
+    const adminProfile = await getUserProfile(request.auth.uid);
+    if (adminProfile?.role !== "admin") {
+      throw new HttpsError("permission-denied", "Only administrators can assign coordinators.");
+    }
+
+    const { studentRecordId, accountId, coordinatorUid } = request.data || {};
+    if (
+      typeof studentRecordId !== "string" ||
+      !studentRecordId.trim() ||
+      studentRecordId.length > 128 ||
+      (accountId !== undefined &&
+        (typeof accountId !== "string" || !accountId.trim() || accountId.length > 128)) ||
+      typeof coordinatorUid !== "string" ||
+      coordinatorUid.length > 128
+    ) {
+      throw new HttpsError("invalid-argument", "The student or coordinator selection is invalid.");
+    }
+
+    const studentRef = db.collection("students").doc(studentRecordId);
+    const studentSnapshot = await studentRef.get();
+    if (!studentSnapshot.exists) {
+      throw new HttpsError("not-found", "The selected student record no longer exists. Refresh and try again.");
+    }
+    const student = studentSnapshot.data();
+
+    if (coordinatorUid) {
+      const coordinator = await getUserProfile(coordinatorUid);
+      if (coordinator?.role !== "coordinator") {
+        throw new HttpsError("failed-precondition", "Select a valid coordinator account.");
+      }
+    }
+
+    let studentUid = student.studentUid || student.userUid || student.accountUid;
+    const accountRef = accountId ? db.collection("users").doc(accountId) : null;
+    if (accountRef) {
+      const accountSnapshot = await accountRef.get();
+      if (!accountSnapshot.exists || accountSnapshot.data().role !== "student") {
+        throw new HttpsError("failed-precondition", "The linked student account could not be verified. Refresh and try again.");
+      }
+      const account = accountSnapshot.data();
+      const linkedToStudent =
+        account.studentRecordId === studentRecordId ||
+        studentUid === accountId ||
+        (student.studentId &&
+          String(account.studentId || "").trim().toLowerCase() ===
+            String(student.studentId).trim().toLowerCase()) ||
+        (student.email &&
+          String(account.email || "").trim().toLowerCase() ===
+            String(student.email).trim().toLowerCase());
+      if (!linkedToStudent) {
+        throw new HttpsError("failed-precondition", "The selected login account is not linked to this student record.");
+      }
+      studentUid = accountId;
+    }
+
+    const assignment = coordinatorUid
+      ? { coordinatorUid }
+      : { coordinatorUid: FieldValue.delete() };
+    const baseBatch = db.batch();
+    baseBatch.update(studentRef, {
+      ...assignment,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (accountRef) {
+      baseBatch.update(accountRef, {
+        ...assignment,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await baseBatch.commit();
+
+    const attendanceCollection = db.collection("attendance");
+    const attendanceSnapshots = await Promise.all([
+      studentUid
+        ? attendanceCollection.where("studentUid", "==", studentUid).get()
+        : Promise.resolve(null),
+      student.studentId
+        ? attendanceCollection.where("studentId", "==", String(student.studentId)).get()
+        : Promise.resolve(null),
+    ]);
+    const attendanceRecords = new Map();
+    attendanceSnapshots.forEach((snapshot) => {
+      snapshot?.docs.forEach((record) => {
+        const recordUid = record.data().studentUid;
+        if (!studentUid || !recordUid || recordUid === studentUid) {
+          attendanceRecords.set(record.id, record.ref);
+        }
+      });
+    });
+
+    const loginSnapshot = studentUid
+      ? await db.collection("studentLoginActivity")
+        .where("userId", "==", studentUid)
+        .get()
+      : null;
+
+    const commitUpdates = async (references) => {
+      for (let offset = 0; offset < references.length; offset += 450) {
+        const batch = db.batch();
+        references.slice(offset, offset + 450).forEach((reference) => {
+          batch.update(reference, assignment);
+        });
+        await batch.commit();
+      }
+    };
+    await commitUpdates([...attendanceRecords.values()]);
+    await commitUpdates(loginSnapshot?.docs.map((record) => record.ref) || []);
+
+    return {
+      attendanceUpdated: attendanceRecords.size,
+      signInsUpdated: loginSnapshot?.size || 0,
+    };
+  },
+);

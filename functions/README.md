@@ -11,10 +11,11 @@ firebase functions:secrets:set ATTENDANCE_QR_SECRET
 ```
 
 Use a strong, randomly generated value of at least 32 bytes. Then deploy the
-functions and Firestore rules:
+functions and Firestore rules to the same Firebase project used by the app.
+Coordinator assignments are saved by an admin-only callable function.
 
 ```powershell
-firebase deploy --only functions,firestore:rules
+firebase deploy --only functions,firestore:rules --project ojt-monitoringsystem2
 ```
 
 The student portal refreshes each student's signed QR token every 30 seconds.

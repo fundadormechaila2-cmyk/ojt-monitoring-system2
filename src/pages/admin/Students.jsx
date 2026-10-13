@@ -2,21 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
   collection,
-  deleteField,
   doc,
-  getDocs,
   onSnapshot,
-  query,
   serverTimestamp,
   updateDoc,
-  where,
-  writeBatch,
 } from "firebase/firestore";
 import { Eye, KeyRound, Plus, Search, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { COURSES } from "../../constants/courses";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
+import { saveStudentCoordinatorAssignment as persistCoordinatorAssignment } from "../../services/studentAssignmentService";
 import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
 
@@ -212,98 +208,27 @@ function Students() {
     if (!selectedStudent) return;
 
     const account = accountForStudent(selectedStudent, users);
-    const studentUid = selectedStudent.studentUid || account?.id;
-    const assignment = coordinatorAssignment
-      ? { coordinatorUid: coordinatorAssignment }
-      : { coordinatorUid: deleteField() };
-    const studentUpdate = {
-      ...assignment,
-      updatedAt: serverTimestamp(),
-    };
 
     setSaving(true);
     setError("");
     try {
-      const assignmentBatch = writeBatch(db);
-      assignmentBatch.update(
-        doc(db, "students", selectedStudent.id),
-        studentUpdate,
-      );
-      if (account) {
-        assignmentBatch.update(doc(db, "users", account.id), {
-          ...assignment,
-          updatedAt: serverTimestamp(),
-        });
-      }
-      await assignmentBatch.commit();
-
-      const attendanceQueries = await Promise.all([
-        ...(studentUid
-          ? [
-              getDocs(
-                query(
-                  collection(db, "attendance"),
-                  where("studentUid", "==", studentUid),
-                ),
-              ),
-            ]
-          : []),
-        ...(selectedStudent.studentId
-          ? [
-              getDocs(
-                query(
-                  collection(db, "attendance"),
-                  where("studentId", "==", String(selectedStudent.studentId)),
-                ),
-              ),
-            ]
-          : []),
-      ]);
-      const attendanceRecords = new Map();
-      attendanceQueries.forEach((snapshot) => {
-        snapshot.docs.forEach((record) => {
-          const recordUid = record.data().studentUid;
-          if (!studentUid || !recordUid || recordUid === studentUid) {
-            attendanceRecords.set(record.id, record);
-          }
-        });
+      const result = await persistCoordinatorAssignment({
+        studentRecordId: selectedStudent.id,
+        accountId: account?.id,
+        coordinatorUid: coordinatorAssignment,
       });
-      const records = [...attendanceRecords.values()];
-
-      for (let offset = 0; offset < records.length; offset += 500) {
-        const batch = writeBatch(db);
-        records.slice(offset, offset + 500).forEach((record) => {
-          batch.update(record.ref, assignment);
-        });
-        await batch.commit();
-      }
-      if (studentUid) {
-        const loginSnapshot = await getDocs(
-          query(
-            collection(db, "studentLoginActivity"),
-            where("userId", "==", studentUid),
-          ),
-        );
-        for (let offset = 0; offset < loginSnapshot.docs.length; offset += 500) {
-          const batch = writeBatch(db);
-          loginSnapshot.docs.slice(offset, offset + 500).forEach((record) => {
-            batch.update(record.ref, assignment);
-          });
-          await batch.commit();
-        }
-      }
 
       setNotice(
         coordinatorAssignment
-          ? `Coordinator assignment saved. ${records.length} attendance record${records.length === 1 ? "" : "s"} updated.`
-          : `Coordinator assignment removed. ${records.length} attendance record${records.length === 1 ? "" : "s"} updated.`,
+          ? `Coordinator assignment saved. ${result.attendanceUpdated} attendance record${result.attendanceUpdated === 1 ? "" : "s"} and ${result.signInsUpdated} sign-in record${result.signInsUpdated === 1 ? "" : "s"} updated.`
+          : `Coordinator assignment removed. ${result.attendanceUpdated} attendance record${result.attendanceUpdated === 1 ? "" : "s"} and ${result.signInsUpdated} sign-in record${result.signInsUpdated === 1 ? "" : "s"} updated.`,
       );
       setSelectedStudent(null);
       window.setTimeout(() => setNotice(""), 5000);
     } catch (saveError) {
       console.error("Unable to save coordinator assignment:", saveError);
       setError(
-        "The coordinator assignment could not be fully saved. Check Firestore permissions and retry. If the student or account was updated before the error, reopen this student and save the assignment again to sync attendance and sign-in history.",
+        `The coordinator assignment could not be fully saved. ${saveError.message || "Check your connection and try again."}`,
       );
     } finally {
       setSaving(false);
