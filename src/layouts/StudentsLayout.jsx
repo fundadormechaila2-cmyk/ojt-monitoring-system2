@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   FileUser,
   ListChecks,
-  ChartCandlestick,
   Summary,
   Settings,
   Menu,
@@ -88,12 +87,6 @@ function StudentDashboard() {
             to="/Student/attendance"
             label="My Attendance"
             icon={ListChecks}
-            onClick={closeSidebarOnMobile}
-          />
-          <StudentNavLink
-            to="/Student/progress"
-            label="Progress"
-            icon={ChartCandlestick}
             onClick={closeSidebarOnMobile}
           />
           <StudentNavLink

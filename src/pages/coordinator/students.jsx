@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from "react";
-import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
+import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { Eye, Search } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
@@ -51,20 +51,46 @@ function Students() {
     setAssignmentError("");
     setAssignmentNotice("");
     try {
-      const batch = writeBatch(db);
+      const selectedSupervisor = supervisors.find((s) => s.id === supervisorUid);
+      const supervisorName = selectedSupervisor
+        ? `${selectedSupervisor.firstName || ""} ${selectedSupervisor.lastName || ""}`.trim() ||
+          selectedSupervisor.fullName ||
+          selectedSupervisor.name ||
+          ""
+        : "";
+
       const changes = {
-        ...(supervisorUid ? { supervisorUid } : { supervisorUid: deleteField() }),
+        ...(supervisorUid
+          ? {
+              supervisorUid,
+              ...(supervisorName ? { supervisorName } : {}),
+            }
+          : {
+              supervisorUid: deleteField(),
+              supervisorName: deleteField(),
+            }),
         updatedAt: serverTimestamp(),
       };
-      batch.update(doc(db, "students", selected.id), changes);
+
+      await updateDoc(doc(db, "students", selected.id), changes);
+
       if (selected.studentUid) {
-        batch.update(doc(db, "users", selected.studentUid), changes);
+        try {
+          await updateDoc(doc(db, "users", selected.studentUid), changes);
+        } catch (syncError) {
+          console.warn("Unable to sync supervisor assignment to student user account:", syncError);
+        }
       }
-      await batch.commit();
+
+      setSelected((prev) => (prev ? { ...prev, supervisorUid, supervisorName } : null));
       setAssignmentNotice(supervisorUid ? "Supervisor assignment saved." : "Supervisor assignment removed.");
     } catch (saveError) {
       console.error("Unable to save supervisor assignment:", saveError);
-      setAssignmentError("The assignment could not be saved. Confirm the supervisor is in your department.");
+      setAssignmentError(
+        saveError.code === "permission-denied"
+          ? "The assignment could not be saved. Check Firestore permissions."
+          : (saveError.message || "The assignment could not be saved. Confirm the supervisor is in your department.")
+      );
     } finally {
       setAssignmentSaving(false);
     }

@@ -70,7 +70,7 @@ function Attendance() {
       issuingToken = true;
       setQrError("");
       try {
-        const result = await issueStudentAttendanceQrToken();
+        const result = await issueStudentAttendanceQrToken(user);
         if (active) {
           setQr({
             uid: studentUid,
@@ -98,7 +98,7 @@ function Attendance() {
       active = false;
       window.clearInterval(refreshInterval);
     };
-  }, [studentUid, user?.role]);
+  }, [studentUid, user?.role, user]);
 
   useEffect(() => {
     const countdownInterval = window.setInterval(() => setClockNow(Date.now()), 1000);

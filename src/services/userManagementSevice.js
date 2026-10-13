@@ -40,6 +40,7 @@ export const createManagedUser = async ({
   company,
   coordinatorId,
   coordinatorUid,
+  coordinatorName,
   department,
   assignedStudentRecordId,
   partnerCompanyId,
@@ -100,6 +101,7 @@ export const createManagedUser = async ({
       ...(course ? { course } : {}),
       ...(company ? { company } : {}),
       ...(coordinatorUid ? { coordinatorUid } : {}),
+      ...(coordinatorName ? { coordinatorName } : {}),
       ...(department ? { department } : {}),
       ...(assignedStudentRecordId ? { assignedStudentRecordId } : {}),
       ...(role === "supervisor"

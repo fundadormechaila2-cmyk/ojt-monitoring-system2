@@ -13,10 +13,8 @@ import {
 } from "lucide-react";
 import { db } from "../../services/firebase";
 import { useAuth } from "../../context/useAuth";
-import {
-  recordManualStudentAttendance,
-  scanStudentAttendanceQr,
-} from "../../services/attendanceQrService";
+import { scanStudentAttendanceQr } from "../../services/attendanceQrService";
+import { saveManualAttendance } from "../../services/manualAttendanceService";
 import { PageHeader } from "./SupervisorComponents";
 import "../../styles/supervisor-student-qr.css";
 
@@ -102,7 +100,10 @@ function ScanStudentQR() {
     setFeedback(null);
 
     try {
-      const result = await scanStudentAttendanceQr(token);
+      const result = await scanStudentAttendanceQr(token, {
+        supervisorUid: user?.uid,
+        students,
+      });
       setFeedback({
         type: "success",
         text: result.alreadyRecorded
@@ -118,7 +119,7 @@ function ScanStudentQR() {
     } finally {
       setProcessing(false);
     }
-  }, []);
+  }, [user, students]);
 
   const handleScannerError = useCallback((message) => {
     setFeedback({ type: "error", text: message });
@@ -128,7 +129,8 @@ function ScanStudentQR() {
     event.preventDefault();
     setManualFeedback(null);
 
-    if (!studentId.trim() || !manualDate) {
+    const inputId = studentId.trim();
+    if (!inputId || !manualDate) {
       setManualFeedback({
         type: "error",
         text: "Enter a student ID, date, and attendance time.",
@@ -136,10 +138,25 @@ function ScanStudentQR() {
       return;
     }
 
+    const targetStudent = students.find((s) => {
+      const sId = (s.studentId || s.idNumber || s.id || "").toString().trim().toLowerCase();
+      return sId === inputId.toLowerCase() || s.id.toLowerCase() === inputId.toLowerCase();
+    });
+
+    if (!targetStudent) {
+      setManualFeedback({
+        type: "error",
+        text: `Student ID "${inputId}" was not found among your assigned trainees.`,
+      });
+      return;
+    }
+
     setSavingManual(true);
     try {
-      const result = await recordManualStudentAttendance({
-        studentId: studentId.trim(),
+      const result = await saveManualAttendance({
+        supervisorUid: user.uid,
+        student: targetStudent,
+        studentId: inputId,
         date: manualDate,
         period,
       });

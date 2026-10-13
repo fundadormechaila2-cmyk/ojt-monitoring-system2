@@ -41,6 +41,34 @@ function splitName(student) {
   };
 }
 
+function findCoordinatorForCourse(course, userList) {
+  if (!course || !userList?.length) return null;
+  const normalizedCourse = course.trim().toLowerCase();
+  return (
+    userList.find((account) => {
+      if (account.role !== "coordinator") return false;
+      const dept = String(account.department || "").trim().toLowerCase();
+      if (!dept) return false;
+      return (
+        dept === normalizedCourse ||
+        dept.includes(normalizedCourse) ||
+        normalizedCourse.includes(dept)
+      );
+    }) || null
+  );
+}
+
+function coordinatorDisplayName(coordinator) {
+  if (!coordinator) return "";
+  return (
+    `${coordinator.firstName || ""} ${coordinator.lastName || ""}`.trim() ||
+    coordinator.fullName ||
+    coordinator.displayName ||
+    coordinator.email ||
+    ""
+  );
+}
+
 function accountForStudent(student, users) {
   const studentId = String(student.studentId || "").trim().toLowerCase();
   const email = String(student.email || "").trim().toLowerCase();
@@ -185,6 +213,69 @@ function Students() {
     { DEPLOYED: 0, PROCESSING: 0, COMPLETED: 0 },
   );
 
+  const coordinators = useMemo(
+    () => users.filter((account) => account.role === "coordinator"),
+    [users],
+  );
+
+  const autoMatchedCoordinator = useMemo(
+    () => findCoordinatorForCourse(newStudent.course, users),
+    [newStudent.course, users],
+  );
+
+  const unassignedMatchingStudents = useMemo(() => {
+    return students.filter((s) => {
+      if (s.coordinatorUid) return false;
+      return Boolean(findCoordinatorForCourse(s.course, users));
+    });
+  }, [students, users]);
+
+  const [batchAssigning, setBatchAssigning] = useState(false);
+
+  const autoAssignAllUnassigned = async () => {
+    if (!unassignedMatchingStudents.length) return;
+    setBatchAssigning(true);
+    setError("");
+    try {
+      const batch = writeBatch(db);
+      let count = 0;
+      for (const student of unassignedMatchingStudents) {
+        const coord = findCoordinatorForCourse(student.course, users);
+        if (coord) {
+          const coordName = coordinatorDisplayName(coord);
+          const studentUpdate = {
+            coordinatorUid: coord.id,
+            coordinatorName: coordName,
+            updatedAt: serverTimestamp(),
+          };
+          batch.update(doc(db, "students", student.id), studentUpdate);
+          const account = accountForStudent(student, users);
+          if (account) {
+            batch.update(doc(db, "users", account.id), studentUpdate);
+          }
+          count += 1;
+        }
+      }
+      await batch.commit();
+      setNotice(`Auto-assigned ${count} student(s) to their department coordinator.`);
+      window.setTimeout(() => setNotice(""), 6000);
+    } catch (assignError) {
+      console.error("Unable to auto-assign students:", assignError);
+      setError(`Auto-assignment could not be completed: ${assignError.message}`);
+    } finally {
+      setBatchAssigning(false);
+    }
+  };
+
+  const handleNewStudentCourseChange = (selectedCourse) => {
+    const matched = findCoordinatorForCourse(selectedCourse, users);
+    setNewStudent((current) => ({
+      ...current,
+      course: selectedCourse,
+      coordinatorUid: matched ? matched.id : current.coordinatorUid,
+    }));
+  };
+
   const updateFilter = (setter, value) => {
     setter(value);
     setPage(1);
@@ -204,7 +295,13 @@ function Students() {
   const openStudentDetails = (student) => {
     const account = accountForStudent(student, users);
     setSelectedStudent(student);
-    setCoordinatorAssignment(student.coordinatorUid || account?.coordinatorUid || "");
+    const existing = student.coordinatorUid || account?.coordinatorUid || "";
+    if (!existing && student.course) {
+      const matched = findCoordinatorForCourse(student.course, users);
+      setCoordinatorAssignment(matched ? matched.id : "");
+    } else {
+      setCoordinatorAssignment(existing);
+    }
     setError("");
   };
 
@@ -213,9 +310,17 @@ function Students() {
 
     const account = accountForStudent(selectedStudent, users);
     const studentUid = selectedStudent.studentUid || account?.id;
+    const selectedCoordinator = users.find((u) => u.id === coordinatorAssignment);
+    const coordinatorName = coordinatorDisplayName(selectedCoordinator);
     const assignment = coordinatorAssignment
-      ? { coordinatorUid: coordinatorAssignment }
-      : { coordinatorUid: deleteField() };
+      ? {
+          coordinatorUid: coordinatorAssignment,
+          ...(coordinatorName ? { coordinatorName } : {}),
+        }
+      : {
+          coordinatorUid: deleteField(),
+          coordinatorName: deleteField(),
+        };
     const studentUpdate = {
       ...assignment,
       updatedAt: serverTimestamp(),
@@ -327,6 +432,11 @@ function Students() {
     setError("");
     let managedUser;
     try {
+      const autoCoord = findCoordinatorForCourse(accountStudent.course, users);
+      const coordUid = accountStudent.coordinatorUid || autoCoord?.id || "";
+      const coordObj = users.find((u) => u.id === coordUid);
+      const coordName = coordinatorDisplayName(coordObj);
+
       managedUser = await createManagedUser({
         firstName: accountForm.firstName,
         lastName: accountForm.lastName,
@@ -337,12 +447,16 @@ function Students() {
         studentRecordId: accountStudent.id,
         course: accountStudent.course || "",
         company: accountStudent.company || "",
-        coordinatorUid: accountStudent.coordinatorUid || "",
+        coordinatorUid: coordUid,
+        coordinatorName: coordName,
       });
 
       await updateDoc(doc(db, "students", accountStudent.id), {
         studentUid: managedUser.uid,
         accountEmail: accountForm.email.trim(),
+        ...(coordUid && !accountStudent.coordinatorUid ? { coordinatorUid: coordUid } : {}),
+        ...(coordName && !accountStudent.coordinatorName ? { coordinatorName: coordName } : {}),
+        updatedAt: serverTimestamp(),
       });
 
       setNotice(`Login account created for ${accountStudent.name}.`);
@@ -404,6 +518,12 @@ function Students() {
     const name = `${newStudent.firstName.trim()} ${newStudent.lastName.trim()}`;
     const requiredHours = Number(newStudent.requiredHours);
 
+    const autoCoordinator = findCoordinatorForCourse(newStudent.course, users);
+    const targetCoordinatorUid =
+      newStudent.coordinatorUid || autoCoordinator?.id || "";
+    const targetCoordinator = users.find((u) => u.id === targetCoordinatorUid);
+    const targetCoordinatorName = coordinatorDisplayName(targetCoordinator);
+
     try {
       studentReference = await addDoc(collection(db, "students"), {
         name,
@@ -414,8 +534,11 @@ function Students() {
         phone: newStudent.phone.trim(),
         course: newStudent.course,
         company: newStudent.company.trim(),
-        ...(newStudent.coordinatorUid
-          ? { coordinatorUid: newStudent.coordinatorUid }
+        ...(targetCoordinatorUid
+          ? { coordinatorUid: targetCoordinatorUid }
+          : {}),
+        ...(targetCoordinatorName
+          ? { coordinatorName: targetCoordinatorName }
           : {}),
         requiredHours,
         completedHours: 0,
@@ -436,7 +559,8 @@ function Students() {
         studentRecordId: studentReference.id,
         course: newStudent.course,
         company: newStudent.company,
-        coordinatorUid: newStudent.coordinatorUid,
+        coordinatorUid: targetCoordinatorUid,
+        coordinatorName: targetCoordinatorName,
       });
 
       await updateDoc(doc(db, "students", studentReference.id), {
@@ -495,18 +619,31 @@ function Students() {
             The coordinator roster uses these same live student records.
           </p>
         </div>
-        <button
-          type="button"
-          className="students-primary"
-          disabled={Boolean(sourceErrors.users)}
-          onClick={() => {
-            setNewStudent(emptyNewStudent);
-            setError("");
-            setAddingStudent(true);
-          }}
-        >
-          <Plus size={16} /> Add Student
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          {unassignedMatchingStudents.length > 0 && (
+            <button
+              type="button"
+              className="students-secondary"
+              disabled={batchAssigning}
+              onClick={autoAssignAllUnassigned}
+              title={`Automatically link ${unassignedMatchingStudents.length} student(s) to their department coordinator`}
+            >
+              {batchAssigning ? "Assigning..." : `Auto-Assign Coordinators (${unassignedMatchingStudents.length})`}
+            </button>
+          )}
+          <button
+            type="button"
+            className="students-primary"
+            disabled={Boolean(sourceErrors.users)}
+            onClick={() => {
+              setNewStudent(emptyNewStudent);
+              setError("");
+              setAddingStudent(true);
+            }}
+          >
+            <Plus size={16} /> Add Student
+          </button>
+        </div>
       </header>
 
       {(error || Object.values(sourceErrors).length > 0) && (
@@ -701,13 +838,21 @@ function Students() {
                   onChange={(event) => setCoordinatorAssignment(event.target.value)}
                 >
                   <option value="">Unassigned</option>
-                  {users
-                    .filter((account) => account.role === "coordinator")
-                    .map((coordinator) => (
+                  {coordinators.map((coordinator) => {
+                    const isDeptMatch =
+                      coordinator.department &&
+                      selectedStudent.course &&
+                      (coordinator.department.trim().toLowerCase() === selectedStudent.course.trim().toLowerCase() ||
+                        selectedStudent.course.trim().toLowerCase().includes(coordinator.department.trim().toLowerCase()) ||
+                        coordinator.department.trim().toLowerCase().includes(selectedStudent.course.trim().toLowerCase()));
+                    return (
                       <option key={coordinator.id} value={coordinator.id}>
-                        {`${coordinator.firstName || ""} ${coordinator.lastName || ""}`.trim() || coordinator.email || coordinator.id}
+                        {coordinatorDisplayName(coordinator)}
+                        {coordinator.department ? ` — ${coordinator.department}` : ""}
+                        {isDeptMatch ? " ★ (Program match)" : ""}
                       </option>
-                    ))}
+                    );
+                  })}
                 </select>
               </label>
             </div>
@@ -856,10 +1001,7 @@ function Students() {
                   required
                   value={newStudent.course}
                   onChange={(event) =>
-                    setNewStudent((current) => ({
-                      ...current,
-                      course: event.target.value,
-                    }))
+                    handleNewStudentCourseChange(event.target.value)
                   }
                 >
                   <option value="">Select a course</option>
@@ -893,15 +1035,27 @@ function Students() {
                     }))
                   }
                 >
-                  <option value="">Select a coordinator (optional)</option>
-                  {users
-                    .filter((account) => account.role === "coordinator")
-                    .map((coordinator) => (
+                  <option value="">
+                    {autoMatchedCoordinator
+                      ? `Auto-selected: ${coordinatorDisplayName(autoMatchedCoordinator)}`
+                      : "Select a coordinator (optional)"}
+                  </option>
+                  {coordinators.map((coordinator) => {
+                    const isAuto = autoMatchedCoordinator?.id === coordinator.id;
+                    return (
                       <option key={coordinator.id} value={coordinator.id}>
-                        {`${coordinator.firstName || ""} ${coordinator.lastName || ""}`.trim() || coordinator.email || coordinator.id}
+                        {coordinatorDisplayName(coordinator)}
+                        {coordinator.department ? ` — ${coordinator.department}` : ""}
+                        {isAuto ? " (Auto-matched)" : ""}
                       </option>
-                    ))}
+                    );
+                  })}
                 </select>
+                {autoMatchedCoordinator && (
+                  <span style={{ fontSize: "11px", color: "#16866f", fontWeight: "normal" }}>
+                    ✓ Auto-assigned to {coordinatorDisplayName(autoMatchedCoordinator)} based on program
+                  </span>
+                )}
               </label>
               <label>
                 Required OJT hours
