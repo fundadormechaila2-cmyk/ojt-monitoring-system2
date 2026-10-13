@@ -15,8 +15,7 @@ import {
   LogOut,
 } from "lucide-react";
 
-// Importing the logo image
-import hero from "../assets/hero.png";
+import schoolLogo from "../assets/school-logo.png";
 
 function AdminLayout() {
   const { user } = useAuth();
@@ -70,8 +69,8 @@ function AdminLayout() {
           {/* Application Title */}
           <div className="admin-title">
             <img
-              src={hero}
-              alt="OJT Monitoring System LCCI"
+              src={schoolLogo}
+              alt="La Consolacion College logo"
               className="admin-logo"
             />
             <h2>OJT Monitoring System LCCI</h2>

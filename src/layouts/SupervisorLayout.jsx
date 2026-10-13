@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { logout } from "../services/authService";
 import { useAuth } from "../context/useAuth";
-import hero from "../assets/hero.png";
+import schoolLogo from "../assets/school-logo.png";
 import "../styles/AdminLayout.css";
 
 function SupervisorLayout() {
@@ -55,8 +55,8 @@ function SupervisorLayout() {
 
           <div className="admin-title">
             <img
-              src={hero}
-              alt="OJT Monitoring System LCCI"
+              src={schoolLogo}
+              alt="La Consolacion College logo"
               className="admin-logo"
             />
             <h2>Supervisor Portal</h2>

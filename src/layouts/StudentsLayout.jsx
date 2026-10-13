@@ -12,7 +12,7 @@ import {
 import { logout } from "../services/authService";
 import { useAuth } from "../context/useAuth";
 import "../styles/AdminLayout.css";
-import hero from "../assets/hero.png";
+import schoolLogo from "../assets/school-logo.png";
 
 function StudentDashboard() {
   const { user } = useAuth();
@@ -49,8 +49,8 @@ function StudentDashboard() {
           </button>
           <div className="admin-title">
             <img
-              src={hero}
-              alt="OJT Monitoring System LCCI"
+              src={schoolLogo}
+              alt="La Consolacion College logo"
               className="admin-logo"
             />
             <h2>Student OJT Portal</h2>
