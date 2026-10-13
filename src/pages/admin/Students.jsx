@@ -227,8 +227,12 @@ function Students() {
       window.setTimeout(() => setNotice(""), 5000);
     } catch (saveError) {
       console.error("Unable to save coordinator assignment:", saveError);
+      const errorCode = String(saveError?.code || "").replace(/^functions\//, "");
+      const errorMessage = String(saveError?.message || "");
       setError(
-        `The coordinator assignment could not be fully saved. ${saveError.message || "Check your connection and try again."}`,
+        errorCode === "internal" || errorMessage.toLowerCase() === "internal"
+          ? "The assignment sync hit a server error. Reopen this student and try saving again. If it continues, deploy the latest Cloud Function and check its logs."
+          : `The coordinator assignment could not be fully saved. ${errorMessage || "Check your connection and try again."}`,
       );
     } finally {
       setSaving(false);

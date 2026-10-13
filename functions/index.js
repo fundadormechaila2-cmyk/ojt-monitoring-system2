@@ -2,6 +2,7 @@ const { createHmac, randomBytes, timingSafeEqual } = require("node:crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
+const logger = require("firebase-functions/logger");
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
 
 initializeApp();
@@ -571,121 +572,152 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
 exports.saveStudentCoordinatorAssignment = onCall(
   { timeoutSeconds: 300 },
   async (request) => {
-    if (!request.auth) {
-      throw new HttpsError("unauthenticated", "Sign in as an administrator to assign a coordinator.");
-    }
-
-    const adminProfile = await getUserProfile(request.auth.uid);
-    if (adminProfile?.role !== "admin") {
-      throw new HttpsError("permission-denied", "Only administrators can assign coordinators.");
-    }
-
-    const { studentRecordId, accountId, coordinatorUid } = request.data || {};
-    if (
-      typeof studentRecordId !== "string" ||
-      !studentRecordId.trim() ||
-      studentRecordId.length > 128 ||
-      (accountId !== undefined &&
-        (typeof accountId !== "string" || !accountId.trim() || accountId.length > 128)) ||
-      typeof coordinatorUid !== "string" ||
-      coordinatorUid.length > 128
-    ) {
-      throw new HttpsError("invalid-argument", "The student or coordinator selection is invalid.");
-    }
-
-    const studentRef = db.collection("students").doc(studentRecordId);
-    const studentSnapshot = await studentRef.get();
-    if (!studentSnapshot.exists) {
-      throw new HttpsError("not-found", "The selected student record no longer exists. Refresh and try again.");
-    }
-    const student = studentSnapshot.data();
-
-    if (coordinatorUid) {
-      const coordinator = await getUserProfile(coordinatorUid);
-      if (coordinator?.role !== "coordinator") {
-        throw new HttpsError("failed-precondition", "Select a valid coordinator account.");
+    let stage = "checking administrator access";
+    let assignmentSaved = false;
+    try {
+      if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Sign in as an administrator to assign a coordinator.");
       }
-    }
 
-    let studentUid = student.studentUid || student.userUid || student.accountUid;
-    const accountRef = accountId ? db.collection("users").doc(accountId) : null;
-    if (accountRef) {
-      const accountSnapshot = await accountRef.get();
-      if (!accountSnapshot.exists || accountSnapshot.data().role !== "student") {
-        throw new HttpsError("failed-precondition", "The linked student account could not be verified. Refresh and try again.");
+      const adminProfile = await getUserProfile(request.auth.uid);
+      if (adminProfile?.role !== "admin") {
+        throw new HttpsError("permission-denied", "Only administrators can assign coordinators.");
       }
-      const account = accountSnapshot.data();
-      const linkedToStudent =
-        account.studentRecordId === studentRecordId ||
-        studentUid === accountId ||
-        (student.studentId &&
-          String(account.studentId || "").trim().toLowerCase() ===
-            String(student.studentId).trim().toLowerCase()) ||
-        (student.email &&
-          String(account.email || "").trim().toLowerCase() ===
-            String(student.email).trim().toLowerCase());
-      if (!linkedToStudent) {
-        throw new HttpsError("failed-precondition", "The selected login account is not linked to this student record.");
-      }
-      studentUid = accountId;
-    }
 
-    const assignment = coordinatorUid
-      ? { coordinatorUid }
-      : { coordinatorUid: FieldValue.delete() };
-    const baseBatch = db.batch();
-    baseBatch.update(studentRef, {
-      ...assignment,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    if (accountRef) {
-      baseBatch.update(accountRef, {
+      const { studentRecordId, accountId, coordinatorUid } = request.data || {};
+      if (
+        typeof studentRecordId !== "string" ||
+        !studentRecordId.trim() ||
+        studentRecordId.length > 128 ||
+        (accountId !== undefined &&
+          (typeof accountId !== "string" || !accountId.trim() || accountId.length > 128)) ||
+        typeof coordinatorUid !== "string" ||
+        coordinatorUid.length > 128
+      ) {
+        throw new HttpsError("invalid-argument", "The student or coordinator selection is invalid.");
+      }
+
+      stage = "loading the student record";
+      const studentRef = db.collection("students").doc(studentRecordId);
+      const studentSnapshot = await studentRef.get();
+      if (!studentSnapshot.exists) {
+        throw new HttpsError("not-found", "The selected student record no longer exists. Refresh and try again.");
+      }
+      const student = studentSnapshot.data();
+
+      if (coordinatorUid) {
+        stage = "verifying the selected coordinator";
+        const coordinator = await getUserProfile(coordinatorUid);
+        if (coordinator?.role !== "coordinator") {
+          throw new HttpsError("failed-precondition", "Select a valid coordinator account.");
+        }
+      }
+
+      let studentUid = student.studentUid || student.userUid || student.accountUid;
+      const accountRef = accountId ? db.collection("users").doc(accountId) : null;
+      if (accountRef) {
+        stage = "verifying the linked student account";
+        const accountSnapshot = await accountRef.get();
+        if (!accountSnapshot.exists || accountSnapshot.data().role !== "student") {
+          throw new HttpsError("failed-precondition", "The linked student account could not be verified. Refresh and try again.");
+        }
+        const account = accountSnapshot.data();
+        const linkedToStudent =
+          account.studentRecordId === studentRecordId ||
+          studentUid === accountId ||
+          (student.studentId &&
+            String(account.studentId || "").trim().toLowerCase() ===
+              String(student.studentId).trim().toLowerCase()) ||
+          (student.email &&
+            String(account.email || "").trim().toLowerCase() ===
+              String(student.email).trim().toLowerCase());
+        if (!linkedToStudent) {
+          throw new HttpsError("failed-precondition", "The selected login account is not linked to this student record.");
+        }
+        studentUid = accountId;
+      }
+
+      const assignment = coordinatorUid
+        ? { coordinatorUid }
+        : { coordinatorUid: FieldValue.delete() };
+      const baseBatch = db.batch();
+      baseBatch.update(studentRef, {
         ...assignment,
         updatedAt: FieldValue.serverTimestamp(),
       });
-    }
-    await baseBatch.commit();
-
-    const attendanceCollection = db.collection("attendance");
-    const attendanceSnapshots = await Promise.all([
-      studentUid
-        ? attendanceCollection.where("studentUid", "==", studentUid).get()
-        : Promise.resolve(null),
-      student.studentId
-        ? attendanceCollection.where("studentId", "==", String(student.studentId)).get()
-        : Promise.resolve(null),
-    ]);
-    const attendanceRecords = new Map();
-    attendanceSnapshots.forEach((snapshot) => {
-      snapshot?.docs.forEach((record) => {
-        const recordUid = record.data().studentUid;
-        if (!studentUid || !recordUid || recordUid === studentUid) {
-          attendanceRecords.set(record.id, record.ref);
-        }
-      });
-    });
-
-    const loginSnapshot = studentUid
-      ? await db.collection("studentLoginActivity")
-        .where("userId", "==", studentUid)
-        .get()
-      : null;
-
-    const commitUpdates = async (references) => {
-      for (let offset = 0; offset < references.length; offset += 450) {
-        const batch = db.batch();
-        references.slice(offset, offset + 450).forEach((reference) => {
-          batch.update(reference, assignment);
+      if (accountRef) {
+        baseBatch.update(accountRef, {
+          ...assignment,
+          updatedAt: FieldValue.serverTimestamp(),
         });
-        await batch.commit();
       }
-    };
-    await commitUpdates([...attendanceRecords.values()]);
-    await commitUpdates(loginSnapshot?.docs.map((record) => record.ref) || []);
 
-    return {
-      attendanceUpdated: attendanceRecords.size,
-      signInsUpdated: loginSnapshot?.size || 0,
-    };
+      stage = "saving the student and account assignment";
+      await baseBatch.commit();
+      assignmentSaved = true;
+
+      stage = "loading attendance history";
+      const attendanceCollection = db.collection("attendance");
+      const attendanceSnapshots = await Promise.all([
+        studentUid
+          ? attendanceCollection.where("studentUid", "==", studentUid).get()
+          : Promise.resolve(null),
+        student.studentId
+          ? attendanceCollection.where("studentId", "==", String(student.studentId)).get()
+          : Promise.resolve(null),
+      ]);
+      const attendanceRecords = new Map();
+      attendanceSnapshots.forEach((snapshot) => {
+        snapshot?.docs.forEach((record) => {
+          const recordUid = record.data().studentUid;
+          if (!studentUid || !recordUid || recordUid === studentUid) {
+            attendanceRecords.set(record.id, record.ref);
+          }
+        });
+      });
+
+      stage = "loading sign-in history";
+      const loginSnapshot = studentUid
+        ? await db.collection("studentLoginActivity")
+          .where("userId", "==", studentUid)
+          .get()
+        : null;
+
+      const commitUpdates = async (references, updateStage) => {
+        stage = updateStage;
+        for (let offset = 0; offset < references.length; offset += 450) {
+          const batch = db.batch();
+          references.slice(offset, offset + 450).forEach((reference) => {
+            batch.update(reference, assignment);
+          });
+          await batch.commit();
+        }
+      };
+      await commitUpdates([...attendanceRecords.values()], "syncing attendance history");
+      await commitUpdates(
+        loginSnapshot?.docs.map((record) => record.ref) || [],
+        "syncing sign-in history",
+      );
+
+      return {
+        attendanceUpdated: attendanceRecords.size,
+        signInsUpdated: loginSnapshot?.size || 0,
+      };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+
+      logger.error("Coordinator assignment callable failed.", {
+        stage,
+        assignmentSaved,
+        code: error?.code || "unknown",
+        message: error?.message || String(error),
+        stack: error?.stack,
+      });
+
+      const prefix = assignmentSaved
+        ? `The assignment was saved, but ${stage} failed. Save again to retry the history sync.`
+        : `The assignment could not be saved while ${stage}.`;
+      throw new HttpsError("internal", `${prefix} Check the deployed Cloud Function logs for details.`);
+    }
   },
 );
