@@ -1,90 +1,51 @@
-import "../styles/login.css";
-import schoolLogo from "../assets/school-logo.png";
-import { useState, useEffect } from "react";
-import { login, logout } from "../services/authService";
+import "../styles/Login.css";
+import { useState } from "react";
+import { login } from "../services/AuthService";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/useAuth";
+import { useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
 import { getUserData } from "../services/userService";
-import { isAccountLive } from "../services/recordState";
-import { recordStudentLogin } from "../services/studentLoginActivityService";
-import { Eye, EyeOff } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness } from "lucide-react";
 
 function Login() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    setErrorMessage("");
-
     if (!email || !password) {
-      setErrorMessage("Please complete all required fields.");
+      alert("Please enter your email and password.");
       return;
     }
 
     try {
       const userCredential = await login(email, password);
-      const sessionUser = userCredential?.user || userCredential;
-      const profile = sessionUser?.role
-        ? sessionUser
-        : await getUserData(sessionUser?.uid);
+      const userData = await getUserData(userCredential.user.uid);
+      console.log(userData);
 
-      if (!profile) {
+      alert("Login Successful!");
+
+      if (!userData) {
         alert("User profile not found.");
         return;
       }
-
-      if (!isAccountLive(profile)) {
-        await logout();
-        setErrorMessage("This account has been deactivated or archived. Please contact the administrator.");
-        return;
-      }
-
-      if (profile.role === "student") {
-        try {
-          await recordStudentLogin(sessionUser, profile);
-        } catch (activityError) {
-          console.error("Unable to record student sign-in activity:", activityError);
-          alert(
-            `Sign-in succeeded, but the coordinator could not be notified of this login. ${
-              activityError.message || "Check your connection and Firestore permissions."
-            }`,
-          );
-        }
-      }
-
-      if (profile.role === "admin") {
+      if (userData.role === "admin") {
         navigate("/admin");
-      } else if (profile.role === "client") {
+      } else if (userData.role === "client") {
         navigate("/client");
-      } else if (profile.role === "coordinator") {
-        navigate("/coordinator");
-      } else if (profile.role === "student") {
-        navigate("/Student");
-      } else if (profile.role === "supervisor") {
-        navigate("/supervisor");
       } else {
         alert("Invalid user role.");
       }
     } catch (error) {
-      const authMessages = {
-        "auth/invalid-credential":
-          "The email or password is incorrect. Confirm that this account exists in Firebase Authentication.",
-        "auth/user-not-found": "No Firebase account was found for this email.",
-        "auth/user-disabled": "This account has been deactivated or archived. Please contact the administrator.",
-        "auth/wrong-password": "The password is incorrect.",
-      };
-      setErrorMessage(authMessages[error.code] || error.message);
+      alert(error.message);
     }
   };
 
   useEffect(() => {
-    const redirectUser = async () => {
+const redirectUser = async () => {
       if (!user) return;
 
       try {
@@ -96,12 +57,6 @@ function Login() {
           navigate("/admin", { replace: true });
         } else if (userData.role === "client") {
           navigate("/client", { replace: true });
-        } else if (userData.role === "student") {
-          navigate("/Student", { replace: true });
-        } else if (userData.role === "coordinator") {
-          navigate("/coordinator", { replace: true });
-        } else if (userData.role === "supervisor") {
-          navigate("/supervisor", { replace: true });
         }
       } catch (error) {
         console.error("Error checking user role:", error);
@@ -111,17 +66,21 @@ function Login() {
     redirectUser();
   }, [user, navigate]);
 
+
+
   return (
     <div className="login-container">
-      <div className="login-panel">
-        <div className="login-badge" aria-label="University logo">
-          <img src={schoolLogo} alt="La Consolacion College logo" />
-        </div>
-
-        <div className="login-brand">
-          <h3>La Consolacion College-Isabela</h3>
-          <span>OJT Monitoring System</span>
-        </div>
+      <div className="login-story">
+        <div className="login-mark"><BriefcaseBusiness size={21} /></div>
+        <p className="login-overline">LCCI · OJT MONITORING</p>
+        <h1>Make every placement count.</h1>
+        <p className="login-story-copy">A clearer view of students, partners, attendance, and progress, all in one place.</p>
+        <div className="login-story-line"><span /> Built for better coordination</div>
+      </div>
+      <div className="login-card">
+        <p className="login-card-kicker">Welcome back</p>
+        <h2>Sign in to your workspace</h2>
+        <p className="login-card-copy">Use your LCCI account to continue.</p>
 
         <form onSubmit={handleLogin}>
           <div className="input-group">
@@ -135,36 +94,18 @@ function Login() {
             />
           </div>
 
-          <div className="input-group password-group">
+          <div className="input-group">
             <label htmlFor="password">Password</label>
-            <div className="password-input-wrap">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                onClick={() => setShowPassword((current) => !current)}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
+            <input
+              id="password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
 
-          {errorMessage && (
-            <p className="login-error" role="alert">
-              {errorMessage}
-            </p>
-          )}
-
-          <button type="submit" className="login-submit-button">
-            Login
-          </button>
+          <button type="submit">Continue <ArrowRight size={17} /></button>
         </form>
       </div>
     </div>
