@@ -3,6 +3,7 @@ import { collection, onSnapshot, query as firestoreQuery, where } from "firebase
 import { Eye } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 import { PageHeader, SearchBox, Status } from "./SupervisorComponents";
 
 function Trainess() {
@@ -17,7 +18,7 @@ function Trainess() {
 		return onSnapshot(
 			firestoreQuery(collection(db, "students"), where("supervisorUid", "==", user.uid)),
 			(snapshot) => {
-				setStudents(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+				setStudents(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
 				setLoading(false);
 				setError("");
 			},

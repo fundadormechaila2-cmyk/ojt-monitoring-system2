@@ -94,6 +94,8 @@ export const createManagedUser = async ({
       phone: phone?.trim() || "",
       role,
       status: "ACTIVE",
+      isActive: true,
+      isArchived: false,
       mustChangePassword: true,
       ...(studentId ? { studentId } : {}),
       ...(studentRecordId ? { studentRecordId } : {}),

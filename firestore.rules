@@ -18,8 +18,32 @@ service cloud.firestore {
       return get(userPath(request.auth.uid)).data;
     }
 
+    function liveProfile(data) {
+      return data.get("isActive", true) != false &&
+        data.get("isArchived", false) != true &&
+        !(data.get("status", "ACTIVE") in ["INACTIVE", "ARCHIVED", "inactive", "archived"]);
+    }
+
+    function isLive() {
+      return hasProfile() && liveProfile(profile());
+    }
+
     function hasRole(role) {
-      return hasProfile() && profile().role == role;
+      return isLive() && profile().role == role;
+    }
+
+    function studentAccountLive(studentUid) {
+      return !(studentUid is string) ||
+        !exists(userPath(studentUid)) ||
+        liveProfile(get(userPath(studentUid)).data);
+    }
+
+    function lifecycleKeys() {
+      return [
+        "isActive", "isArchived", "deletedAt", "deletedBy", "deactivatedAt",
+        "deactivatedBy", "reactivatedAt", "reactivatedBy", "restoredAt",
+        "restoredBy", "deletionPending", "accountDeleted", "deletedAccountSnapshot"
+      ];
     }
 
     function isAdmin() {
@@ -84,7 +108,11 @@ service cloud.firestore {
           request.resource.data.role == "supervisor" &&
           (request.resource.data.createdBy == request.auth.uid ||
             !("createdBy" in request.resource.data)));
-      allow update: if isAdmin() ||
+      allow update: if (isAdmin() &&
+          (request.auth.uid != userId ||
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              "role", "status"
+            ].concat(lifecycleKeys())))) ||
         (coordinatorOwns(resource.data) &&
           resource.data.role == "student" &&
           request.resource.data.coordinatorUid == request.auth.uid &&
@@ -93,15 +121,21 @@ service cloud.firestore {
           ]) && validSupervisorAssignment(request.resource.data)) ||
         (isCoordinator() &&
           resource.data.role == "supervisor" &&
+          request.resource.data.role == "supervisor" &&
           (resource.data.createdBy == request.auth.uid ||
-            !("createdBy" in resource.data))) ||
-        (signedIn() && request.auth.uid == userId &&
+            !("createdBy" in resource.data)) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "firstName", "lastName", "phone", "position", "company",
+            "partnerCompanyId", "updatedAt"
+          ])) ||
+        (isLive() && request.auth.uid == userId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "role", "department", "coordinatorUid", "supervisorUid",
             "studentRecordId", "studentId", "status", "createdBy",
             "createdAt", "mustChangePassword", "temporaryPassword"
-          ]));
-      allow delete: if isAdmin();
+          ].concat(lifecycleKeys())));
+      // Accounts are removed only by the manageAccount Cloud Function.
+      allow delete: if false;
     }
 
     match /students/{studentId} {
@@ -113,7 +147,8 @@ service cloud.firestore {
           studentId == request.auth.uid)) ||
         (resource.data.studentUid is string &&
           supervisorOwnsStudent(resource.data.studentUid));
-      allow create, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow delete: if false;
       allow update: if isAdmin() ||
         (coordinatorOwns(resource.data) &&
           request.resource.data.coordinatorUid == request.auth.uid &&
@@ -125,7 +160,7 @@ service cloud.firestore {
           studentId == request.auth.uid) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "role", "coordinatorUid", "supervisorUid", "studentUid", "requiredHours", "status", "ojtStatus"
-          ]));
+          ].concat(lifecycleKeys())));
     }
 
     match /attendance/{attendanceId} {
@@ -138,12 +173,15 @@ service cloud.firestore {
           supervisorOwnsStudent(resource.data.studentUid));
       allow create: if isAdmin() ||
         (isSupervisor() &&
-          request.resource.data.supervisorId == request.auth.uid);
+          request.resource.data.supervisorId == request.auth.uid &&
+          studentAccountLive(request.resource.data.get("studentUid", null)));
       allow update: if isAdmin() ||
         (isSupervisor() &&
           (resource.data.supervisorId == request.auth.uid ||
-           request.resource.data.supervisorId == request.auth.uid));
-      allow delete: if isAdmin();
+           request.resource.data.supervisorId == request.auth.uid) &&
+          studentAccountLive(resource.data.get("studentUid", null)));
+      // Attendance is academic history and is never hard-deleted from clients.
+      allow delete: if false;
     }
 
     match /attendanceQrScans/{scanId} {
@@ -167,7 +205,8 @@ service cloud.firestore {
         (!("coordinatorUid" in request.resource.data) ||
           request.resource.data.coordinatorUid == profile().coordinatorUid) &&
         request.resource.data.loggedInAt == request.time;
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
     }
 
     match /applications/{applicationId} {
@@ -185,7 +224,7 @@ service cloud.firestore {
         (isSupervisor() && resource.data.studentUid is string &&
           supervisorOwnsStudent(resource.data.studentUid) &&
           request.resource.data.studentUid == resource.data.studentUid);
-      allow delete: if isAdmin();
+      allow delete: if false;
     }
 
     match /evaluations/{evaluationId} {
@@ -203,13 +242,23 @@ service cloud.firestore {
         (isSupervisor() && resource.data.studentUid is string &&
           supervisorOwnsStudent(resource.data.studentUid) &&
           request.resource.data.studentUid == resource.data.studentUid);
-      allow delete: if isAdmin();
+      allow delete: if false;
     }
 
     match /partnerCompanies/{companyId} {
       allow read: if isAdmin() || isCoordinator() || isSupervisor();
       allow create, update: if isAdmin() || isCoordinator();
       allow delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /{document=**} {

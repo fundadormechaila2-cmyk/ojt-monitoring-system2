@@ -1,10 +1,11 @@
 import "../styles/login.css";
 import schoolLogo from "../assets/school-logo.png";
 import { useState, useEffect } from "react";
-import { login } from "../services/authService";
+import { login, logout } from "../services/authService";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { getUserData } from "../services/userService";
+import { isAccountLive } from "../services/recordState";
 import { recordStudentLogin } from "../services/studentLoginActivityService";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -35,6 +36,12 @@ function Login() {
 
       if (!profile) {
         alert("User profile not found.");
+        return;
+      }
+
+      if (!isAccountLive(profile)) {
+        await logout();
+        setErrorMessage("This account has been deactivated or archived. Please contact the administrator.");
         return;
       }
 
@@ -69,6 +76,7 @@ function Login() {
         "auth/invalid-credential":
           "The email or password is incorrect. Confirm that this account exists in Firebase Authentication.",
         "auth/user-not-found": "No Firebase account was found for this email.",
+        "auth/user-disabled": "This account has been deactivated or archived. Please contact the administrator.",
         "auth/wrong-password": "The password is incorrect.",
       };
       setErrorMessage(authMessages[error.code] || error.message);

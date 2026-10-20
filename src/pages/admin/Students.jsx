@@ -12,11 +12,12 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { Eye, KeyRound, Plus, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, Eye, KeyRound, Plus, Search, Trash2, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { COURSES } from "../../constants/courses";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
+import AccountActionDialog from "../../components/AccountActionDialog";
 import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
 
@@ -107,6 +108,7 @@ function Students() {
     email: "",
   });
   const [saving, setSaving] = useState(false);
+  const [accountAction, setAccountAction] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [page, setPage] = useState(1);
@@ -190,8 +192,10 @@ function Students() {
             .toLowerCase()
             .includes(query)) &&
         (courseFilter === "All courses" || student.course === courseFilter) &&
-        (statusFilter === "All statuses" ||
-          statusFilter === "No account" ||
+        (statusFilter === "Archived"
+          ? student.isArchived === true
+          : student.isArchived !== true) &&
+        (["All statuses", "No account", "Archived"].includes(statusFilter) ||
           student.status === statusFilter) &&
         (statusFilter !== "No account" || !account)
       );
@@ -203,9 +207,9 @@ function Students() {
     page * pageSize,
   );
   const accountCount = records.filter((student) =>
-    accountForStudent(student, users),
+    student.isArchived !== true && accountForStudent(student, users),
   ).length;
-  const counts = records.reduce(
+  const counts = records.filter((student) => student.isArchived !== true).reduce(
     (result, student) => {
       result[student.status] = (result[student.status] || 0) + 1;
       return result;
@@ -214,7 +218,7 @@ function Students() {
   );
 
   const coordinators = useMemo(
-    () => users.filter((account) => account.role === "coordinator"),
+    () => users.filter((account) => account.role === "coordinator" && account.isArchived !== true && account.isActive !== false),
     [users],
   );
 
@@ -225,7 +229,7 @@ function Students() {
 
   const unassignedMatchingStudents = useMemo(() => {
     return students.filter((s) => {
-      if (s.coordinatorUid) return false;
+      if (s.coordinatorUid || s.isArchived === true) return false;
       return Boolean(findCoordinatorForCourse(s.course, users));
     });
   }, [students, users]);
@@ -597,6 +601,24 @@ function Students() {
     }
   };
 
+  const openAccountAction = (action, student, account) => setAccountAction({
+    action,
+    target: {
+      type: "student",
+      id: student.id,
+      name: student.name,
+      email: account?.email || student.email || student.accountEmail || "",
+      role: "student",
+    },
+  });
+
+  const finishAccountAction = (message, warnings) => {
+    setAccountAction(null);
+    setError("");
+    setNotice([message, ...warnings].join(" "));
+    window.setTimeout(() => setNotice(""), 5000);
+  };
+
   const clearFilters = () => {
     setSearchTerm("");
     setCourseFilter("All courses");
@@ -703,6 +725,7 @@ function Students() {
               <option>PROCESSING</option>
               <option>COMPLETED</option>
               <option>No account</option>
+              <option>Archived</option>
             </select>
           </div>
         </div>
@@ -755,7 +778,37 @@ function Students() {
                         >
                           <Eye size={15} />
                         </button>
-                        {!account && (
+                        {student.isArchived === true ? (
+                          <button
+                            type="button"
+                            className="student-action"
+                            title="Restore student"
+                            aria-label={`Restore ${student.name}`}
+                            onClick={() => openAccountAction("restore", student, account)}
+                          >
+                            <ArchiveRestore size={15} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="student-action"
+                            title="Archive student"
+                            aria-label={`Archive ${student.name}`}
+                            onClick={() => openAccountAction("archive", student, account)}
+                          >
+                            <Archive size={15} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="student-action"
+                          title="Delete permanently"
+                          aria-label={`Delete ${student.name}`}
+                          onClick={() => openAccountAction("delete", student, account)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                        {!account && student.isArchived !== true && (
                           <button
                             type="button"
                             className="student-action"
@@ -1098,6 +1151,7 @@ function Students() {
         </div>
       )}
 
+      {accountAction && <AccountActionDialog {...accountAction} onClose={() => setAccountAction(null)} onDone={finishAccountAction} />}
       {notice && <div className="students-notice" role="status">{notice}</div>}
     </main>
   );

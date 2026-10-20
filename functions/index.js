@@ -6,6 +6,9 @@ const { HttpsError, onCall } = require("firebase-functions/v2/https");
 
 initializeApp();
 
+const { isAccountLive, isRecordArchived } = require("./accountState");
+exports.manageAccount = require("./accountManagement").manageAccount;
+
 const db = getFirestore();
 const attendanceQrSecret = defineSecret("ATTENDANCE_QR_SECRET");
 const tokenLifetimeSeconds = 30;
@@ -106,11 +109,17 @@ async function getStudentRecord(studentUid, profile) {
 }
 
 async function assertSupervisorAssignment(supervisorUid, supervisorProfile, studentUid, studentProfile) {
-  if (supervisorProfile.status && supervisorProfile.status !== "ACTIVE") {
+  if (!isAccountLive(supervisorProfile)) {
     throw new HttpsError("permission-denied", "This supervisor account is inactive.");
+  }
+  if (!isAccountLive(studentProfile)) {
+    throw new HttpsError("failed-precondition", "This student account is inactive or archived.");
   }
 
   const studentRecord = await getStudentRecord(studentUid, studentProfile);
+  if (isRecordArchived(studentRecord)) {
+    throw new HttpsError("failed-precondition", "This student record is archived.");
+  }
   const assignedSupervisorUid = studentProfile.supervisorUid || studentRecord?.supervisorUid;
   if (assignedSupervisorUid !== supervisorUid) {
     throw new HttpsError("permission-denied", "This student is not assigned to your supervisor account.");
@@ -156,6 +165,9 @@ exports.issueStudentAttendanceQrToken = onCall(
     const studentProfile = await getUserProfile(studentUid);
     if (studentProfile?.role !== "student") {
       throw new HttpsError("permission-denied", "Only students can generate a student attendance QR code.");
+    }
+    if (!isAccountLive(studentProfile)) {
+      throw new HttpsError("permission-denied", "This student account is inactive or archived.");
     }
 
     const now = Date.now();

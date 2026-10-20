@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 import { createManagedUser } from "../../services/userManagementSevice";
 
 const emptyForm = {
@@ -84,7 +85,7 @@ function Supervisor() {
       supervisorsQuery,
       (snapshot) => {
         setSupervisors(
-          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+          withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
         );
         setLoading(false);
         setLoadError("");
@@ -112,7 +113,7 @@ function Supervisor() {
     const unsubscribeStudents = onSnapshot(
       query(collection(db, "students"), where("coordinatorUid", "==", user.uid)),
       (snapshot) => {
-        setStudents(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setStudents(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
         studentsLoaded = true;
         updateReferenceLoading();
         setReferenceError("");

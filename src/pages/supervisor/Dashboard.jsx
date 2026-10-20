@@ -5,6 +5,7 @@ import { ArrowRight, CalendarCheck, ClipboardCheck, Clock3, Users } from "lucide
 import { useAuth } from "../../context/useAuth";
 import { PageHeader, StatCard, Status } from "./SupervisorComponents";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 
 function getLocalDate() {
 	return new Intl.DateTimeFormat("en-CA", {
@@ -48,7 +49,7 @@ function Dashboard() {
 		);
 		const unsubscribeStudents = onSnapshot(
 			query(collection(db, "students"), where("supervisorUid", "==", user.uid)),
-			(snapshot) => setStudents(snapshot.docs.map((document) => ({ id: document.id, ...document.data() }))),
+			(snapshot) => setStudents(withoutArchived(snapshot.docs.map((document) => ({ id: document.id, ...document.data() })))),
 			(error) => {
 				console.error("Unable to load assigned supervisor students:", error);
 				setAttendanceError("Assigned student records could not be loaded. Check Firestore permissions.");

@@ -1,8 +1,9 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { Eye, Search } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 import { CoordinatorState, normalizedStudents, useCoordinatorData, useFilteredStudents } from "./coordinatorData.jsx";
 import "../../styles/students-data.css";
 
@@ -30,7 +31,7 @@ function Students() {
         where("role", "==", "supervisor"),
         where("department", "==", user.department),
       ),
-      (snapshot) => setSupervisors(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
+      (snapshot) => setSupervisors(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))).filter((item) => item.isActive !== false)),
       (snapshotError) => {
         console.error("Unable to load department supervisors:", snapshotError);
         setAssignmentError("Department supervisors could not be loaded.");

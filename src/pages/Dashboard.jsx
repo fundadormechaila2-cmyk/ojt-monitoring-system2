@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { db } from "../services/firebase";
+import { withoutArchived } from "../services/recordState";
 import { useAuth } from "../context/useAuth";
 import "../styles/admin-dashboard.css";
 
@@ -107,10 +108,10 @@ function Dashboard() {
           if (!active) return;
           setData((current) => ({
             ...current,
-            [name]: snapshot.docs.map((document) => ({
+            [name]: withoutArchived(snapshot.docs.map((document) => ({
               id: document.id,
               ...document.data(),
-            })),
+            }))),
           }));
           setReady((current) => ({ ...current, [name]: true }));
           setSourceErrors((current) => {

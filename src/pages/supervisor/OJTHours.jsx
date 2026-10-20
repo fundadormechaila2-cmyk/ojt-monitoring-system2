@@ -3,6 +3,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { BarChart3 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 import { PageHeader } from "./SupervisorComponents";
 
 function parseTime(value) {
@@ -44,7 +45,7 @@ function OJTHours() {
 		const unsubscribeStudents = onSnapshot(
 			query(collection(db, "students"), where("supervisorUid", "==", user.uid)),
 			(snapshot) => {
-				setStudents(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+				setStudents(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
 				finishLoading.students = true;
 				updateLoading();
 			},

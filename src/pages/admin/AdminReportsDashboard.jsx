@@ -15,6 +15,7 @@ import {
 import { collection, onSnapshot } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 import "../../styles/coordinatordashboard.css";
 
 const sources = [
@@ -132,10 +133,10 @@ function AdminReportsDashboard() {
         (snapshot) => {
           setData((current) => ({
             ...current,
-            [source]: snapshot.docs.map((item) => ({
+            [source]: withoutArchived(snapshot.docs.map((item) => ({
               id: item.id,
               ...item.data(),
-            })),
+            }))),
           }));
           setFailedSources((current) =>
             current.filter((item) => item !== source),

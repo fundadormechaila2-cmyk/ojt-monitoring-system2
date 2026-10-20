@@ -59,7 +59,7 @@ function OJTCoordinators() {
         setCoordinators(
           snapshot.docs
             .map((item) => ({ id: item.id, ...item.data() }))
-            .filter((item) => item.role === "coordinator"),
+            .filter((item) => item.role === "coordinator" && item.isArchived !== true),
         );
         setLoadError("");
         setLoading(false);

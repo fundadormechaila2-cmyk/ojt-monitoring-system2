@@ -2,6 +2,7 @@
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
 import { useAuth } from "../../context/useAuth";
 import "../../styles/coordinator-module.css";
 
@@ -41,10 +42,10 @@ export function useCoordinatorData(sources = coordinatorSources) {
         (snapshot) => {
           setData((current) => ({
             ...current,
-            [source]: snapshot.docs.map((item) => ({
+            [source]: withoutArchived(snapshot.docs.map((item) => ({
               id: item.id,
               ...item.data(),
-            })),
+            }))),
           }));
           loaded += 1;
           if (loaded === sources.length) setLoading(false);
