@@ -1,17 +1,19 @@
-import "../styles/Login.css";
+import "../styles/login.css";
 import { useState } from "react";
-import { login } from "../services/AuthService";
+import { login } from "../services/authService";
 import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import { getUserData } from "../services/userService";
-import { ArrowRight, BriefcaseBusiness } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import schoolLogo from "../assets/school-logo.png";
 
 function Login() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -70,17 +72,16 @@ const redirectUser = async () => {
 
   return (
     <div className="login-container">
-      <div className="login-story">
-        <div className="login-mark"><BriefcaseBusiness size={21} /></div>
-        <p className="login-overline">LCCI · OJT MONITORING</p>
-        <h1>Make every placement count.</h1>
-        <p className="login-story-copy">A clearer view of students, partners, attendance, and progress, all in one place.</p>
-        <div className="login-story-line"><span /> Built for better coordination</div>
-      </div>
       <div className="login-card">
-        <p className="login-card-kicker">Welcome back</p>
-        <h2>Sign in to your workspace</h2>
-        <p className="login-card-copy">Use your LCCI account to continue.</p>
+        <header className="login-heading">
+          <img
+            className="login-logo"
+            src={schoolLogo}
+            alt="La Consolacion College Isabela logo"
+          />
+          <h1>La Consolacion College-Isabela</h1>
+          <p>OJT Monitoring System</p>
+        </header>
 
         <form onSubmit={handleLogin}>
           <div className="input-group">
@@ -96,16 +97,26 @@ const redirectUser = async () => {
 
           <div className="input-group">
             <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="password-input">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                className="password-toggle"
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
           </div>
 
-          <button type="submit">Continue <ArrowRight size={17} /></button>
+          <button className="login-submit" type="submit">Login</button>
         </form>
       </div>
     </div>
