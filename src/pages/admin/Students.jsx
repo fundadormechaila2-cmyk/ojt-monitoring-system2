@@ -738,7 +738,6 @@ function Students() {
                 <th>Student ID</th>
                 <th>Course</th>
                 <th>OJT Status</th>
-                <th>Account</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -762,11 +761,6 @@ function Students() {
                     <td><span className="student-id">{student.studentId || "—"}</span></td>
                     <td>{student.course}</td>
                     <td><span className={`student-status ${statusClass}`}>{student.status}</span></td>
-                    <td>
-                      <span className={`student-account ${account ? "linked" : ""}`}>
-                        {account ? "Account created" : "No account"}
-                      </span>
-                    </td>
                     <td>
                       <div className="student-actions">
                         <button
