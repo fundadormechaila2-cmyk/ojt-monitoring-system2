@@ -9,7 +9,7 @@ const manageAccountCall = httpsCallable(functions, "manageAccount");
 async function callServer(payload) {
   if (USE_CLOUD_FUNCTION) return (await manageAccountCall(payload)).data;
 
-  const token = await auth.currentUser?.getIdToken(true);
+  const token = await auth.currentUser?.getIdToken();
   let response;
   try {
     response = await fetch(LOCAL_API_URL, {
