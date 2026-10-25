@@ -129,6 +129,12 @@ service cloud.firestore {
             "partnerCompanyId", "updatedAt"
           ])) ||
         (isLive() && request.auth.uid == userId &&
+          resource.data.get("mustChangePassword", false) == true &&
+          request.resource.data.mustChangePassword == false &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "mustChangePassword", "temporaryPassword", "updatedAt"
+          ])) ||
+        (isLive() && request.auth.uid == userId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "role", "department", "coordinatorUid", "supervisorUid",
             "studentRecordId", "studentId", "status", "createdBy",

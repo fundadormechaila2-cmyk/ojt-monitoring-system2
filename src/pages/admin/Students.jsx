@@ -22,6 +22,18 @@ import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
 
 const avatarColors = ["blue", "green", "purple", "orange", "teal", "slate"];
+
+// Stops the form from staying disabled forever if the network or Firebase never responds.
+const withTimeout = (promise, label, ms = 30000) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${label} timed out. Check your internet connection and try again.`)),
+        ms,
+      ),
+    ),
+  ]);
 const emptyNewStudent = {
   firstName: "",
   lastName: "",
@@ -529,7 +541,7 @@ function Students() {
     const targetCoordinatorName = coordinatorDisplayName(targetCoordinator);
 
     try {
-      studentReference = await addDoc(collection(db, "students"), {
+      studentReference = await withTimeout(addDoc(collection(db, "students"), {
         name,
         firstName: newStudent.firstName.trim(),
         lastName: newStudent.lastName.trim(),
@@ -550,9 +562,9 @@ function Students() {
         createdBy: user?.uid || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }), "Saving the student record");
 
-      managedUser = await createManagedUser({
+      managedUser = await withTimeout(createManagedUser({
         firstName: newStudent.firstName,
         lastName: newStudent.lastName,
         email,
@@ -565,7 +577,7 @@ function Students() {
         company: newStudent.company,
         coordinatorUid: targetCoordinatorUid,
         coordinatorName: targetCoordinatorName,
-      });
+      }), "Creating the login account");
 
       await updateDoc(doc(db, "students", studentReference.id), {
         studentUid: managedUser.uid,
@@ -660,6 +672,7 @@ function Students() {
             onClick={() => {
               setNewStudent(emptyNewStudent);
               setError("");
+              setSaving(false);
               setAddingStudent(true);
             }}
           >
@@ -932,6 +945,7 @@ function Students() {
               <label>Last name<input required value={accountForm.lastName} onChange={(event) => setAccountForm((current) => ({ ...current, lastName: event.target.value }))} /></label>
               <label>Email address<input type="email" required value={accountForm.email} onChange={(event) => setAccountForm((current) => ({ ...current, email: event.target.value }))} /></label>
               <p>A temporary password will be generated. The account will be linked to this enrolled student record.</p>
+              {error && <div className="students-error" role="alert">{error}</div>}
               <footer>
                 <button type="button" className="students-secondary" disabled={saving} onClick={() => setAccountStudent(null)}>Cancel</button>
                 <button type="submit" className="students-primary" disabled={saving}>{saving ? "Creating account..." : "Create account"}</button>
@@ -1123,6 +1137,11 @@ function Students() {
                 A temporary password will be generated. The student will appear
                 on the coordinator roster automatically.
               </p>
+              {error && (
+                <div className="students-error" role="alert" style={{ gridColumn: "1 / -1" }}>
+                  {error}
+                </div>
+              )}
               <footer>
                 <button
                   type="button"

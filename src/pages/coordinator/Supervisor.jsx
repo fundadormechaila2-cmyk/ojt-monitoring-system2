@@ -11,6 +11,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import "../../styles/tailwind.css";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
@@ -397,7 +398,7 @@ function Supervisor() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] border-collapse text-left">
+              <table className="w-full min-w-[820px] border-collapse text-left">
                 <thead>
                   <tr className="bg-slate-50/80">
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -437,7 +438,7 @@ function Supervisor() {
                             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-blue-50 text-sm font-bold text-blue-700">
                               {initials}
                             </span>
-                            <strong className="text-sm font-semibold text-slate-800">
+                            <strong className="whitespace-nowrap text-sm font-semibold text-slate-800">
                               {name}
                             </strong>
                           </div>
@@ -462,7 +463,7 @@ function Supervisor() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                            className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
                             type="button"
                             onClick={() => setModal({ type: "view", supervisor })}
                             aria-label={`View profile for ${name}`}

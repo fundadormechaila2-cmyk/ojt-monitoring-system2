@@ -1,0 +1,4 @@
+/* Theme + utilities only; Tailwind's preflight reset is skipped so existing page styles are unchanged. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
