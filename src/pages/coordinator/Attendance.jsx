@@ -3,6 +3,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Clock3 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
 import { PageHeader, SearchBox, Status } from "../supervisor/SupervisorComponents";
 
 const recentLoginLimit = 8;
@@ -80,48 +81,17 @@ function attendanceDateOf(record) {
 }
 
 function getPeriodTime(record, period) {
-  const legacyValues = {
-    amIn: record.timeIn || record.morningTimeIn,
-    amOut: record.morningTimeOut,
-    pmIn: record.afternoonTimeIn,
-    pmOut: record.timeOut || record.afternoonTimeOut,
-    overtimeIn:
-      record.overtimeTimeIn || record.overtimeIn || record.overTimeIn || record.otIn,
-    overtimeOut:
-      record.overtimeTimeOut || record.overtimeOut || record.overTimeOut || record.otOut,
-  };
-  return record[period] || legacyValues[period] || "";
+  return getRecordPeriods(record)[period] || "";
 }
 
 function hoursForRecord(record) {
-  const savedHours = Number(record.totalHours ?? record.hours);
-  if (Number.isFinite(savedHours)) return savedHours;
+  return summarizeAttendance(getRecordPeriods(record)).totalHours;
+}
 
-  const hoursBetween = (start, end) => {
-    const parseTime = (value) => {
-      const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
-      if (!match) return null;
-
-      let hour = Number(match[1]) % 12;
-      if (match[3].toUpperCase() === "PM") hour += 12;
-      return hour * 60 + Number(match[2]);
-    };
-    const startMinutes = parseTime(start);
-    const endMinutes = parseTime(end);
-
-    return startMinutes === null || endMinutes === null
-      ? 0
-      : Math.max(0, endMinutes - startMinutes) / 60;
-  };
-
-  return (
-    hoursBetween(getPeriodTime(record, "amIn"), getPeriodTime(record, "amOut")) +
-    hoursBetween(getPeriodTime(record, "pmIn"), getPeriodTime(record, "pmOut")) +
-    hoursBetween(
-      getPeriodTime(record, "overtimeIn"),
-      getPeriodTime(record, "overtimeOut"),
-    )
-  );
+function statusForRecord(record) {
+  return record.status === "Absent"
+    ? "Absent"
+    : summarizeAttendance(getRecordPeriods(record)).status;
 }
 
 function loginTimeLabel(timestamp) {
@@ -245,10 +215,12 @@ function Attendance() {
           displayName:
             record.studentName || record.student || getStudentName(student || {}),
           displayId: record.studentId || getStudentId(student || {}) || "—",
+          displayDepartment:
+            record.department || student?.department || student?.course || "—",
         };
       })
       .filter((record) =>
-        `${record.displayName} ${record.displayId} ${record.company || ""}`
+        `${record.displayName} ${record.displayId} ${record.displayDepartment} ${record.company || ""}`
           .toLowerCase()
           .includes(queryText),
       )
@@ -299,6 +271,7 @@ function Attendance() {
                 <th rowSpan={2}>Date</th>
                 <th rowSpan={2}>Student</th>
                 <th rowSpan={2}>ID Number</th>
+                <th rowSpan={2}>Department</th>
                 {attendanceGroups.map((group) => (
                   <th
                     className="text-center"
@@ -324,13 +297,13 @@ function Attendance() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="supervisor-empty" colSpan={11}>
+                  <td className="supervisor-empty" colSpan={12}>
                     Loading attendance records...
                   </td>
                 </tr>
               ) : visibleRecords.length === 0 ? (
                 <tr>
-                  <td className="supervisor-empty" colSpan={11}>
+                  <td className="supervisor-empty" colSpan={12}>
                     {error
                       ? "Attendance records are unavailable."
                       : "No attendance records found for this date."}
@@ -342,6 +315,7 @@ function Attendance() {
                     <td>{attendanceDateOf(record) || "—"}</td>
                     <td><strong>{record.displayName}</strong></td>
                     <td>{record.displayId}</td>
+                    <td>{record.displayDepartment}</td>
                     {attendancePeriods.map((period) => (
                       <td key={period.value}>{getPeriodTime(record, period.value) || "—"}</td>
                     ))}
@@ -349,7 +323,7 @@ function Attendance() {
                       {hoursForRecord(record).toFixed(2)}
                     </td>
                     <td>
-                      <Status value={String(record.status || "Pending")} />
+                      <Status value={statusForRecord(record)} />
                     </td>
                   </tr>
                 ))
@@ -359,7 +333,10 @@ function Attendance() {
         </div>
         <footer className="px-5 py-3 text-xs text-slate-500">
           Showing {visibleRecords.length} attendance record
-          {visibleRecords.length === 1 ? "" : "s"}
+          {visibleRecords.length === 1 ? "" : "s"} · Total hours{" "}
+          {visibleRecords.reduce((sum, record) => sum + hoursForRecord(record), 0).toFixed(2)}h
+          {" "}(all dates:{" "}
+          {records.reduce((sum, record) => sum + hoursForRecord(record), 0).toFixed(2)}h)
         </footer>
       </section>
 

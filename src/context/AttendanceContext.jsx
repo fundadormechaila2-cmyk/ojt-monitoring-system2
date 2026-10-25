@@ -30,7 +30,9 @@ export function AttendanceProvider({ children }) {
       ? [where("coordinatorUid", "==", user.uid)]
       : user?.role === "student"
         ? [where("studentUid", "==", user.uid)]
-        : [],
+        : user?.role === "supervisor"
+          ? [where("supervisorId", "==", user.uid)]
+          : [],
     (items) => {
     setRecords(items.map(normalizeAttendance));
     setLoading(false);

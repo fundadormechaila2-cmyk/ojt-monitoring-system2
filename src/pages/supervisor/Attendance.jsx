@@ -3,7 +3,12 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Search } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import {
+  getRecordPeriods,
+  summarizeAttendance,
+} from "../../services/manualAttendanceService";
 import { PageHeader } from "./SupervisorComponents";
+import "../../styles/tailwind.css";
 
 const attendanceGroups = [
   {
@@ -65,15 +70,16 @@ function studentNameOf(student) {
 }
 
 function attendanceTime(record, period) {
-  const legacyFields = {
-    amIn: record.timeIn || record.morningTimeIn,
-    amOut: record.morningTimeOut,
-    pmIn: record.afternoonTimeIn,
-    pmOut: record.timeOut || record.afternoonTimeOut,
-    overtimeIn: record.overtimeIn || record.otIn,
-    overtimeOut: record.overtimeOut || record.otOut,
+  return getRecordPeriods(record)[period] || "";
+}
+
+function recordSummary(record) {
+  const summary = summarizeAttendance(getRecordPeriods(record));
+  const stored = String(record.status || "");
+  return {
+    hours: summary.totalHours,
+    status: stored === "Absent" ? "Absent" : summary.status,
   };
-  return record[period] || legacyFields[period] || "";
 }
 
 function Attendance() {
@@ -220,11 +226,11 @@ function Attendance() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="9">Loading attendance records...</td>
+                  <td colSpan="11">Loading attendance records...</td>
                 </tr>
               ) : visibleRecords.length === 0 ? (
                 <tr>
-                  <td colSpan="9">
+                  <td colSpan="11">
                     {error
                       ? "Attendance records are unavailable."
                       : "No attendance records found for this date."}
@@ -235,6 +241,7 @@ function Attendance() {
                   const student =
                     studentById.get(String(record.studentId || "")) ||
                     students.find((item) => item.id === record.studentUid);
+                  const { hours, status } = recordSummary(record);
                   return (
                     <tr key={record.id}>
                       <td>{record.date || "—"}</td>
@@ -251,20 +258,14 @@ function Attendance() {
                           {attendanceTime(record, item.value) || "—"}
                         </td>
                       ))}
-                      <td>
-                        {Number(
-                          record.totalHours ?? record.hours ?? 0,
-                        ).toFixed(2)}
-                      </td>
+                      <td>{hours.toFixed(2)}</td>
                       <td>
                         <span
-                          className={`supervisor-status ${
-                            String(record.status || "Pending")
-                              .toLowerCase()
-                              .replace(/\s+/g, "-")
-                          }`}
+                          className={`supervisor-status ${status
+                            .toLowerCase()
+                            .replace(/\s+/g, "-")}`}
                         >
-                          {record.status || "Pending"}
+                          {status}
                         </span>
                       </td>
                     </tr>

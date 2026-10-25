@@ -12,16 +12,50 @@ async function count(query) {
   return snapshot.data().count;
 }
 
-async function requireActiveAdmin(db, request) {
+async function requireActor(db, request) {
   if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in as an administrator to manage accounts.");
+    throw new HttpsError("unauthenticated", "Sign in to manage accounts.");
   }
   const snapshot = await db.collection("users").doc(request.auth.uid).get();
   const profile = snapshot.exists ? snapshot.data() : null;
-  if (profile?.role !== "admin" || !isAccountLive(profile)) {
-    throw new HttpsError("permission-denied", "Only active administrators can manage accounts.");
+  if (!profile || !isAccountLive(profile) || !["admin", "coordinator"].includes(profile.role)) {
+    throw new HttpsError("permission-denied", "Only active administrators or coordinators can manage accounts.");
   }
   return profile;
+}
+
+// Coordinators may only preview or delete supervisors of their own department.
+function assertCoordinatorScope(actor, action, target) {
+  const department = String(actor.department || "").trim().toLowerCase();
+  const targetDepartment = String(target.user?.department || "").trim().toLowerCase();
+  if (
+    !["preview", "delete"].includes(action) ||
+    target.user?.role !== "supervisor" ||
+    !department ||
+    department !== targetDepartment
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "Coordinators can only delete supervisors in their own department.",
+    );
+  }
+}
+
+async function unassignStudents(db, supervisorUid) {
+  const students = await db.collection("students").where("supervisorUid", "==", supervisorUid).get();
+  for (const student of students.docs) {
+    const clear = {
+      supervisorUid: FieldValue.delete(),
+      supervisorName: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    await student.ref.update(clear);
+    const studentUid = student.data().studentUid;
+    if (studentUid) {
+      await db.collection("users").doc(studentUid).update(clear).catch(() => {});
+    }
+  }
+  return students.size;
 }
 
 async function findRosterRefs(db, uid, user) {
@@ -207,7 +241,7 @@ const messages = {
 
 async function handleManageAccount(request) {
   const db = getFirestore();
-  const adminProfile = await requireActiveAdmin(db, request);
+  const adminProfile = await requireActor(db, request);
   const adminUid = request.auth.uid;
   const action = request.data?.action;
   if (!ACTIONS.includes(action)) {
@@ -218,6 +252,8 @@ async function handleManageAccount(request) {
   if (!target.user && !target.roster) {
     throw new HttpsError("not-found", "The account no longer exists.");
   }
+  const isCoordinatorActor = adminProfile.role === "coordinator";
+  if (isCoordinatorActor) assertCoordinatorScope(adminProfile, action, target);
   const role = target.user?.role || "student";
   const related = await relatedSummary(db, target);
   const base = {
@@ -265,8 +301,11 @@ async function handleManageAccount(request) {
       if (request.data?.confirm !== true) {
         throw new HttpsError("failed-precondition", "Permanent deletion must be confirmed.");
       }
-      if (related.blockers.length) {
+      if (related.blockers.length && !isCoordinatorActor) {
         throw new HttpsError("failed-precondition", related.blockers[0]);
+      }
+      if (isCoordinatorActor) {
+        await unassignStudents(db, target.uid);
       }
 
       if (!target.user) {

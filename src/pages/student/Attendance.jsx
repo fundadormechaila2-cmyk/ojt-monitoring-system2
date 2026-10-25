@@ -5,6 +5,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "../../context/useAuth";
 import { issueStudentAttendanceQrToken } from "../../services/attendanceQrService";
 import { db } from "../../services/firebase";
+import { getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 import "../../styles/student-attendance-qr.css";
 
@@ -28,8 +29,18 @@ function formatDateLabel(value) {
   });
 }
 
+function withTimes(record) {
+  if (!record) return null;
+  const periods = getRecordPeriods(record);
+  const summary = summarizeAttendance(periods);
+  const status = record.status === "Absent" ? "Absent" : summary.status;
+  return { ...record, ...periods, totalHours: summary.totalHours, status };
+}
+
 function Attendance() {
   const { user } = useAuth();
+  const [dateFilter, setDateFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [qr, setQr] = useState(null);
   const [qrError, setQrError] = useState("");
   const [clockNow, setClockNow] = useState(0);
@@ -43,7 +54,20 @@ function Attendance() {
   const currentAttendanceState = attendanceState.uid === studentUid
     ? attendanceState
     : { records: [], loading: Boolean(studentUid), error: "" };
-  const attendanceRecords = currentAttendanceState.records;
+  const attendanceRecords = useMemo(
+    () => currentAttendanceState.records.map(withTimes),
+    [currentAttendanceState.records],
+  );
+  const visibleRecords = useMemo(() => {
+    const text = search.trim().toLowerCase();
+    return attendanceRecords
+      .filter((record) => !dateFilter || record.date === dateFilter)
+      .filter(
+        (record) =>
+          !text ||
+          `${record.studentName || ""} ${record.studentId || ""}`.toLowerCase().includes(text),
+      );
+  }, [attendanceRecords, dateFilter, search]);
   const attendanceLoading = currentAttendanceState.loading;
   const attendanceError = currentAttendanceState.error;
   const secondsRemaining = qr
@@ -114,8 +138,8 @@ function Attendance() {
         const records = snapshot.docs
           .map((document) => ({ id: document.id, ...document.data() }))
           .sort((left, right) =>
-            `${right.date || ""} ${right.timeIn || ""}`.localeCompare(
-              `${left.date || ""} ${left.timeIn || ""}`,
+            `${right.date || ""} ${right.updatedAt?.seconds || ""}`.localeCompare(
+              `${left.date || ""} ${left.updatedAt?.seconds || ""}`,
             ),
           );
         setAttendanceState({ uid: studentUid, records, loading: false, error: "" });
@@ -207,19 +231,27 @@ function Attendance() {
             <div className="student-attendance-today-grid">
               <div>
                 <span>AM / IN</span>
-                <strong>{todaysAttendance?.amIn || todaysAttendance?.timeIn || "Not recorded"}</strong>
+                <strong>{todaysAttendance?.amIn || "Not recorded"}</strong>
               </div>
               <div>
                 <span>AM / OUT</span>
-                <strong>{todaysAttendance?.amOut || todaysAttendance?.morningTimeOut || "Not recorded"}</strong>
+                <strong>{todaysAttendance?.amOut || "Not recorded"}</strong>
               </div>
               <div>
                 <span>PM / IN</span>
-                <strong>{todaysAttendance?.pmIn || todaysAttendance?.afternoonTimeIn || "Not recorded"}</strong>
+                <strong>{todaysAttendance?.pmIn || "Not recorded"}</strong>
               </div>
               <div>
                 <span>PM / OUT</span>
-                <strong>{todaysAttendance?.pmOut || todaysAttendance?.timeOut || todaysAttendance?.afternoonTimeOut || "Not recorded"}</strong>
+                <strong>{todaysAttendance?.pmOut || "Not recorded"}</strong>
+              </div>
+              <div>
+                <span>Overtime / IN</span>
+                <strong>{todaysAttendance?.overtimeIn || "Not recorded"}</strong>
+              </div>
+              <div>
+                <span>Overtime / OUT</span>
+                <strong>{todaysAttendance?.overtimeOut || "Not recorded"}</strong>
               </div>
               <div>
                 <span>Today’s hours</span>
@@ -244,36 +276,63 @@ function Attendance() {
             <p className="student-panel-subtitle">History</p>
             <h2 className="student-panel-title">Attendance Records</h2>
           </div>
-          <span className="student-attendance-record-count">{attendanceRecords.length} records</span>
+          <span className="student-attendance-record-count">{visibleRecords.length} records</span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, margin: "0 0 12px" }}>
+          <input
+            type="search"
+            aria-label="Search attendance records"
+            placeholder="Search student name or ID"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            style={{ flex: "1 1 220px", minHeight: 38, padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: 8 }}
+          />
+          <label className="student-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Date
+            <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} style={{ minHeight: 38, padding: "0 8px", border: "1px solid #e2e8f0", borderRadius: 8 }} />
+            {dateFilter && (
+              <button type="button" onClick={() => setDateFilter("")}>Clear</button>
+            )}
+          </label>
         </div>
         {attendanceError && <p className="student-attendance-qr-error" role="alert">{attendanceError}</p>}
         <div className="student-table-wrap">
           <table className="student-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>AM In</th>
-                <th>AM Out</th>
-                <th>PM In</th>
-                <th>PM Out</th>
-                <th>Total Hours</th>
-                <th>Status</th>
+                <th rowSpan={2}>Date</th>
+                <th rowSpan={2}>Student</th>
+                <th rowSpan={2}>ID Number</th>
+                <th colSpan={2} style={{ textAlign: "center" }}>AM</th>
+                <th colSpan={2} style={{ textAlign: "center" }}>PM</th>
+                <th colSpan={2} style={{ textAlign: "center" }}>Overtime</th>
+                <th rowSpan={2}>Hours</th>
+                <th rowSpan={2}>Status</th>
+              </tr>
+              <tr>
+                {["In", "Out", "In", "Out", "In", "Out"].map((label, index) => (
+                  <th key={index} style={{ textAlign: "center" }}>{label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {attendanceLoading ? (
-                <tr><td colSpan="7">Loading attendance records...</td></tr>
-              ) : attendanceRecords.length === 0 ? (
-                <tr><td colSpan="7"><div className="student-empty-state">No attendance records have been recorded yet.</div></td></tr>
+                <tr><td colSpan="11">Loading attendance records...</td></tr>
+              ) : visibleRecords.length === 0 ? (
+                <tr><td colSpan="11"><div className="student-empty-state">{attendanceRecords.length ? "No attendance records found." : "No attendance records have been recorded yet."}</div></td></tr>
               ) : (
-                attendanceRecords.map((record) => (
+                visibleRecords.map((record) => (
                   <tr key={record.id}>
                     <td>{formatDateLabel(record.date)}</td>
-                    <td>{record.amIn || record.timeIn || record.morningTimeIn || "—"}</td>
-                    <td>{record.amOut || record.morningTimeOut || "—"}</td>
-                    <td>{record.pmIn || record.afternoonTimeIn || "—"}</td>
-                    <td>{record.pmOut || record.timeOut || record.afternoonTimeOut || "—"}</td>
-                    <td>{Number(record.totalHours ?? record.hours ?? 0).toFixed(2)}h</td>
+                    <td><strong>{record.studentName || user?.name || "—"}</strong></td>
+                    <td>{record.studentId || "—"}</td>
+                    <td>{record.amIn || "—"}</td>
+                    <td>{record.amOut || "—"}</td>
+                    <td>{record.pmIn || "—"}</td>
+                    <td>{record.pmOut || "—"}</td>
+                    <td>{record.overtimeIn || "—"}</td>
+                    <td>{record.overtimeOut || "—"}</td>
+                    <td>{Number(record.totalHours).toFixed(2)}</td>
                     <td>
                       <span className={`status-badge ${record.status === "Present" ? "active" : "pending"}`}>
                         {record.status || "Incomplete"}

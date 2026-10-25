@@ -15,11 +15,11 @@
 }
 
 .coordinator-dashboard-header {
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 
 .dashboard-eyebrow {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   color: #2868c7;
   font-size: 12px;
   font-weight: 700;
@@ -27,11 +27,12 @@
 }
 
 .coordinator-dashboard h1 {
-  margin: 0 0 8px;
-  font-size: 32px;
+  margin: 0 0 4px;
+  font-size: 26px;
 }
 
 .coordinator-dashboard-header p:last-child {
+  margin: 0;
   color: #718096;
 }
 
@@ -66,15 +67,15 @@
 
 .coordinator-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .coordinator-stats article,
 .coordinator-stats button,
 .coordinator-panel {
-  padding: 20px;
+  padding: 12px 16px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(24, 38, 63, 0.05);
@@ -92,13 +93,13 @@
 
 .coordinator-stats span {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   color: #718096;
   font-size: 13px;
 }
 
 .coordinator-stats strong {
-  font-size: 28px;
+  font-size: 22px;
 }
 
 .coordinator-stats strong,

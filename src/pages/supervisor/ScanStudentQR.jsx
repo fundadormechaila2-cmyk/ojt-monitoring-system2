@@ -14,8 +14,9 @@ import {
 import { db } from "../../services/firebase";
 import { useAuth } from "../../context/useAuth";
 import { scanStudentAttendanceQr } from "../../services/attendanceQrService";
-import { saveManualAttendance } from "../../services/manualAttendanceService";
+import { saveManualAttendance, SESSIONS, DEFAULT_SCHEDULE } from "../../services/manualAttendanceService";
 import { PageHeader } from "./SupervisorComponents";
+import "../../styles/tailwind.css";
 import "../../styles/supervisor-student-qr.css";
 
 const SupervisorStudentQrScanner = lazy(() => import("./SupervisorStudentQrScanner"));
@@ -25,7 +26,22 @@ const attendancePeriods = [
   { value: "amOut", label: "AM / OUT" },
   { value: "pmIn", label: "PM / IN" },
   { value: "pmOut", label: "PM / OUT" },
+  { value: "overtimeIn", label: "Overtime / IN" },
+  { value: "overtimeOut", label: "Overtime / OUT" },
 ];
+
+const scheduleFieldClass =
+  "min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm font-normal text-slate-800 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100";
+
+function loadSchedule(uid) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(`attendanceSchedule:${uid}`));
+    if (saved?.pmStart && saved?.overtimeStart) return saved;
+  } catch {
+    // fall back to defaults
+  }
+  return DEFAULT_SCHEDULE;
+}
 
 function getLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -33,6 +49,15 @@ function getLocalDate() {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+  }).format(new Date());
+}
+
+function getLocalTime() {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
   }).format(new Date());
 }
 
@@ -67,8 +92,21 @@ function ScanStudentQR() {
   const [manualFeedback, setManualFeedback] = useState(null);
   const [studentId, setStudentId] = useState("");
   const [manualDate, setManualDate] = useState(getLocalDate);
+  const [manualTime, setManualTime] = useState(getLocalTime);
   const [period, setPeriod] = useState("amIn");
   const [savingManual, setSavingManual] = useState(false);
+  const [scanSession, setScanSession] = useState("auto");
+  const [schedule, setSchedule] = useState(() => loadSchedule(user?.uid));
+
+  const updateSchedule = (field, value) => {
+    setSchedule((current) => {
+      const next = { ...current, [field]: value };
+      if (user?.uid) {
+        localStorage.setItem(`attendanceSchedule:${user.uid}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!user?.uid) return undefined;
@@ -111,7 +149,10 @@ function ScanStudentQR() {
     try {
       const result = await scanStudentAttendanceQr(token, {
         supervisorUid: user?.uid,
+        supervisorName: user?.name || user?.displayName || "",
         students,
+        session: scanSession,
+        schedule,
       });
       setFeedback({
         type: "success",
@@ -128,7 +169,7 @@ function ScanStudentQR() {
     } finally {
       setProcessing(false);
     }
-  }, [user, students]);
+  }, [user, students, scanSession, schedule]);
 
   const handleScannerError = useCallback((message) => {
     setFeedback({ type: "error", text: message });
@@ -139,7 +180,7 @@ function ScanStudentQR() {
     setManualFeedback(null);
 
     const inputId = studentId.trim();
-    if (!inputId || !manualDate) {
+    if (!inputId || !manualDate || !manualTime) {
       setManualFeedback({
         type: "error",
         text: "Enter a student ID, date, and attendance time.",
@@ -164,9 +205,11 @@ function ScanStudentQR() {
     try {
       const result = await saveManualAttendance({
         supervisorUid: user.uid,
+        supervisorName: user.name || user.displayName || "",
         student: targetStudent,
         studentId: inputId,
         date: manualDate,
+        time: manualTime,
         period,
       });
       setManualFeedback({
@@ -189,7 +232,7 @@ function ScanStudentQR() {
     <div className="supervisor-page supervisor-student-qr-page">
       <PageHeader
         eyebrow="Supervisor workspace · Attendance"
-        title="Scan Student QR"
+        title="QR Attendance Scanner"
         description="Scan the signed QR code displayed in a student’s My Attendance page to record Time-In or Time-Out."
       />
 
@@ -201,6 +244,42 @@ function ScanStudentQR() {
               <h2>Student Attendance Scanner</h2>
               <p>Each code expires in 30 seconds and can only be used once.</p>
             </div>
+          </div>
+
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            <label className="grid content-start gap-1.5 text-xs font-bold text-slate-600">
+              Scan session
+              <select
+                className={scheduleFieldClass}
+                value={scanSession}
+                onChange={(event) => setScanSession(event.target.value)}
+              >
+                <option value="auto">Auto (by schedule)</option>
+                {SESSIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid content-start gap-1.5 text-xs font-bold text-slate-600">
+              PM starts at
+              <input
+                className={scheduleFieldClass}
+                type="time"
+                value={schedule.pmStart}
+                onChange={(event) => updateSchedule("pmStart", event.target.value)}
+              />
+            </label>
+            <label className="grid content-start gap-1.5 text-xs font-bold text-slate-600">
+              Overtime starts at
+              <input
+                className={scheduleFieldClass}
+                type="time"
+                value={schedule.overtimeStart}
+                onChange={(event) => updateSchedule("overtimeStart", event.target.value)}
+              />
+            </label>
           </div>
 
           <div className="supervisor-student-qr-actions">
@@ -253,7 +332,7 @@ function ScanStudentQR() {
                   Manual Recording
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Record attendance for today when a student cannot scan a QR code. The server supplies the timestamp.
+                  Record attendance for a student who cannot scan a QR code. Set the date and time as needed; the date defaults to today and cannot be in the future.
                 </p>
               </div>
             </div>
@@ -309,7 +388,6 @@ function ScanStudentQR() {
                     type="date"
                     value={manualDate}
                     onChange={(event) => setManualDate(event.target.value)}
-                    min={getLocalDate()}
                     max={getLocalDate()}
                     required
                   />
@@ -332,14 +410,15 @@ function ScanStudentQR() {
               </label>
 
               <label className="grid content-start gap-1.5 text-xs font-bold text-slate-600">
-                Server time
+                Time
                 <span className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-slate-400 focus-within:border-teal-500 focus-within:ring-4 focus-within:ring-teal-100">
                   <Clock3 size={16} />
                   <input
                     className="min-w-0 flex-1 border-0 p-0 text-sm font-normal text-slate-800 outline-none focus:ring-0"
-                    type="text"
-                    value="Set when recorded"
-                    readOnly
+                    type="time"
+                    value={manualTime}
+                    onChange={(event) => setManualTime(event.target.value)}
+                    required
                   />
                 </span>
               </label>

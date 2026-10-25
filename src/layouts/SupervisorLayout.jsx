@@ -82,7 +82,7 @@ function SupervisorLayout() {
           />
           <SupervisorNavLink
             to="/supervisor/scan-student-qr"
-            label="Scan Student QR"
+            label="QR Attendance Scanner"
             icon={QrCode}
             onClick={closeSidebarOnMobile}
           />

@@ -43,9 +43,20 @@ export const createManagedUser = async ({
   coordinatorName,
   department,
   assignedStudentRecordId,
+  assignedStudentRecordIds,
   partnerCompanyId,
   position,
 }) => {
+  const assignedIds = [
+    ...new Set(
+      (assignedStudentRecordIds?.length
+        ? assignedStudentRecordIds
+        : assignedStudentRecordId
+          ? [assignedStudentRecordId]
+          : []
+      ).filter(Boolean),
+    ),
+  ];
   // VALIDATION
   if (!firstName?.trim()) {
     throw new Error("First name is required.");
@@ -105,7 +116,7 @@ export const createManagedUser = async ({
       ...(coordinatorUid ? { coordinatorUid } : {}),
       ...(coordinatorName ? { coordinatorName } : {}),
       ...(department ? { department } : {}),
-      ...(assignedStudentRecordId ? { assignedStudentRecordId } : {}),
+      ...(assignedIds[0] ? { assignedStudentRecordId: assignedIds[0] } : {}),
       ...(role === "supervisor"
         ? { partnerCompanyId: partnerCompanyId || null }
         : partnerCompanyId
@@ -117,45 +128,49 @@ export const createManagedUser = async ({
       updatedAt: serverTimestamp(),
     };
 
-    if (role === "supervisor" && assignedStudentRecordId) {
-      let studentUserUid = null;
-      const studentRef = doc(db, "students", assignedStudentRecordId);
+    if (role === "supervisor" && assignedIds.length > 0) {
+      const studentRefs = assignedIds.map((id) => doc(db, "students", id));
+      const studentUserUids = [];
+      const supervisorName = `${firstName.trim()} ${lastName.trim()}`;
       await runTransaction(db, async (transaction) => {
-        const studentSnapshot = await transaction.get(studentRef);
-        if (!studentSnapshot.exists()) {
-          throw new Error("The selected OJT student no longer exists.");
-        }
-
-        const student = studentSnapshot.data();
-        studentUserUid = student.studentUid || null;
-        if (student.coordinatorUid !== createdBy) {
-          throw new Error("You can only assign supervisors to students in your department.");
-        }
-        if (student.supervisorUid) {
-          throw new Error("This student already has an assigned supervisor.");
-        }
+        const snapshots = await Promise.all(studentRefs.map((ref) => transaction.get(ref)));
+        snapshots.forEach((snapshot) => {
+          if (!snapshot.exists()) {
+            throw new Error("A selected OJT student no longer exists.");
+          }
+          const student = snapshot.data();
+          if (student.coordinatorUid !== createdBy) {
+            throw new Error("You can only assign supervisors to students in your department.");
+          }
+          if (student.supervisorUid) {
+            throw new Error(`${student.name || student.studentId || "A selected student"} already has an assigned supervisor.`);
+          }
+        });
 
         transaction.set(userRef, profile);
-        transaction.update(studentRef, {
-          supervisorUid: firebaseUser.uid,
-          supervisorName: `${firstName.trim()} ${lastName.trim()}`,
-          partnerCompanyId: partnerCompanyId || null,
-          company,
-          updatedAt: serverTimestamp(),
+        snapshots.forEach((snapshot, index) => {
+          studentUserUids.push(snapshot.data().studentUid || null);
+          transaction.update(studentRefs[index], {
+            supervisorUid: firebaseUser.uid,
+            supervisorName,
+            partnerCompanyId: partnerCompanyId || null,
+            company,
+            updatedAt: serverTimestamp(),
+          });
         });
       });
 
-      if (studentUserUid) {
-        try {
-          await updateDoc(doc(db, "users", studentUserUid), {
+      await Promise.all(
+        studentUserUids.filter(Boolean).map((studentUserUid) =>
+          updateDoc(doc(db, "users", studentUserUid), {
             supervisorUid: firebaseUser.uid,
-            supervisorName: `${firstName.trim()} ${lastName.trim()}`,
+            supervisorName,
             updatedAt: serverTimestamp(),
-          });
-        } catch (syncError) {
-          console.warn("Unable to sync supervisor assignment to student user account:", syncError);
-        }
-      }
+          }).catch((syncError) => {
+            console.warn("Unable to sync supervisor assignment to student user account:", syncError);
+          }),
+        ),
+      );
     } else {
       await setDoc(userRef, profile);
     }

@@ -17,32 +17,11 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 
-function parseTime(value) {
-  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
-  if (!match) return null;
-  let hour = Number(match[1]) % 12;
-  if (match[3].toUpperCase() === "PM") hour += 12;
-  return hour * 60 + Number(match[2]);
-}
-
 function validHours(record) {
-  const hasPeriodData = record.amIn || record.amOut || record.pmIn || record.pmOut ||
-    record.morningTimeIn || record.morningTimeOut || record.afternoonTimeIn || record.afternoonTimeOut;
-  const sessions = hasPeriodData
-    ? [
-        [record.amIn || record.morningTimeIn, record.amOut || record.morningTimeOut],
-        [record.pmIn || record.afternoonTimeIn, record.pmOut || record.afternoonTimeOut],
-      ]
-    : [[record.timeIn, record.timeOut]];
-  return sessions.reduce((total, [startValue, endValue]) => {
-    const start = parseTime(startValue);
-    const end = parseTime(endValue);
-    return start !== null && end !== null && end > start
-      ? total + (end - start) / 60
-      : total;
-  }, 0);
+  return summarizeAttendance(getRecordPeriods(record)).totalHours;
 }
 
 function formatDate(value) {
@@ -301,13 +280,13 @@ function StudentsDashboard() {
               {attendanceHistory.map((record) => (
                 <tr key={record.id}>
                   <td>{formatDate(record.date)}</td>
-                  <td>{record.amIn || record.timeIn || record.morningTimeIn || "—"}</td>
-                  <td>{record.pmOut || record.timeOut || record.afternoonTimeOut || "—"}</td>
+                  <td>{getRecordPeriods(record).amIn || "—"}</td>
+                  <td>{getRecordPeriods(record).overtimeOut || getRecordPeriods(record).pmOut || "—"}</td>
                   <td>
                     <span className={
-                      record.status === "Present" ? "status-badge active" : "status-badge pending"
+                      summarizeAttendance(getRecordPeriods(record)).status === "Present" ? "status-badge active" : "status-badge pending"
                     }>
-                      {record.status || (validHours(record) ? "Present" : "Incomplete")}
+                      {summarizeAttendance(getRecordPeriods(record)).status}
                     </span>
                   </td>
                 </tr>

@@ -73,7 +73,9 @@ service cloud.firestore {
         data.supervisorUid == null ||
         (data.supervisorUid is string &&
           (!exists(userPath(data.supervisorUid)) ||
-            get(userPath(data.supervisorUid)).data.role == "supervisor"));
+            (get(userPath(data.supervisorUid)).data.role == "supervisor" &&
+              (!isCoordinator() ||
+                get(userPath(data.supervisorUid)).data.department == profile().department))));
     }
 
     function supervisorOwnsStudent(studentUid) {
@@ -170,7 +172,8 @@ service cloud.firestore {
     }
 
     match /attendance/{attendanceId} {
-      allow read: if isAdmin() ||
+      allow read: if (resource == null && (isAdmin() || isSupervisor())) ||
+        isAdmin() ||
         coordinatorOwns(resource.data) ||
         isOwnStudent(resource.data.studentUid) ||
         (isSupervisor() &&
@@ -183,8 +186,12 @@ service cloud.firestore {
           studentAccountLive(request.resource.data.get("studentUid", null)));
       allow update: if isAdmin() ||
         (isSupervisor() &&
-          (resource.data.supervisorId == request.auth.uid ||
-           request.resource.data.supervisorId == request.auth.uid) &&
+          resource.data.supervisorId == request.auth.uid &&
+          request.resource.data.supervisorId == request.auth.uid &&
+          request.resource.data.get("studentUid", null) == resource.data.get("studentUid", null) &&
+          (resource.data.get("coordinatorUid", null) == null ||
+           request.resource.data.get("coordinatorUid", null) == resource.data.get("coordinatorUid", null)) &&
+          request.resource.data.date == resource.data.date &&
           studentAccountLive(resource.data.get("studentUid", null)));
       // Attendance is academic history and is never hard-deleted from clients.
       allow delete: if false;

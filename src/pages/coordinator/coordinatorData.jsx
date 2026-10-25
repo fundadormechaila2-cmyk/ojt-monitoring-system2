@@ -114,7 +114,7 @@ export function requiredHours(student) {
 }
 export function normalizedStudents(students, attendance) {
   return students.map((student) => {
-    const completed = hoursForStudent(student, attendance);
+    const completed = Math.round(hoursForStudent(student, attendance) * 100) / 100;
     const required = requiredHours(student);
     const rawStatus = String(
       valueOf(student, ["ojtStatus", "status", "placementStatus"], ""),
@@ -141,7 +141,7 @@ export function normalizedStudents(students, attendance) {
       ),
       completed,
       required,
-      remaining: Math.max(0, required - completed),
+      remaining: Math.round(Math.max(0, required - completed) * 100) / 100,
       status,
     };
   });

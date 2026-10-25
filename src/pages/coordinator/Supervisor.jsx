@@ -7,6 +7,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
   UsersRound,
   X,
@@ -14,6 +15,11 @@ import {
 import "../../styles/tailwind.css";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { deleteAccountPermanently } from "../../services/accountManagementService";
+import {
+  assignStudentsToSupervisor,
+  unassignStudent,
+} from "../../services/supervisorAssignmentService";
 import { withoutArchived } from "../../services/recordState";
 import { createManagedUser } from "../../services/userManagementSevice";
 
@@ -22,7 +28,7 @@ const emptyForm = {
   lastName: "",
   email: "",
   phone: "",
-  studentRecordId: "",
+  studentRecordIds: [],
   partnerCompanyId: "",
   company: "",
   position: "",
@@ -71,6 +77,10 @@ function Supervisor() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [createdAccount, setCreatedAccount] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [manageSelection, setManageSelection] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [modalError, setModalError] = useState("");
 
   useEffect(() => {
     if (user?.role !== "coordinator" || !user.uid || !user.department) {
@@ -147,21 +157,29 @@ function Supervisor() {
     };
   }, [user?.role, user?.uid]);
 
+  const supervisorIds = useMemo(
+    () => new Set(supervisors.map((supervisor) => supervisor.id)),
+    [supervisors],
+  );
   const hasSupervisorAssignment = (student) =>
-    Boolean(student.supervisorUid || supervisors.some(
-      (supervisor) => supervisor.assignedStudentRecordId === student.id,
-    ));
+    Boolean(student.supervisorUid && supervisorIds.has(student.supervisorUid));
+  const studentsOf = (supervisor) =>
+    students.filter((student) => student.supervisorUid === supervisor.id);
+  const unassignedStudents = students.filter((student) => !hasSupervisorAssignment(student));
 
   const visibleSupervisors = useMemo(() => {
     const term = search.trim().toLowerCase();
     return supervisors
       .filter((supervisor) => {
         const fullName = displayName(supervisor);
-        const student = students.find((item) => item.id === supervisor.assignedStudentRecordId);
+        const assigned = students
+          .filter((item) => item.supervisorUid === supervisor.id)
+          .map((item) => `${studentName(item)} ${item.studentId || ""}`)
+          .join(" ");
         const company = companies.find((item) => item.id === supervisor.partnerCompanyId);
         return (
           !term ||
-          `${fullName} ${supervisor.email || ""} ${supervisor.phone || ""} ${supervisor.position || ""} ${student ? studentName(student) : ""} ${company ? companyName(company) : supervisor.company || ""}`
+          `${fullName} ${supervisor.email || ""} ${supervisor.phone || ""} ${supervisor.position || ""} ${assigned} ${company ? companyName(company) : supervisor.company || ""}`
             .toLowerCase()
             .includes(term)
         );
@@ -180,9 +198,89 @@ function Supervisor() {
   };
 
   const closeModal = () => {
-    if (saving) return;
+    if (saving || busy) return;
     setModal(null);
     setFormError("");
+    setModalError("");
+  };
+
+  const openManageModal = (supervisor) => {
+    setManageSelection([]);
+    setModalError("");
+    setModal({ type: "manage", supervisorId: supervisor.id });
+  };
+
+  const toggleId = (list, id) =>
+    list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
+
+  const addStudentsToSupervisor = async (supervisor) => {
+    if (busy || manageSelection.length === 0) return;
+    setBusy(true);
+    setModalError("");
+    try {
+      const count = await assignStudentsToSupervisor({
+        coordinator: user,
+        supervisor,
+        studentIds: manageSelection,
+      });
+      setManageSelection([]);
+      setNotice({ type: "success", text: `${count} student${count === 1 ? "" : "s"} assigned to ${displayName(supervisor)}.` });
+    } catch (error) {
+      console.error("Unable to assign students:", error);
+      setModalError(error.message || "Students could not be assigned.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeStudent = async (student) => {
+    if (busy) return;
+    setBusy(true);
+    setModalError("");
+    try {
+      await unassignStudent({ coordinator: user, student });
+      setNotice({ type: "success", text: `${studentName(student)} was removed from the supervisor.` });
+    } catch (error) {
+      console.error("Unable to remove the student assignment:", error);
+      setModalError(error.message || "The student could not be removed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reassignStudent = async (student, targetSupervisor) => {
+    if (busy || !targetSupervisor) return;
+    setBusy(true);
+    setModalError("");
+    try {
+      await assignStudentsToSupervisor({
+        coordinator: user,
+        supervisor: targetSupervisor,
+        studentIds: [student.id],
+      });
+      setNotice({ type: "success", text: `${studentName(student)} was reassigned to ${displayName(targetSupervisor)}.` });
+    } catch (error) {
+      console.error("Unable to reassign the student:", error);
+      setModalError(error.message || "The student could not be reassigned.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteSupervisor = async (supervisor) => {
+    if (busy) return;
+    setBusy(true);
+    setModalError("");
+    try {
+      await deleteAccountPermanently({ targetType: "user", targetId: supervisor.id });
+      setModal(null);
+      setNotice({ type: "success", text: `${displayName(supervisor)} was deleted.` });
+    } catch (error) {
+      console.error("Unable to delete the supervisor:", error);
+      setModalError(error.message || "The supervisor could not be deleted.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const addSupervisor = async (event) => {
@@ -190,25 +288,28 @@ function Supervisor() {
     if (saving) return;
     setFormError("");
     setCreatedAccount(null);
+    setNotice(null);
 
     const firstName = form.firstName.trim();
     const lastName = form.lastName.trim();
     const email = form.email.trim().toLowerCase();
-    const student = students.find((item) => item.id === form.studentRecordId);
+    const selected = form.studentRecordIds
+      .map((id) => students.find((item) => item.id === id))
+      .filter(Boolean);
     const company = form.company.trim();
     const matchedCompany = companies.find((item) =>
       companyName(item).trim().toLowerCase() === company.toLowerCase(),
     );
-    if (!firstName || !lastName || !email || !student || !company || !user?.department) {
-      setFormError("Complete the required fields and select an assigned student and partner company.");
+    if (!firstName || !lastName || !email || selected.length === 0 || !company || !user?.department) {
+      setFormError("Complete the required fields and select at least one assigned student and a partner company.");
       return;
     }
-    if (student.coordinatorUid !== user.uid) {
+    if (selected.some((student) => student.coordinatorUid !== user.uid)) {
       setFormError("You can only assign supervisors to students in your department.");
       return;
     }
-    if (hasSupervisorAssignment(student)) {
-      setFormError("This student already has an assigned supervisor.");
+    if (selected.some(hasSupervisorAssignment)) {
+      setFormError("One of the selected students already has an assigned supervisor.");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -226,11 +327,10 @@ function Supervisor() {
         role: "supervisor",
         createdBy: user.uid,
         department: user.department,
-        assignedStudentRecordId: student.id,
+        assignedStudentRecordIds: selected.map((student) => student.id),
         partnerCompanyId: matchedCompany?.id || "",
         company,
         position: form.position,
-        studentId: student.studentId || student.studentID || student.id,
       });
       setCreatedAccount({
         name: `${firstName} ${lastName}`,
@@ -299,6 +399,16 @@ function Supervisor() {
             tone="emerald"
           />
         </section>
+
+        {notice && (
+          <section
+            className={`mb-6 flex items-center justify-between gap-4 rounded-xl border p-4 text-sm ${notice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}
+            role="status"
+          >
+            <span>{notice.text}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}><X size={16} /></button>
+          </section>
+        )}
 
         {createdAccount && (
           <section
@@ -411,6 +521,9 @@ function Supervisor() {
                       Phone
                     </th>
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Assigned Students
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                       Account Status
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -449,6 +562,17 @@ function Supervisor() {
                         <td className="px-6 py-4 text-sm text-slate-600">
                           {supervisor.phone || "—"}
                         </td>
+                        <td className="px-6 py-4 text-xs text-slate-600">
+                          {studentsOf(supervisor).length === 0 ? "—" : (
+                            <ul className="m-0 list-none space-y-1 p-0">
+                              {studentsOf(supervisor).map((student) => (
+                                <li key={student.id}>
+                                  <strong className="text-slate-800">{studentName(student)}</strong> · {student.studentId || student.id} · {student.course || "No course"} · {student.company || supervisor.company || "No company"}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
@@ -462,6 +586,7 @@ function Supervisor() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
+                          <div className="inline-flex gap-2">
                           <button
                             className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
                             type="button"
@@ -471,6 +596,25 @@ function Supervisor() {
                             <Eye size={15} aria-hidden="true" />
                             View profile
                           </button>
+                          <button
+                            className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            type="button"
+                            onClick={() => openManageModal(supervisor)}
+                            aria-label={`Manage students of ${name}`}
+                          >
+                            <UsersRound size={15} aria-hidden="true" />
+                            Students
+                          </button>
+                          <button
+                            className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-rose-700 shadow-sm transition hover:bg-rose-50"
+                            type="button"
+                            onClick={() => { setModalError(""); setModal({ type: "delete", supervisor }); }}
+                            aria-label={`Delete ${name}`}
+                            title="Delete supervisor"
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -594,31 +738,35 @@ function Supervisor() {
                   {companies.map((company) => <option key={company.id} value={companyName(company)} />)}
                 </datalist>
               </label>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="supervisor-student">
-                Assigned OJT student <span className="text-rose-600">*</span>
-                <select
-                  className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  id="supervisor-student"
-                  required
-                  disabled={saving || referenceLoading || students.filter((student) => !hasSupervisorAssignment(student)).length === 0}
-                  value={form.studentRecordId}
-                  onChange={(event) => {
-                    const studentRecordId = event.target.value;
-                    const student = students.find((item) => item.id === studentRecordId);
-                    const company = student?.company || student?.partnerCompany || student?.companyName || "";
-                    const matchedCompany = companies.find((item) => companyName(item).toLowerCase() === company.trim().toLowerCase());
-                    setForm((current) => ({
-                      ...current,
-                      studentRecordId,
-                      ...(company && !current.company ? { company } : {}),
-                      ...(!current.company && company ? { partnerCompanyId: matchedCompany?.id || "" } : {}),
-                    }));
-                  }}
-                >
-                  <option value="">{referenceLoading ? "Loading assigned students..." : "Select OJT student"}</option>
-                  {students.filter((student) => !hasSupervisorAssignment(student)).map((student) => <option key={student.id} value={student.id}>{studentName(student)} · {student.studentId || student.studentID || student.id}</option>)}
-                </select>
-              </label>
+              <fieldset className="text-sm font-medium text-slate-700">
+                <legend>Assigned OJT students <span className="text-rose-600">*</span> <span className="font-normal text-slate-500">({form.studentRecordIds.length} selected)</span></legend>
+                <ul className="mt-1.5 max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-300">
+                  {referenceLoading && <li className="px-3 py-2 text-slate-500">Loading assigned students...</li>}
+                  {!referenceLoading && unassignedStudents.length === 0 && <li className="px-3 py-2 text-slate-500">No unassigned students available.</li>}
+                  {unassignedStudents.map((student) => (
+                    <li key={student.id}>
+                      <label className="flex cursor-pointer items-center gap-3 px-3 py-2 font-normal">
+                        <input
+                          type="checkbox"
+                          disabled={saving}
+                          checked={form.studentRecordIds.includes(student.id)}
+                          onChange={() => {
+                            const company = student.company || student.partnerCompany || student.companyName || "";
+                            const matchedCompany = companies.find((item) => companyName(item).toLowerCase() === company.trim().toLowerCase());
+                            setForm((current) => ({
+                              ...current,
+                              studentRecordIds: toggleId(current.studentRecordIds, student.id),
+                              ...(company && !current.company ? { company } : {}),
+                              ...(!current.company && company ? { partnerCompanyId: matchedCompany?.id || "" } : {}),
+                            }));
+                          }}
+                        />
+                        <span>{studentName(student)} <span className="text-xs text-slate-500">· {student.studentId || student.studentID || student.id}</span></span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="block font-medium text-slate-700">Department</span><span className="text-slate-500">{user?.department || "Not assigned"}</span></div>
                 <div><span className="block font-medium text-slate-700">Account status</span><span className="text-slate-500">Active</span></div>
@@ -636,7 +784,7 @@ function Supervisor() {
                 <button
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-wait disabled:opacity-60"
                   type="submit"
-                  disabled={saving || referenceLoading || Boolean(referenceError) || !students.some((student) => !hasSupervisorAssignment(student))}
+                  disabled={saving || referenceLoading || Boolean(referenceError) || unassignedStudents.length === 0}
                 >
                   <Plus size={16} />
                   {saving ? "Creating…" : "Create Supervisor"}
@@ -691,8 +839,8 @@ function Supervisor() {
                 value={modal.supervisor.department || "Not provided"}
               />
               <ProfileDetail
-                label="Assigned student"
-                value={studentName(students.find((student) => student.id === modal.supervisor.assignedStudentRecordId) || {}) || "Not assigned"}
+                label="Assigned students"
+                value={studentsOf(modal.supervisor).map((student) => `${studentName(student)} (${student.studentId || student.id})`).join(", ") || "Not assigned"}
               />
               <ProfileDetail
                 label="Partner company"
@@ -710,6 +858,100 @@ function Supervisor() {
           </section>
         </div>
       )}
+
+      {modal?.type === "delete" && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]" role="presentation">
+          <section aria-modal="true" className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl" role="alertdialog">
+            <ModalHeader title="Delete supervisor?" onClose={closeModal} disabled={busy} />
+            <div className="space-y-3 p-6 text-sm text-slate-600">
+              <p>
+                This permanently deletes <strong>{displayName(modal.supervisor)}</strong> and their login account.
+                {studentsOf(modal.supervisor).length > 0 && ` Their ${studentsOf(modal.supervisor).length} assigned student(s) will become unassigned.`}
+              </p>
+              {modalError && <p className="text-rose-700" role="alert">{modalError}</p>}
+              <div className="flex justify-end gap-3 pt-2">
+                <button className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60" type="button" onClick={closeModal} disabled={busy}>Cancel</button>
+                <button className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60" type="button" onClick={() => deleteSupervisor(modal.supervisor)} disabled={busy}>
+                  <Trash2 size={16} aria-hidden="true" />
+                  {busy ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {modal?.type === "manage" && (() => {
+        const supervisor = supervisors.find((item) => item.id === modal.supervisorId);
+        if (!supervisor) return null;
+        const assigned = studentsOf(supervisor);
+        const others = supervisors.filter((item) => item.id !== supervisor.id);
+        return (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]" role="presentation">
+            <section aria-modal="true" className="max-h-[90svh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl" role="dialog">
+              <ModalHeader title={`Students of ${displayName(supervisor)}`} onClose={closeModal} disabled={busy} />
+              <div className="space-y-5 p-6 text-sm">
+                {modalError && <p className="text-rose-700" role="alert">{modalError}</p>}
+                <div>
+                  <h3 className="mb-2 font-semibold text-slate-800">Assigned students ({assigned.length})</h3>
+                  {assigned.length === 0 ? (
+                    <p className="text-slate-500">No students assigned yet.</p>
+                  ) : (
+                    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                      {assigned.map((student) => (
+                        <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" key={student.id}>
+                          <span>
+                            <strong className="text-slate-800">{studentName(student)}</strong>
+                            <span className="block text-xs text-slate-500">{student.studentId || student.id} · {student.course || "No course"} · {student.company || supervisor.company || "No company"}</span>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            {others.length > 0 && (
+                              <select
+                                aria-label={`Reassign ${studentName(student)}`}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                                disabled={busy}
+                                value=""
+                                onChange={(event) => reassignStudent(student, others.find((item) => item.id === event.target.value))}
+                              >
+                                <option value="">Reassign to…</option>
+                                {others.map((item) => <option key={item.id} value={item.id}>{displayName(item)}</option>)}
+                              </select>
+                            )}
+                            <button className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60" type="button" disabled={busy} onClick={() => removeStudent(student)}>Remove</button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <h3 className="mb-2 font-semibold text-slate-800">Add students</h3>
+                  {unassignedStudents.length === 0 ? (
+                    <p className="text-slate-500">All of your students already have a supervisor.</p>
+                  ) : (
+                    <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+                      {unassignedStudents.map((student) => (
+                        <li key={student.id}>
+                          <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
+                            <input type="checkbox" checked={manageSelection.includes(student.id)} disabled={busy} onChange={() => setManageSelection((current) => toggleId(current, student.id))} />
+                            <span>{studentName(student)} <span className="text-xs text-slate-500">· {student.studentId || student.id} · {student.course || "No course"}</span></span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-3 flex justify-end">
+                    <button className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60" type="button" disabled={busy || manageSelection.length === 0} onClick={() => addStudentsToSupervisor(supervisor)}>
+                      <Plus size={16} aria-hidden="true" />
+                      {busy ? "Saving…" : `Assign ${manageSelection.length || ""} selected`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        );
+      })()}
     </main>
   );
 }

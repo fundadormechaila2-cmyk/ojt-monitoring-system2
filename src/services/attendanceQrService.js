@@ -8,6 +8,8 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import {
+  DEFAULT_SCHEDULE,
+  detectSession,
   getLocalDate,
   saveManualAttendance,
 } from "./manualAttendanceService";
@@ -214,51 +216,24 @@ export async function scanStudentAttendanceQr(rawToken, options = {}) {
   const date = getLocalDate();
   const requestedPeriod = typeof options === "string" ? options : options?.period;
 
-  let targetPeriod = requestedPeriod;
-  if (!targetPeriod) {
-    const attendanceQuery = query(
-      collection(db, "attendance"),
-      where("supervisorId", "==", supervisorUid),
-      where("date", "==", date),
-    );
-    const snap = await getDocs(attendanceQuery);
-    const existingDoc = snap.docs.find((d) => {
-      const data = d.data();
-      return (
-        data.studentUid === payload.studentUid ||
-        String(data.studentId || "").trim() === String(payload.studentId || "").trim()
-      );
-    });
-    const previous = existingDoc ? existingDoc.data() : {};
-    const existingPeriods = {
-      amIn: previous.amIn || previous.morningTimeIn || previous.timeIn || "",
-      amOut: previous.amOut || previous.morningTimeOut || "",
-      pmIn: previous.pmIn || previous.afternoonTimeIn || "",
-      pmOut: previous.pmOut || previous.afternoonTimeOut || previous.timeOut || "",
-    };
-
-    const currentHour = new Date().getHours();
-    if (!existingPeriods.amIn && currentHour < 12) {
-      targetPeriod = "amIn";
-    } else if (existingPeriods.amIn && !existingPeriods.amOut) {
-      targetPeriod = "amOut";
-    } else if (!existingPeriods.pmIn) {
-      targetPeriod = "pmIn";
-    } else if (existingPeriods.pmIn && !existingPeriods.pmOut) {
-      targetPeriod = "pmOut";
-    } else if (!existingPeriods.amIn) {
-      targetPeriod = "amIn";
-    } else {
-      throw new Error(`${payload.studentName} has already completed all attendance sessions for today.`);
-    }
-  }
+  // "auto" (or no choice) detects the session from the configurable schedule;
+  // an explicit AM/PM/Overtime choice from the supervisor is always honored.
+  const requestedSession = typeof options === "string" ? "" : options?.session;
+  const autoSession = !requestedPeriod && (!requestedSession || requestedSession === "auto");
+  const session = autoSession
+    ? detectSession(options?.schedule || DEFAULT_SCHEDULE)
+    : requestedSession;
 
   const result = await saveManualAttendance({
     supervisorUid,
+    supervisorName: options?.supervisorName || "",
     student: studentRecord,
     studentId: payload.studentId,
     date,
-    period: targetPeriod,
+    period: requestedPeriod,
+    session,
+    autoSession,
+    nonce: payload.nonce,
   });
 
   return {
