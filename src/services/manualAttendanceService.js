@@ -136,14 +136,10 @@ export function getRecordPeriods(record = {}) {
 export function summarizeAttendance(periods) {
   const amHours = calculateHours(periods.amIn, periods.amOut);
   const pmHours = calculateHours(periods.pmIn, periods.pmOut);
-  const overtimeHours = calculateHours(
-    periods.overtimeIn,
-    periods.overtimeOut,
-  );
+  const overtimeHours = calculateHours(periods.overtimeIn, periods.overtimeOut);
   const totalHours = Number((amHours + pmHours + overtimeHours).toFixed(2));
   const hasOpenSession = SESSIONS.some(
-    (session) =>
-      periods[session.inField] && !periods[session.outField],
+    (session) => periods[session.inField] && !periods[session.outField],
   );
   const hasAnyTime = SLOT_ORDER.some((field) => periods[field]);
   const regularComplete = amHours > 0 && pmHours > 0;
@@ -164,7 +160,11 @@ function sessionOf(period) {
 function resolveStudent(student, studentId) {
   const studentUid = student.studentUid || student.userUid || student.id;
   const targetStudentId = String(
-    student.studentId || student.studentID || student.idNumber || studentId || "",
+    student.studentId ||
+      student.studentID ||
+      student.idNumber ||
+      studentId ||
+      "",
   ).trim();
   const studentName =
     student.name ||
@@ -253,7 +253,9 @@ export async function saveManualAttendance({
     throw new Error("You must be logged in as a supervisor.");
   }
   if (!student) {
-    throw new Error("Student record was not found among your assigned trainees.");
+    throw new Error(
+      "Student record was not found among your assigned trainees.",
+    );
   }
   if (!date) {
     throw new Error("Date is required.");
@@ -292,7 +294,8 @@ export async function saveManualAttendance({
     const data = item.data();
     return (
       (studentUid && data.studentUid === studentUid) ||
-      (targetStudentId && String(data.studentId || "").trim() === targetStudentId)
+      (targetStudentId &&
+        String(data.studentId || "").trim() === targetStudentId)
     );
   });
   const ref =
@@ -308,11 +311,14 @@ export async function saveManualAttendance({
     const periods = getRecordPeriods(previous);
 
     if (nonce && previous.lastScanNonce === nonce) {
-      throw new Error("This QR code was already scanned. Ask the student to refresh it.");
+      throw new Error(
+        "This QR code was already scanned. Ask the student to refresh it.",
+      );
     }
 
     const targetPeriod =
-      period || nextPeriodForSession({ periods, session, autoSession, studentName });
+      period ||
+      nextPeriodForSession({ periods, session, autoSession, studentName });
     validatePeriod({
       periods,
       period: targetPeriod,
@@ -330,8 +336,7 @@ export async function saveManualAttendance({
       studentUid: studentUid || null,
       studentId: targetStudentId,
       studentName,
-      coordinatorUid:
-        student.coordinatorUid || previous.coordinatorUid || null,
+      coordinatorUid: student.coordinatorUid || previous.coordinatorUid || null,
       coordinatorName:
         student.coordinatorName || previous.coordinatorName || "",
       department:

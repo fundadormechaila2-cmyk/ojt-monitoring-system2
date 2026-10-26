@@ -10,13 +10,26 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 
-export function subscribeToCollection(collectionName, constraints, onData, onError) {
+export function subscribeToCollection(
+  collectionName,
+  constraints,
+  onData,
+  onError,
+) {
   const reference = collection(db, collectionName);
-  const target = constraints?.length ? query(reference, ...constraints) : reference;
+  const target = constraints?.length
+    ? query(reference, ...constraints)
+    : reference;
 
   return onSnapshot(
     target,
-    (snapshot) => onData(snapshot.docs.map((document) => ({ id: document.id, ...document.data() }))),
+    (snapshot) =>
+      onData(
+        snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        })),
+      ),
     onError,
   );
 }
@@ -29,7 +42,11 @@ export async function createCollectionDocument(collectionName, data) {
   });
 }
 
-export async function updateCollectionDocument(collectionName, documentId, data) {
+export async function updateCollectionDocument(
+  collectionName,
+  documentId,
+  data,
+) {
   return updateDoc(doc(db, collectionName, documentId), {
     ...data,
     updatedAt: serverTimestamp(),
