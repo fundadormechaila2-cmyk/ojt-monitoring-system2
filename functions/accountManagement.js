@@ -57,6 +57,32 @@ async function unassignStudents(db, supervisorUid) {
   return students.size;
 }
 
+async function unassignCoordinatorStudents(db, coordinatorUid) {
+  const [studentRecords, studentProfiles] = await Promise.all([
+    db.collection("students").where("coordinatorUid", "==", coordinatorUid).get(),
+    db.collection("users").where("coordinatorUid", "==", coordinatorUid).get(),
+  ]);
+  const refs = new Map();
+  studentRecords.docs.forEach((doc) => refs.set(doc.ref.path, doc.ref));
+  studentProfiles.docs
+    .filter((doc) => doc.data().role === "student")
+    .forEach((doc) => refs.set(doc.ref.path, doc.ref));
+
+  const documents = [...refs.values()];
+  for (let offset = 0; offset < documents.length; offset += 400) {
+    const batch = db.batch();
+    documents.slice(offset, offset + 400).forEach((ref) => {
+      batch.update(ref, {
+        coordinatorUid: FieldValue.delete(),
+        coordinatorName: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+  return documents.length;
+}
+
 async function findRosterRefs(db, uid, user) {
   const refs = new Map();
   const add = (snapshot) => {
@@ -144,9 +170,6 @@ async function relatedSummary(db, target) {
   } else if (role === "coordinator") {
     counts.assignedStudents = await count(db.collection("students").where("coordinatorUid", "==", uid));
     counts.createdSupervisors = await count(db.collection("users").where("createdBy", "==", uid));
-    if (counts.assignedStudents > 0) {
-      blockers.push("This coordinator still has assigned students. Reassign them first, or archive the account instead.");
-    }
   }
 
   const preserved = (counts.attendance || 0) + (counts.evaluations || 0) + (counts.applications || 0);
@@ -319,6 +342,9 @@ async function handleManageAccount(request) {
       const auditRef = await writeAudit(db, { ...auditBase, outcome: "started" });
       // Step 1: lock the account and preserve student history on the archived roster record.
       await applyLifecycle(db, target, "archive", adminUid, warnings, { deletionPending: true });
+      if (role === "coordinator" && !isCoordinatorActor) {
+        await unassignCoordinatorStudents(db, target.uid);
+      }
       if (target.rosterRefs.length) {
         const batch = db.batch();
         target.rosterRefs.forEach((ref) => batch.update(ref, {

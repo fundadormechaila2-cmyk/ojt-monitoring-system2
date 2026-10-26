@@ -6,6 +6,7 @@ import {
   Eye,
   Plus,
   Search,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
+import AccountActionDialog from "../../components/AccountActionDialog";
 import "./OJTCoordinators.css";
 
 const emptyForm = {
@@ -56,6 +58,7 @@ function OJTCoordinators() {
   const [addingCoordinator, setAddingCoordinator] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [accountAction, setAccountAction] = useState(null);
 
   useEffect(() => {
     return onSnapshot(
@@ -123,6 +126,26 @@ function OJTCoordinators() {
     setAddingCoordinator(false);
     setForm(emptyForm);
     setError("");
+  };
+
+  const openDeleteCoordinator = (coordinator) => {
+    setSelectedCoordinator(null);
+    setAccountAction({
+      action: "delete",
+      target: {
+        type: "user",
+        id: coordinator.id,
+        name: coordinatorName(coordinator),
+        email: coordinator.email || "",
+        role: "coordinator",
+      },
+    });
+  };
+
+  const finishAccountAction = (message, warnings) => {
+    setAccountAction(null);
+    setNotice([message, ...warnings].join(" "));
+    window.setTimeout(() => setNotice(""), 5000);
   };
 
   const createCoordinator = async (event) => {
@@ -308,6 +331,15 @@ function OJTCoordinators() {
                       >
                         <Eye size={16} />
                       </button>
+                      <button
+                        type="button"
+                        className="coordinators-icon-button"
+                        title="Permanently delete coordinator"
+                        aria-label={`Permanently delete ${coordinatorName(coordinator)}`}
+                        onClick={() => openDeleteCoordinator(coordinator)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -425,8 +457,24 @@ function OJTCoordinators() {
               <div><dt>Department</dt><dd>{departmentLabel(selectedCoordinator.department) || "—"}</dd></div>
               <div><dt>Status</dt><dd>{String(selectedCoordinator.status || "ACTIVE").toUpperCase()}</dd></div>
             </dl>
+            <footer className="coordinators-details-actions">
+              <button
+                type="button"
+                className="coordinators-delete-button"
+                onClick={() => openDeleteCoordinator(selectedCoordinator)}
+              >
+                <Trash2 size={16} /> Permanently delete coordinator
+              </button>
+            </footer>
           </section>
         </div>
+      )}
+      {accountAction && (
+        <AccountActionDialog
+          {...accountAction}
+          onClose={() => setAccountAction(null)}
+          onDone={finishAccountAction}
+        />
       )}
     </main>
   );

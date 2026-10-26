@@ -12,7 +12,16 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { Archive, ArchiveRestore, Eye, KeyRound, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Eye,
+  KeyRound,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { COURSES } from "../../constants/courses";
 import {
@@ -35,7 +44,12 @@ const withTimeout = (promise, label, ms = 30000) =>
     promise,
     new Promise((_, reject) =>
       setTimeout(
-        () => reject(new Error(`${label} timed out. Check your internet connection and try again.`)),
+        () =>
+          reject(
+            new Error(
+              `${label} timed out. Check your internet connection and try again.`,
+            ),
+          ),
         ms,
       ),
     ),
@@ -53,7 +67,9 @@ const emptyNewStudent = {
 };
 
 function splitName(student) {
-  const fullName = String(student.name || "").trim().split(/\s+/);
+  const fullName = String(student.name || "")
+    .trim()
+    .split(/\s+/);
   return {
     firstName: student.firstName || fullName.shift() || "",
     lastName: student.lastName || fullName.join(" "),
@@ -76,7 +92,9 @@ function findCoordinatorForCourse(course, userList) {
 
 function coordinatorMatchesCourse(coordinator, course) {
   const departmentId = departmentIdFor(course);
-  return Boolean(departmentId) && recordDepartmentId(coordinator) === departmentId;
+  return (
+    Boolean(departmentId) && recordDepartmentId(coordinator) === departmentId
+  );
 }
 
 function coordinatorDisplayName(coordinator) {
@@ -91,8 +109,12 @@ function coordinatorDisplayName(coordinator) {
 }
 
 function accountForStudent(student, users) {
-  const studentId = String(student.studentId || "").trim().toLowerCase();
-  const email = String(student.email || "").trim().toLowerCase();
+  const studentId = String(student.studentId || "")
+    .trim()
+    .toLowerCase();
+  const email = String(student.email || "")
+    .trim()
+    .toLowerCase();
 
   return users.find((account) => {
     if (account.role !== "student") return false;
@@ -102,8 +124,13 @@ function accountForStudent(student, users) {
       account.id === student.accountUid ||
       account.studentRecordId === student.id ||
       (studentId &&
-        String(account.studentId || "").trim().toLowerCase() === studentId) ||
-      (email && String(account.email || "").trim().toLowerCase() === email)
+        String(account.studentId || "")
+          .trim()
+          .toLowerCase() === studentId) ||
+      (email &&
+        String(account.email || "")
+          .trim()
+          .toLowerCase() === email)
     );
   });
 }
@@ -182,7 +209,8 @@ function Students() {
         snapshots.users = true;
         setSourceErrors((current) => ({
           ...current,
-          users: "Student accounts could not be checked. Account creation is disabled.",
+          users:
+            "Student accounts could not be checked. Account creation is disabled.",
         }));
         updateLoading();
       },
@@ -226,19 +254,28 @@ function Students() {
     (page - 1) * pageSize,
     page * pageSize,
   );
-  const accountCount = records.filter((student) =>
-    student.isArchived !== true && accountForStudent(student, users),
+  const accountCount = records.filter(
+    (student) =>
+      student.isArchived !== true && accountForStudent(student, users),
   ).length;
-  const counts = records.filter((student) => student.isArchived !== true).reduce(
-    (result, student) => {
-      result[student.status] = (result[student.status] || 0) + 1;
-      return result;
-    },
-    { DEPLOYED: 0, PROCESSING: 0, COMPLETED: 0 },
-  );
+  const counts = records
+    .filter((student) => student.isArchived !== true)
+    .reduce(
+      (result, student) => {
+        result[student.status] = (result[student.status] || 0) + 1;
+        return result;
+      },
+      { DEPLOYED: 0, PROCESSING: 0, COMPLETED: 0 },
+    );
 
   const coordinators = useMemo(
-    () => users.filter((account) => account.role === "coordinator" && account.isArchived !== true && account.isActive !== false),
+    () =>
+      users.filter(
+        (account) =>
+          account.role === "coordinator" &&
+          account.isArchived !== true &&
+          account.isActive !== false,
+      ),
     [users],
   );
 
@@ -282,11 +319,15 @@ function Students() {
         }
       }
       await batch.commit();
-      setNotice(`Auto-assigned ${count} student(s) to their department coordinator.`);
+      setNotice(
+        `Auto-assigned ${count} student(s) to their department coordinator.`,
+      );
       window.setTimeout(() => setNotice(""), 6000);
     } catch (assignError) {
       console.error("Unable to auto-assign students:", assignError);
-      setError(`Auto-assignment could not be completed: ${assignError.message}`);
+      setError(
+        `Auto-assignment could not be completed: ${assignError.message}`,
+      );
     } finally {
       setBatchAssigning(false);
     }
@@ -335,7 +376,9 @@ function Students() {
 
     const account = accountForStudent(selectedStudent, users);
     const studentUid = selectedStudent.studentUid || account?.id;
-    const selectedCoordinator = users.find((u) => u.id === coordinatorAssignment);
+    const selectedCoordinator = users.find(
+      (u) => u.id === coordinatorAssignment,
+    );
     const coordinatorName = coordinatorDisplayName(selectedCoordinator);
     const assignment = coordinatorAssignment
       ? {
@@ -436,9 +479,11 @@ function Students() {
     } catch (saveError) {
       console.error("Unable to save coordinator assignment:", saveError);
       const errorCode = String(saveError?.code || "");
-      setError(errorCode.includes("permission-denied")
-        ? "Firestore denied this update. Publish the latest Firestore rules and confirm your user profile has the admin role."
-        : `The coordinator assignment could not be fully saved. ${saveError.message || "Check your connection and try again."}`);
+      setError(
+        errorCode.includes("permission-denied")
+          ? "Firestore denied this update. Publish the latest Firestore rules and confirm your user profile has the admin role."
+          : `The coordinator assignment could not be fully saved. ${saveError.message || "Check your connection and try again."}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -448,7 +493,9 @@ function Students() {
     event.preventDefault();
     if (!accountStudent) return;
     if (sourceErrors.users) {
-      setError("Student accounts could not be checked. Reload the page and try again.");
+      setError(
+        "Student accounts could not be checked. Reload the page and try again.",
+      );
       return;
     }
     if (accountForStudent(accountStudent, users)) {
@@ -483,8 +530,12 @@ function Students() {
         studentUid: managedUser.uid,
         accountEmail: accountForm.email.trim(),
         ...studentDepartmentFields(accountStudent.course),
-        ...(coordUid && !accountStudent.coordinatorUid ? { coordinatorUid: coordUid } : {}),
-        ...(coordName && !accountStudent.coordinatorName ? { coordinatorName: coordName } : {}),
+        ...(coordUid && !accountStudent.coordinatorUid
+          ? { coordinatorUid: coordUid }
+          : {}),
+        ...(coordName && !accountStudent.coordinatorName
+          ? { coordinatorName: coordName }
+          : {}),
         updatedAt: serverTimestamp(),
       });
 
@@ -513,7 +564,9 @@ function Students() {
   const createStudentAndAccount = async (event) => {
     event.preventDefault();
     if (sourceErrors.users) {
-      setError("Student accounts could not be checked. Reload the page and try again.");
+      setError(
+        "Student accounts could not be checked. Reload the page and try again.",
+      );
       return;
     }
 
@@ -524,8 +577,9 @@ function Students() {
       studentId &&
       records.some(
         (student) =>
-          String(student.studentId || "").trim().toLowerCase() ===
-          studentId.toLowerCase(),
+          String(student.studentId || "")
+            .trim()
+            .toLowerCase() === studentId.toLowerCase(),
       )
     ) {
       setError("A student with this student ID already exists.");
@@ -533,7 +587,10 @@ function Students() {
     }
     if (
       users.some(
-        (account) => String(account.email || "").trim().toLowerCase() === normalizedEmail,
+        (account) =>
+          String(account.email || "")
+            .trim()
+            .toLowerCase() === normalizedEmail,
       )
     ) {
       setError("An account with this email address already exists.");
@@ -554,44 +611,50 @@ function Students() {
     const targetCoordinatorName = coordinatorDisplayName(targetCoordinator);
 
     try {
-      studentReference = await withTimeout(addDoc(collection(db, "students"), {
-        name,
-        firstName: newStudent.firstName.trim(),
-        lastName: newStudent.lastName.trim(),
-        studentId,
-        email,
-        phone: newStudent.phone.trim(),
-        course: newStudent.course,
-        ...studentDepartmentFields(newStudent.course),
-        company: newStudent.company.trim(),
-        ...(targetCoordinatorUid
-          ? { coordinatorUid: targetCoordinatorUid }
-          : {}),
-        ...(targetCoordinatorName
-          ? { coordinatorName: targetCoordinatorName }
-          : {}),
-        requiredHours,
-        completedHours: 0,
-        ojtStatus: "PROCESSING",
-        createdBy: user?.uid || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }), "Saving the student record");
+      studentReference = await withTimeout(
+        addDoc(collection(db, "students"), {
+          name,
+          firstName: newStudent.firstName.trim(),
+          lastName: newStudent.lastName.trim(),
+          studentId,
+          email,
+          phone: newStudent.phone.trim(),
+          course: newStudent.course,
+          ...studentDepartmentFields(newStudent.course),
+          company: newStudent.company.trim(),
+          ...(targetCoordinatorUid
+            ? { coordinatorUid: targetCoordinatorUid }
+            : {}),
+          ...(targetCoordinatorName
+            ? { coordinatorName: targetCoordinatorName }
+            : {}),
+          requiredHours,
+          completedHours: 0,
+          ojtStatus: "PROCESSING",
+          createdBy: user?.uid || null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+        "Saving the student record",
+      );
 
-      managedUser = await withTimeout(createManagedUser({
-        firstName: newStudent.firstName,
-        lastName: newStudent.lastName,
-        email,
-        phone: newStudent.phone,
-        role: "student",
-        createdBy: user?.uid || null,
-        studentId,
-        studentRecordId: studentReference.id,
-        course: newStudent.course,
-        company: newStudent.company,
-        coordinatorUid: targetCoordinatorUid,
-        coordinatorName: targetCoordinatorName,
-      }), "Creating the login account");
+      managedUser = await withTimeout(
+        createManagedUser({
+          firstName: newStudent.firstName,
+          lastName: newStudent.lastName,
+          email,
+          phone: newStudent.phone,
+          role: "student",
+          createdBy: user?.uid || null,
+          studentId,
+          studentRecordId: studentReference.id,
+          course: newStudent.course,
+          company: newStudent.company,
+          coordinatorUid: targetCoordinatorUid,
+          coordinatorName: targetCoordinatorName,
+        }),
+        "Creating the login account",
+      );
 
       await updateDoc(doc(db, "students", studentReference.id), {
         studentUid: managedUser.uid,
@@ -627,16 +690,17 @@ function Students() {
     }
   };
 
-  const openAccountAction = (action, student, account) => setAccountAction({
-    action,
-    target: {
-      type: "student",
-      id: student.id,
-      name: student.name,
-      email: account?.email || student.email || student.accountEmail || "",
-      role: "student",
-    },
-  });
+  const openAccountAction = (action, student, account) =>
+    setAccountAction({
+      action,
+      target: {
+        type: "student",
+        id: student.id,
+        name: student.name,
+        email: account?.email || student.email || student.accountEmail || "",
+        role: "student",
+      },
+    });
 
   const finishAccountAction = (message, warnings) => {
     setAccountAction(null);
@@ -653,7 +717,11 @@ function Students() {
   };
 
   if (loading) {
-    return <main className="students-page students-state">Loading enrolled students...</main>;
+    return (
+      <main className="students-page students-state">
+        Loading enrolled students...
+      </main>
+    );
   }
 
   return (
@@ -667,7 +735,14 @@ function Students() {
             The coordinator roster uses these same live student records.
           </p>
         </div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
           {unassignedMatchingStudents.length > 0 && (
             <button
               type="button"
@@ -676,7 +751,9 @@ function Students() {
               onClick={autoAssignAllUnassigned}
               title={`Automatically link ${unassignedMatchingStudents.length} student(s) to their department coordinator`}
             >
-              {batchAssigning ? "Assigning..." : `Auto-Assign Coordinators (${unassignedMatchingStudents.length})`}
+              {batchAssigning
+                ? "Assigning..."
+                : `Auto-Assign Coordinators (${unassignedMatchingStudents.length})`}
             </button>
           )}
           <button
@@ -701,22 +778,45 @@ function Students() {
         </div>
       )}
 
-      <section className="students-summary" aria-label="Student account summary">
+      <section
+        className="students-summary"
+        aria-label="Student account summary"
+      >
         <article className="students-stat">
-          <span className="students-stat-icon blue"><Search size={19} /></span>
-          <div><p>Enrolled Students</p><strong>{records.length}</strong></div>
+          <span className="students-stat-icon blue">
+            <Search size={19} />
+          </span>
+          <div>
+            <p>Enrolled Students</p>
+            <strong>{records.length}</strong>
+          </div>
         </article>
         <article className="students-stat">
-          <span className="students-stat-icon green"><KeyRound size={19} /></span>
-          <div><p>Accounts Created</p><strong>{accountCount}</strong></div>
+          <span className="students-stat-icon green">
+            <KeyRound size={19} />
+          </span>
+          <div>
+            <p>Accounts Created</p>
+            <strong>{accountCount}</strong>
+          </div>
         </article>
         <article className="students-stat">
-          <span className="students-stat-icon amber"><KeyRound size={19} /></span>
-          <div><p>No Account Yet</p><strong>{records.length - accountCount}</strong></div>
+          <span className="students-stat-icon amber">
+            <KeyRound size={19} />
+          </span>
+          <div>
+            <p>No Account Yet</p>
+            <strong>{records.length - accountCount}</strong>
+          </div>
         </article>
         <article className="students-stat">
-          <span className="students-stat-icon indigo"><Eye size={19} /></span>
-          <div><p>On Practicum / Internship</p><strong>{counts.DEPLOYED}</strong></div>
+          <span className="students-stat-icon indigo">
+            <Eye size={19} />
+          </span>
+          <div>
+            <p>On Practicum / Internship</p>
+            <strong>{counts.DEPLOYED}</strong>
+          </div>
         </article>
       </section>
 
@@ -728,7 +828,9 @@ function Students() {
             <input
               placeholder="Search name, student ID, email, or course"
               value={searchTerm}
-              onChange={(event) => updateFilter(setSearchTerm, event.target.value)}
+              onChange={(event) =>
+                updateFilter(setSearchTerm, event.target.value)
+              }
             />
           </label>
           <div className="students-filters">
@@ -736,16 +838,22 @@ function Students() {
               className="students-select"
               aria-label="Filter by course"
               value={courseFilter}
-              onChange={(event) => updateFilter(setCourseFilter, event.target.value)}
+              onChange={(event) =>
+                updateFilter(setCourseFilter, event.target.value)
+              }
             >
               <option>All courses</option>
-              {courses.map((course) => <option key={course}>{course}</option>)}
+              {courses.map((course) => (
+                <option key={course}>{course}</option>
+              ))}
             </select>
             <select
               className="students-select"
               aria-label="Filter by student status"
               value={statusFilter}
-              onChange={(event) => updateFilter(setStatusFilter, event.target.value)}
+              onChange={(event) =>
+                updateFilter(setStatusFilter, event.target.value)
+              }
             >
               <option>All statuses</option>
               <option>DEPLOYED</option>
@@ -776,18 +884,35 @@ function Students() {
                   <tr key={student.id}>
                     <td>
                       <div className="student-profile">
-                        <span className={`student-avatar ${avatarColors[index % avatarColors.length]}`}>
-                          {student.name.split(/\s+/).map((part) => part[0]).join("")}
+                        <span
+                          className={`student-avatar ${avatarColors[index % avatarColors.length]}`}
+                        >
+                          {student.name
+                            .split(/\s+/)
+                            .map((part) => part[0])
+                            .join("")}
                         </span>
                         <div>
                           <strong>{student.name}</strong>
-                          <span>{student.email || student.accountEmail || "Email not provided"}</span>
+                          <span>
+                            {student.email ||
+                              student.accountEmail ||
+                              "Email not provided"}
+                          </span>
                         </div>
                       </div>
                     </td>
-                    <td><span className="student-id">{student.studentId || "—"}</span></td>
+                    <td>
+                      <span className="student-id">
+                        {student.studentId || "—"}
+                      </span>
+                    </td>
                     <td>{student.course}</td>
-                    <td><span className={`student-status ${statusClass}`}>{student.status}</span></td>
+                    <td>
+                      <span className={`student-status ${statusClass}`}>
+                        {student.status}
+                      </span>
+                    </td>
                     <td>
                       <div className="student-actions">
                         <button
@@ -805,7 +930,9 @@ function Students() {
                             className="student-action"
                             title="Restore student"
                             aria-label={`Restore ${student.name}`}
-                            onClick={() => openAccountAction("restore", student, account)}
+                            onClick={() =>
+                              openAccountAction("restore", student, account)
+                            }
                           >
                             <ArchiveRestore size={15} />
                           </button>
@@ -815,7 +942,9 @@ function Students() {
                             className="student-action"
                             title="Archive student"
                             aria-label={`Archive ${student.name}`}
-                            onClick={() => openAccountAction("archive", student, account)}
+                            onClick={() =>
+                              openAccountAction("archive", student, account)
+                            }
                           >
                             <Archive size={15} />
                           </button>
@@ -825,7 +954,9 @@ function Students() {
                           className="student-action"
                           title="Delete permanently"
                           aria-label={`Delete ${student.name}`}
-                          onClick={() => openAccountAction("delete", student, account)}
+                          onClick={() =>
+                            openAccountAction("delete", student, account)
+                          }
                         >
                           <Trash2 size={15} />
                         </button>
@@ -851,9 +982,20 @@ function Students() {
           {visibleStudents.length === 0 && (
             <div className="students-empty">
               <Search size={24} />
-              <strong>{sourceErrors.students ? "Student records unavailable" : "No students found"}</strong>
-              <span>{sourceErrors.students || "Try changing your search or filters."}</span>
-              {!sourceErrors.students && <button type="button" onClick={clearFilters}>Clear filters</button>}
+              <strong>
+                {sourceErrors.students
+                  ? "Student records unavailable"
+                  : "No students found"}
+              </strong>
+              <span>
+                {sourceErrors.students ||
+                  "Try changing your search or filters."}
+              </span>
+              {!sourceErrors.students && (
+                <button type="button" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -861,7 +1003,8 @@ function Students() {
         <footer className="students-footer">
           <span>
             Showing {filteredStudents.length ? (page - 1) * pageSize + 1 : 0}–
-            {Math.min(page * pageSize, filteredStudents.length)} of {filteredStudents.length} students
+            {Math.min(page * pageSize, filteredStudents.length)} of{" "}
+            {filteredStudents.length} students
           </span>
           <div className="student-pagination">
             <button
@@ -873,7 +1016,12 @@ function Students() {
             >
               ‹
             </button>
-            <button type="button" className="student-page-button current" aria-label="Current page" disabled>
+            <button
+              type="button"
+              className="student-page-button current"
+              aria-label="Current page"
+              disabled
+            >
               {page}
             </button>
             <button
@@ -890,26 +1038,64 @@ function Students() {
       </section>
 
       {selectedStudent && (
-        <div className="students-modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setSelectedStudent(null)}>
-          <section className="students-modal" role="dialog" aria-modal="true" aria-labelledby="student-modal-title">
+        <div
+          className="students-modal-backdrop"
+          role="presentation"
+          onClick={(event) =>
+            event.target === event.currentTarget && setSelectedStudent(null)
+          }
+        >
+          <section
+            className="students-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="student-modal-title"
+          >
             <header className="students-modal-header">
               <div>
                 <h2 id="student-modal-title">{selectedStudent.name}</h2>
-                <p>{selectedStudent.studentId || "No student ID"} · {selectedStudent.course}</p>
+                <p>
+                  {selectedStudent.studentId || "No student ID"} ·{" "}
+                  {selectedStudent.course}
+                </p>
               </div>
-              <button type="button" className="students-modal-close" aria-label="Close student details" onClick={() => setSelectedStudent(null)}><X size={17} /></button>
+              <button
+                type="button"
+                className="students-modal-close"
+                aria-label="Close student details"
+                onClick={() => setSelectedStudent(null)}
+              >
+                <X size={17} />
+              </button>
             </header>
             <div className="students-modal-body">
-              <div className="student-detail"><label>Contact email</label><strong>{selectedStudent.email || "Not provided"}</strong></div>
-              <div className="student-detail"><label>OJT status</label><strong>{selectedStudent.status}</strong></div>
-              <div className="student-detail"><label>Partner company</label><strong>{selectedStudent.company}</strong></div>
-              <div className="student-detail"><label>Hours progress</label><strong>{selectedStudent.completed} of {selectedStudent.required} hours</strong></div>
+              <div className="student-detail">
+                <label>Contact email</label>
+                <strong>{selectedStudent.email || "Not provided"}</strong>
+              </div>
+              <div className="student-detail">
+                <label>OJT status</label>
+                <strong>{selectedStudent.status}</strong>
+              </div>
+              <div className="student-detail">
+                <label>Partner company</label>
+                <strong>{selectedStudent.company}</strong>
+              </div>
+              <div className="student-detail">
+                <label>Hours progress</label>
+                <strong>
+                  {selectedStudent.completed} of {selectedStudent.required}{" "}
+                  hours
+                </strong>
+              </div>
               <label className="student-detail">
                 <span>Assigned coordinator</span>
                 <select
                   value={coordinatorAssignment}
                   disabled={saving}
-                  onChange={(event) => setCoordinatorAssignment(event.target.value)}
+                  onChange={(event) =>
+                    setCoordinatorAssignment(event.target.value)
+                  }
                 >
                   <option value="">Unassigned</option>
                   {coordinators.map((coordinator) => {
@@ -920,7 +1106,9 @@ function Students() {
                     return (
                       <option key={coordinator.id} value={coordinator.id}>
                         {coordinatorDisplayName(coordinator)}
-                        {coordinator.department ? ` — ${departmentLabel(coordinator.department)}` : ""}
+                        {coordinator.department
+                          ? ` — ${departmentLabel(coordinator.department)}`
+                          : ""}
                         {isDeptMatch ? " ★ (Program match)" : ""}
                       </option>
                     );
@@ -943,24 +1131,108 @@ function Students() {
       )}
 
       {accountStudent && (
-        <div className="students-modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && !saving && setAccountStudent(null)}>
-          <section className="students-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+        <div
+          className="students-modal-backdrop"
+          role="presentation"
+          onClick={(event) =>
+            event.target === event.currentTarget &&
+            !saving &&
+            setAccountStudent(null)
+          }
+        >
+          <section
+            className="students-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-modal-title"
+          >
             <header className="students-modal-header">
               <div>
                 <h2 id="account-modal-title">Create student login</h2>
-                <p>{accountStudent.name} · {accountStudent.studentId || accountStudent.course}</p>
+                <p>
+                  {accountStudent.name} ·{" "}
+                  {accountStudent.studentId || accountStudent.course}
+                </p>
               </div>
-              <button type="button" className="students-modal-close" aria-label="Close account form" disabled={saving} onClick={() => setAccountStudent(null)}><X size={17} /></button>
+              <button
+                type="button"
+                className="students-modal-close"
+                aria-label="Close account form"
+                disabled={saving}
+                onClick={() => setAccountStudent(null)}
+              >
+                <X size={17} />
+              </button>
             </header>
-            <form className="students-account-form" onSubmit={createStudentAccount}>
-              <label>First name<input required value={accountForm.firstName} onChange={(event) => setAccountForm((current) => ({ ...current, firstName: event.target.value }))} /></label>
-              <label>Last name<input required value={accountForm.lastName} onChange={(event) => setAccountForm((current) => ({ ...current, lastName: event.target.value }))} /></label>
-              <label>Email address<input type="email" required value={accountForm.email} onChange={(event) => setAccountForm((current) => ({ ...current, email: event.target.value }))} /></label>
-              <p>A temporary password will be generated. The account will be linked to this enrolled student record.</p>
-              {error && <div className="students-error" role="alert">{error}</div>}
+            <form
+              className="students-account-form"
+              onSubmit={createStudentAccount}
+            >
+              <label>
+                First name
+                <input
+                  required
+                  value={accountForm.firstName}
+                  onChange={(event) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      firstName: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  required
+                  value={accountForm.lastName}
+                  onChange={(event) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      lastName: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Email address
+                <input
+                  type="email"
+                  required
+                  value={accountForm.email}
+                  onChange={(event) =>
+                    setAccountForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <p>
+                A temporary password will be generated. The account will be
+                linked to this enrolled student record.
+              </p>
+              {error && (
+                <div className="students-error" role="alert">
+                  {error}
+                </div>
+              )}
               <footer>
-                <button type="button" className="students-secondary" disabled={saving} onClick={() => setAccountStudent(null)}>Cancel</button>
-                <button type="submit" className="students-primary" disabled={saving}>{saving ? "Creating account..." : "Create account"}</button>
+                <button
+                  type="button"
+                  className="students-secondary"
+                  disabled={saving}
+                  onClick={() => setAccountStudent(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="students-primary"
+                  disabled={saving}
+                >
+                  {saving ? "Creating account..." : "Create account"}
+                </button>
               </footer>
             </form>
           </section>
@@ -1114,19 +1386,30 @@ function Students() {
                       : "Select a coordinator (optional)"}
                   </option>
                   {coordinators.map((coordinator) => {
-                    const isAuto = autoMatchedCoordinator?.id === coordinator.id;
+                    const isAuto =
+                      autoMatchedCoordinator?.id === coordinator.id;
                     return (
                       <option key={coordinator.id} value={coordinator.id}>
                         {coordinatorDisplayName(coordinator)}
-                        {coordinator.department ? ` — ${departmentLabel(coordinator.department)}` : ""}
+                        {coordinator.department
+                          ? ` — ${departmentLabel(coordinator.department)}`
+                          : ""}
                         {isAuto ? " (Auto-matched)" : ""}
                       </option>
                     );
                   })}
                 </select>
                 {autoMatchedCoordinator && (
-                  <span style={{ fontSize: "11px", color: "#16866f", fontWeight: "normal" }}>
-                    ✓ Auto-assigned to {coordinatorDisplayName(autoMatchedCoordinator)} based on program
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#16866f",
+                      fontWeight: "normal",
+                    }}
+                  >
+                    ✓ Auto-assigned to{" "}
+                    {coordinatorDisplayName(autoMatchedCoordinator)} based on
+                    program
                   </span>
                 )}
               </label>
@@ -1150,7 +1433,11 @@ function Students() {
                 on the coordinator roster automatically.
               </p>
               {error && (
-                <div className="students-error" role="alert" style={{ gridColumn: "1 / -1" }}>
+                <div
+                  className="students-error"
+                  role="alert"
+                  style={{ gridColumn: "1 / -1" }}
+                >
                   {error}
                 </div>
               )}
@@ -1176,8 +1463,18 @@ function Students() {
         </div>
       )}
 
-      {accountAction && <AccountActionDialog {...accountAction} onClose={() => setAccountAction(null)} onDone={finishAccountAction} />}
-      {notice && <div className="students-notice" role="status">{notice}</div>}
+      {accountAction && (
+        <AccountActionDialog
+          {...accountAction}
+          onClose={() => setAccountAction(null)}
+          onDone={finishAccountAction}
+        />
+      )}
+      {notice && (
+        <div className="students-notice" role="status">
+          {notice}
+        </div>
+      )}
     </main>
   );
 }

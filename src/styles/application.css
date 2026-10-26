@@ -6,31 +6,418 @@
   animation: application-enter 0.4s ease-out both;
 }
 
-.application-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 27px; }
-.application-eyebrow { margin: 0 0 7px; color: #8791a4; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.application-header h1 { margin: 0 0 7px; color: #172033; font-size: clamp(28px, 3vw, 38px); font-weight: 800; letter-spacing: -.04em; line-height: 1.1; }
-.application-subtitle { color: var(--application-muted); font-size: 14px; }
-.application-export, .filter-button, .application-select { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--application-line); border-radius: 7px; background: #fff; color: #536176; font: 700 13px 'Trebuchet MS', 'Segoe UI', sans-serif; }
-.application-export { padding: 10px 13px; cursor: pointer; transition: .2s ease; }
-.application-export:hover, .filter-button:hover { border-color: #aab8cb; color: #2868c7; transform: translateY(-1px); }
+.application-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 27px;
+}
+.application-eyebrow {
+  margin: 0 0 7px;
+  color: #8791a4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.application-header h1 {
+  margin: 0 0 7px;
+  color: #172033;
+  font-size: clamp(28px, 3vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+.application-subtitle {
+  color: var(--application-muted);
+  font-size: 14px;
+}
+.application-export,
+.filter-button,
+.application-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--application-line);
+  border-radius: 7px;
+  background: #fff;
+  color: #536176;
+  font:
+    700 13px "Trebuchet MS",
+    "Segoe UI",
+    sans-serif;
+}
+.application-export {
+  padding: 10px 13px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.application-export:hover,
+.filter-button:hover {
+  border-color: #aab8cb;
+  color: #2868c7;
+  transform: translateY(-1px);
+}
 
-.application-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
-.application-summary-card { display: flex; align-items: center; gap: 12px; min-height: 80px; box-sizing: border-box; padding: 16px; border: 1px solid var(--application-line); background: #fff; box-shadow: 0 8px 24px rgba(24, 38, 63, .04); }
-.summary-icon { display: grid; place-items: center; width: 35px; height: 35px; flex: 0 0 35px; border-radius: 8px; }
-.summary-blue { color: #3576d3; background: #e7f0ff; }.summary-amber { color: #c37b13; background: #fff2d8; }.summary-green { color: #138f7d; background: #e0f6f1; }.summary-slate { color: #65748a; background: #eef1f5; }
-.application-summary-card div { display: grid; gap: 3px; }.application-summary-card strong { color: #1b2940; font-size: 22px; line-height: 1; }.application-summary-card span:not(.summary-icon) { color: #7d899b; font-size: 11px; }
+.application-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.application-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 80px;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid var(--application-line);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(24, 38, 63, 0.04);
+}
+.summary-icon {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  flex: 0 0 35px;
+  border-radius: 8px;
+}
+.summary-blue {
+  color: #3576d3;
+  background: #e7f0ff;
+}
+.summary-amber {
+  color: #c37b13;
+  background: #fff2d8;
+}
+.summary-green {
+  color: #138f7d;
+  background: #e0f6f1;
+}
+.summary-slate {
+  color: #65748a;
+  background: #eef1f5;
+}
+.application-summary-card div {
+  display: grid;
+  gap: 3px;
+}
+.application-summary-card strong {
+  color: #1b2940;
+  font-size: 22px;
+  line-height: 1;
+}
+.application-summary-card span:not(.summary-icon) {
+  color: #7d899b;
+  font-size: 11px;
+}
 
-.application-panel { border: 1px solid var(--application-line); background: #fff; box-shadow: 0 8px 24px rgba(24, 38, 63, .04); }
-.application-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 18px 20px; border-bottom: 1px solid #edf0f4; }
-.application-search { display: flex; align-items: center; gap: 9px; width: min(360px, 100%); padding: 9px 12px; border: 1px solid #dbe3ed; border-radius: 7px; color: #8c99aa; }.application-search:focus-within { border-color: #8bb0e3; box-shadow: 0 0 0 3px rgba(40,104,199,.1); }.application-search input { width: 100%; border: 0; outline: 0; color: #25334a; font: 13px 'Trebuchet MS', 'Segoe UI', sans-serif; }.application-search input::placeholder { color: #a0aabb; }
-.application-controls { display: flex; gap: 9px; }.application-select { position: relative; padding: 0 10px; }.application-select select { appearance: none; min-width: 140px; padding: 9px 15px 9px 0; border: 0; outline: 0; background: transparent; color: #536176; font: inherit; cursor: pointer; }.filter-button { padding: 9px 11px; cursor: pointer; }
-.application-table-wrap { overflow-x: auto; }.application-table { width: 100%; min-width: 790px; border-collapse: collapse; text-align: left; }.application-table th { padding: 13px 20px; background: #fafbfd; color: #8995a7; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }.application-table td { padding: 15px 20px; border-top: 1px solid #edf0f4; vertical-align: middle; }.application-table tbody tr { transition: background .15s ease; }.application-table tbody tr:hover { background: #f8fbff; }
-.student-cell { display: flex; align-items: center; gap: 11px; min-width: 250px; }.student-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; font-size: 11px; font-weight: 800; }.avatar-blue { background: #e2edff; color: #3576d3; }.avatar-green { background: #dcf4ed; color: #168870; }.avatar-purple { background: #eee7ff; color: #7654c7; }.avatar-orange { background: #ffebd9; color: #c1742b; }.avatar-teal { background: #dff4f2; color: #238e8a; }.avatar-slate { background: #e9edf3; color: #65748a; }.student-cell div { display: grid; gap: 3px; }.student-cell strong, .company-cell { color: #344258; font-size: 13px; font-weight: 800; }.student-cell span, .date-cell { color: #8995a7; font-size: 11px; }.company-cell { white-space: nowrap; font-weight: 600; }.date-cell { white-space: nowrap; }
-.application-status { display: inline-flex; padding: 5px 9px; border-radius: 99px; font-size: 10px; font-weight: 800; white-space: nowrap; }.status-pending { background: #fff3dc; color: #b4771b; }.status-approved { background: #e0f6ef; color: #16846e; }.status-for-revision { background: #e7efff; color: #356bb9; }.status-declined { background: #ffe6e2; color: #bd5b4f; }
-.application-action { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--application-line); border-radius: 6px; background: #fff; color: #76849a; cursor: pointer; }.application-action:hover { border-color: #9db9e8; color: #2868c7; }.application-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 20px; border-top: 1px solid #edf0f4; color: #8a96a8; font-size: 11px; }.footer-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #2868c7; font: 700 11px 'Trebuchet MS', 'Segoe UI', sans-serif; cursor: pointer; }.empty-applications { display: grid; place-items: center; gap: 6px; padding: 55px 20px; color: #8a96a8; }.empty-applications strong { color: #344258; font-size: 14px; }.empty-applications svg { color: #aab6c7; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@keyframes application-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 900px) { .application-summary { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 650px) { .application-header { align-items: flex-start; flex-direction: column; }.application-export { width: 100%; justify-content: center; }.application-toolbar { align-items: stretch; flex-direction: column; }.application-search { width: auto; }.application-controls { display: grid; grid-template-columns: 1fr 1fr; }.application-select, .filter-button { justify-content: center; }.application-select select { min-width: 0; width: 100%; }.application-footer { align-items: flex-start; flex-direction: column; } }
-@media (max-width: 450px) { .application-summary { grid-template-columns: 1fr; }.application-summary-card { min-height: 65px; }.application-panel { margin-inline: -1px; } }
-@media (prefers-reduced-motion: reduce) { .application-page { animation: none; } }
+.application-panel {
+  border: 1px solid var(--application-line);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(24, 38, 63, 0.04);
+}
+.application-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #edf0f4;
+}
+.application-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(360px, 100%);
+  padding: 9px 12px;
+  border: 1px solid #dbe3ed;
+  border-radius: 7px;
+  color: #8c99aa;
+}
+.application-search:focus-within {
+  border-color: #8bb0e3;
+  box-shadow: 0 0 0 3px rgba(40, 104, 199, 0.1);
+}
+.application-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: #25334a;
+  font:
+    13px "Trebuchet MS",
+    "Segoe UI",
+    sans-serif;
+}
+.application-search input::placeholder {
+  color: #a0aabb;
+}
+.application-controls {
+  display: flex;
+  gap: 9px;
+}
+.application-select {
+  position: relative;
+  padding: 0 10px;
+}
+.application-select select {
+  appearance: none;
+  min-width: 140px;
+  padding: 9px 15px 9px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #536176;
+  font: inherit;
+  cursor: pointer;
+}
+.filter-button {
+  padding: 9px 11px;
+  cursor: pointer;
+}
+.application-table-wrap {
+  overflow-x: auto;
+}
+.application-table {
+  width: 100%;
+  min-width: 790px;
+  border-collapse: collapse;
+  text-align: left;
+}
+.application-table th {
+  padding: 13px 20px;
+  background: #fafbfd;
+  color: #8995a7;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.application-table td {
+  padding: 15px 20px;
+  border-top: 1px solid #edf0f4;
+  vertical-align: middle;
+}
+.application-table tbody tr {
+  transition: background 0.15s ease;
+}
+.application-table tbody tr:hover {
+  background: #f8fbff;
+}
+.student-cell {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 250px;
+}
+.student-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.avatar-blue {
+  background: #e2edff;
+  color: #3576d3;
+}
+.avatar-green {
+  background: #dcf4ed;
+  color: #168870;
+}
+.avatar-purple {
+  background: #eee7ff;
+  color: #7654c7;
+}
+.avatar-orange {
+  background: #ffebd9;
+  color: #c1742b;
+}
+.avatar-teal {
+  background: #dff4f2;
+  color: #238e8a;
+}
+.avatar-slate {
+  background: #e9edf3;
+  color: #65748a;
+}
+.student-cell div {
+  display: grid;
+  gap: 3px;
+}
+.student-cell strong,
+.company-cell {
+  color: #344258;
+  font-size: 13px;
+  font-weight: 800;
+}
+.student-cell span,
+.date-cell {
+  color: #8995a7;
+  font-size: 11px;
+}
+.company-cell {
+  white-space: nowrap;
+  font-weight: 600;
+}
+.date-cell {
+  white-space: nowrap;
+}
+.application-status {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.status-pending {
+  background: #fff3dc;
+  color: #b4771b;
+}
+.status-approved {
+  background: #e0f6ef;
+  color: #16846e;
+}
+.status-for-revision {
+  background: #e7efff;
+  color: #356bb9;
+}
+.status-declined {
+  background: #ffe6e2;
+  color: #bd5b4f;
+}
+.application-action {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--application-line);
+  border-radius: 6px;
+  background: #fff;
+  color: #76849a;
+  cursor: pointer;
+}
+.application-action:hover {
+  border-color: #9db9e8;
+  color: #2868c7;
+}
+.application-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 20px;
+  border-top: 1px solid #edf0f4;
+  color: #8a96a8;
+  font-size: 11px;
+}
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2868c7;
+  font:
+    700 11px "Trebuchet MS",
+    "Segoe UI",
+    sans-serif;
+  cursor: pointer;
+}
+.empty-applications {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 55px 20px;
+  color: #8a96a8;
+}
+.empty-applications strong {
+  color: #344258;
+  font-size: 14px;
+}
+.empty-applications svg {
+  color: #aab6c7;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@keyframes application-enter {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 900px) {
+  .application-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 650px) {
+  .application-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .application-export {
+    width: 100%;
+    justify-content: center;
+  }
+  .application-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .application-search {
+    width: auto;
+  }
+  .application-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .application-select,
+  .filter-button {
+    justify-content: center;
+  }
+  .application-select select {
+    min-width: 0;
+    width: 100%;
+  }
+  .application-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 450px) {
+  .application-summary {
+    grid-template-columns: 1fr;
+  }
+  .application-summary-card {
+    min-height: 65px;
+  }
+  .application-panel {
+    margin-inline: -1px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .application-page {
+    animation: none;
+  }
+}

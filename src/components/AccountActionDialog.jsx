@@ -67,7 +67,17 @@ function AccountActionDialog({ action, target, onClose, onDone }) {
   const blocker = action === "delete" ? preview?.related?.blockers?.[0] : "";
   const isSelf = preview?.isSelf && action !== "reactivate" && action !== "restore";
   const needsTyping = action === "delete";
-  const canSubmit = !loading && !busy && preview && !blocker && !isSelf && (!needsTyping || typed === "DELETE");
+  const description =
+    action === "delete" && (preview?.target?.role || target.role) === "coordinator"
+      ? "This permanently removes the coordinator's Firebase sign-in account and profile. Assigned students will remain in the system with their academic records and will be unassigned from this coordinator."
+      : config.text;
+  const canSubmit =
+    !loading &&
+    !busy &&
+    preview &&
+    !blocker &&
+    !isSelf &&
+    (!needsTyping || typed.trim().toUpperCase() === "DELETE");
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -95,7 +105,7 @@ function AccountActionDialog({ action, target, onClose, onDone }) {
           <div><small>Role</small><strong>{preview?.target?.role || target.role}</strong></div>
         </div>
         <div className="users-dialog-body">
-        <p>{config.text}</p>
+        <p>{description}</p>
         {loading && <p role="status">Checking related records...</p>}
         {!loading && related.length > 0 && (
           <p role="status"><strong>Related records:</strong> {related.join(", ")}.</p>
