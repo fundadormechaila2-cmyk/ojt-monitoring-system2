@@ -1361,6 +1361,7 @@ function Students() {
                 Partner company
                 <input
                   value={newStudent.company}
+                  disabled
                   onChange={(event) =>
                     setNewStudent((current) => ({
                       ...current,
