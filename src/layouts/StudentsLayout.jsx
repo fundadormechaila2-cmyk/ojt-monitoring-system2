@@ -5,7 +5,6 @@ import {
   FileUser,
   ListChecks,
   Summary,
-  Settings,
   Menu,
 } from "lucide-react";
 import { logout } from "../services/authService";
@@ -93,12 +92,6 @@ function StudentDashboard() {
             to="/Student/ojtreports"
             label="OJT Reports"
             icon={Summary}
-            onClick={closeSidebarOnMobile}
-          />
-          <StudentNavLink
-            to="/Student/settings"
-            label="Settings"
-            icon={Settings}
             onClick={closeSidebarOnMobile}
           />
         </aside>

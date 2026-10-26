@@ -144,7 +144,9 @@ function StudentsDashboard() {
             <p className="student-stat-label">{item.label}</p>
             <div className="student-stat-value">
               <strong>{item.value}</strong>
-              <span className={`student-stat-trend ${item.trend}`}>{item.trend === "positive" ? "Good" : "Current"}</span>
+              {item.trend === "positive" && (
+                <span className="student-stat-trend positive">Good</span>
+              )}
             </div>
           </div>
         ))}

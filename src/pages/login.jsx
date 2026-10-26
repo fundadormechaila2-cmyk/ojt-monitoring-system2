@@ -80,7 +80,6 @@ function PasswordField({ id, label, value, onChange, autoComplete, placeholder, 
 }
 
 function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
-  const [current, setCurrent] = useState(initialCurrent);
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -94,7 +93,12 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
   const passed = PASSWORD_RULES.filter((rule) => rule.test(next)).length;
   const allRulesMet = passed === PASSWORD_RULES.length;
   const matches = confirm.length > 0 && next === confirm;
-  const canSubmit = current && allRulesMet && matches && next !== current && !saving;
+  const canSubmit =
+    Boolean(initialCurrent) &&
+    allRulesMet &&
+    matches &&
+    next !== initialCurrent &&
+    !saving;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -104,13 +108,19 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
 
     try {
       const firebaseUser = auth.currentUser;
-      const credential = EmailAuthProvider.credential(firebaseUser.email, current);
+      const credential = EmailAuthProvider.credential(firebaseUser.email, initialCurrent);
       await reauthenticateWithCredential(firebaseUser, credential);
       await completePasswordChange(firebaseUser, next);
       onDone();
     } catch (err) {
       const wrongPassword = ["auth/wrong-password", "auth/invalid-credential"].includes(err.code);
-      setError(wrongPassword ? "Your temporary password is incorrect." : err.message);
+      setError(
+        wrongPassword
+          ? "Your sign-in session could not be verified. Cancel and sign in again."
+          : err.code === "auth/requires-recent-login"
+            ? "Your sign-in session has expired. Cancel and sign in again."
+            : err.message,
+      );
       setSaving(false);
     }
   };
@@ -134,23 +144,15 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
         <form onSubmit={handleSubmit} noValidate>
           <div ref={firstFieldRef}>
             <PasswordField
-              id="current-password"
-              label="Current / temporary password"
-              value={current}
-              onChange={setCurrent}
-              autoComplete="current-password"
-              placeholder="Enter your temporary password"
+              id="new-password"
+              label="New password"
+              value={next}
+              onChange={setNext}
+              autoComplete="new-password"
+              placeholder="Create a strong password"
+              describedBy="password-rules"
             />
           </div>
-          <PasswordField
-            id="new-password"
-            label="New password"
-            value={next}
-            onChange={setNext}
-            autoComplete="new-password"
-            placeholder="Create a strong password"
-            describedBy="password-rules"
-          />
 
           <div className="strength" aria-live="polite">
             <div className="strength-bar" aria-hidden="true">
@@ -186,8 +188,15 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
             placeholder="Re-enter your new password"
           />
           {confirm && !matches && <p className="field-hint error">Passwords do not match.</p>}
-          {next && next === current && (
+          {next && next === initialCurrent && (
             <p className="field-hint error">New password must differ from the temporary one.</p>
+          )}
+
+          {!initialCurrent && (
+            <div className="alert alert-error" role="alert">
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>Please sign out and sign in again to continue changing your password.</span>
+            </div>
           )}
 
           {error && (
