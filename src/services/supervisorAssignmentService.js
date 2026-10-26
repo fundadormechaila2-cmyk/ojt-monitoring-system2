@@ -6,6 +6,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { recordDepartmentId, sameDepartment } from "../constants/departments";
 
 function personName(person) {
   return (
@@ -37,9 +38,8 @@ export async function assignStudentsToSupervisor({ coordinator, supervisor, stud
     throw new Error("Select a valid supervisor.");
   }
   if (
-    !coordinator.department ||
-    String(supervisor.department || "").trim().toLowerCase() !==
-      String(coordinator.department).trim().toLowerCase()
+    !recordDepartmentId(coordinator) ||
+    !sameDepartment(supervisor, coordinator)
   ) {
     throw new Error("You can only manage supervisors in your department.");
   }

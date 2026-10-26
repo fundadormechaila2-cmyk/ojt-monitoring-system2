@@ -4,6 +4,7 @@ import { Eye, Search } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
+import { MAJORS, recordDepartmentId } from "../../constants/departments";
 import { CoordinatorState, normalizedStudents, useCoordinatorData, useFilteredStudents } from "./coordinatorData.jsx";
 import "../../styles/students-data.css";
 
@@ -14,6 +15,7 @@ function Students() {
   const { data, loading, error } = useCoordinatorData(studentSources);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All statuses");
+  const [major, setMajor] = useState("All majors");
   const [selected, setSelected] = useState(null);
   const [supervisors, setSupervisors] = useState([]);
   const [supervisorUid, setSupervisorUid] = useState("");
@@ -21,7 +23,9 @@ function Students() {
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState("");
   const records = normalizedStudents(data.students, data.attendance);
-  const visible = useFilteredStudents(records, search, { status });
+  const showMajorFilter =
+    recordDepartmentId(user) === "BSBA" || records.some((record) => record.major);
+  const visible = useFilteredStudents(records, search, { status, major });
 
   useEffect(() => {
     if (!user?.department) return undefined;
@@ -107,6 +111,7 @@ function Students() {
           <div className="coordinator-data-toolbar">
             <label className="coordinator-data-search"><Search size={16} /><span className="sr-only">Search students</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, ID, course, or company" /></label>
             <select aria-label="Filter by status" value={status} onChange={(event) => setStatus(event.target.value)}><option>All statuses</option><option>DEPLOYED</option><option>PROCESSING</option><option>COMPLETED</option></select>
+                        {showMajorFilter && <select aria-label="Filter by major" value={major} onChange={(event) => setMajor(event.target.value)}><option>All majors</option>{MAJORS.map((item) => <option key={item.id} value={item.id}>{item.id} — {item.label}</option>)}</select>}
           </div>
           {visible.length === 0 ? <div className="coordinator-data-empty">No students match the selected filters.</div> : <div className="coordinator-data-table-wrap"><table className="coordinator-data-table"><thead><tr><th>Student</th><th>ID</th><th>Program</th><th>Company</th><th>Hours</th><th>Status</th><th /></tr></thead><tbody>{visible.map((student) => <tr key={student.id}><td><strong>{student.name}</strong></td><td>{student.studentId || "-"}</td><td>{student.course}</td><td>{student.company}</td><td>{student.completed} / {student.required}</td><td><span className={`coordinator-badge ${student.status.toLowerCase()}`}>{student.status}</span></td><td><button type="button" className="coordinator-icon-button" title="View student details" aria-label={`View ${student.name}`} onClick={() => openStudent(student)}><Eye size={16} /></button></td></tr>)}</tbody></table></div>}
         </section>

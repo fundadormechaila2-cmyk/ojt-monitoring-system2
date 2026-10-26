@@ -3,6 +3,7 @@ const { getAuth } = require("firebase-admin/auth");
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const { isAccountLive } = require("./accountState");
+const { recordDepartmentId, sameDepartment } = require("./departments");
 
 const ACTIONS = ["preview", "deactivate", "reactivate", "archive", "restore", "delete"];
 const TARGET_TYPES = ["user", "student"];
@@ -26,13 +27,11 @@ async function requireActor(db, request) {
 
 // Coordinators may only preview or delete supervisors of their own department.
 function assertCoordinatorScope(actor, action, target) {
-  const department = String(actor.department || "").trim().toLowerCase();
-  const targetDepartment = String(target.user?.department || "").trim().toLowerCase();
   if (
     !["preview", "delete"].includes(action) ||
     target.user?.role !== "supervisor" ||
-    !department ||
-    department !== targetDepartment
+    !recordDepartmentId(actor) ||
+    !sameDepartment(actor, target.user)
   ) {
     throw new HttpsError(
       "permission-denied",

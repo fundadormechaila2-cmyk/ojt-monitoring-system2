@@ -12,7 +12,6 @@ import {
   ClipboardCheck,
   Settings,
   Menu,
-  LogOut,
 } from "lucide-react";
 
 import schoolLogo from "../assets/school-logo.png";
@@ -194,17 +193,6 @@ function AdminLayout() {
             </NavLink>
           )}
 
-          <button
-            type="button"
-            className="nav-link sidebar-logout"
-            onClick={handleLogout}
-            title="Logout"
-          >
-            <span className="nav-icon">
-              <LogOut size={18} />
-            </span>
-            <span className="nav-text">Logout</span>
-          </button>
         </aside>
         {/* MOBILE OVERLAY - this overlay is displayed on mobile devices when the sidebar is open. Clicking on it will close the sidebar. */}
         {sidebarOpen && (

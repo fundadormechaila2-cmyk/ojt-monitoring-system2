@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
 import { useAuth } from "../../context/useAuth";
+import { majorIdFor } from "../../constants/departments";
 import "../../styles/coordinator-module.css";
 
 export const coordinatorSources = [
@@ -125,15 +126,17 @@ export function normalizedStudents(students, attendance) {
         : rawStatus.includes("pending") || rawStatus.includes("not started")
           ? "PROCESSING"
           : "DEPLOYED";
+    const course = valueOf(
+      student,
+      ["course", "program", "courseProgram"],
+      "Not specified",
+    );
     return {
       ...student,
       studentId: studentIdOf(student),
       name: studentNameOf(student),
-      course: valueOf(
-        student,
-        ["course", "program", "courseProgram"],
-        "Not specified",
-      ),
+      course,
+      major: student.major || majorIdFor(course),
       company: valueOf(
         student,
         ["company", "partnerCompany", "companyName"],
@@ -180,11 +183,14 @@ export function useFilteredStudents(records, search, filters = {}) {
           (!filters.course ||
             filters.course === "All courses" ||
             record.course === filters.course) &&
+          (!filters.major ||
+            filters.major === "All majors" ||
+            record.major === filters.major) &&
           (!filters.company ||
             filters.company === "All companies" ||
             record.company === filters.company)
         );
       }),
-    [filters.company, filters.course, filters.status, records, search],
+    [filters.company, filters.course, filters.major, filters.status, records, search],
   );
 }

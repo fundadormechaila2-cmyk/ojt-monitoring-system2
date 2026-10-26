@@ -7,6 +7,7 @@ const { HttpsError, onCall } = require("firebase-functions/v2/https");
 initializeApp();
 
 const { isAccountLive, isRecordArchived } = require("./accountState");
+const { recordDepartmentId, sameDepartment } = require("./departments");
 exports.manageAccount = require("./accountManagement").manageAccount;
 
 const db = getFirestore();
@@ -129,8 +130,8 @@ async function assertSupervisorAssignment(supervisorUid, supervisorProfile, stud
   const coordinatorProfile = coordinatorUid ? await getUserProfile(coordinatorUid) : null;
   if (
     coordinatorProfile?.role !== "coordinator" ||
-    !coordinatorProfile.department ||
-    supervisorProfile.department !== coordinatorProfile.department
+    !recordDepartmentId(coordinatorProfile) ||
+    !sameDepartment(supervisorProfile, coordinatorProfile)
   ) {
     throw new HttpsError("permission-denied", "The student and supervisor do not share a valid department assignment.");
   }

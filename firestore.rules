@@ -68,6 +68,10 @@ service cloud.firestore {
         data.coordinatorUid == request.auth.uid;
     }
 
+    function departmentKey(data) {
+      return data.get("departmentId", data.get("department", null));
+    }
+
     function validSupervisorAssignment(data) {
       return !("supervisorUid" in data) ||
         data.supervisorUid == null ||
@@ -75,7 +79,7 @@ service cloud.firestore {
           (!exists(userPath(data.supervisorUid)) ||
             (get(userPath(data.supervisorUid)).data.role == "supervisor" &&
               (!isCoordinator() ||
-                get(userPath(data.supervisorUid)).data.department == profile().department))));
+                departmentKey(get(userPath(data.supervisorUid)).data) == departmentKey(profile())))));
     }
 
     function supervisorOwnsStudent(studentUid) {
@@ -90,7 +94,7 @@ service cloud.firestore {
         get(userPath(studentUid)).data.coordinatorUid is string &&
         exists(userPath(get(userPath(studentUid)).data.coordinatorUid)) &&
         get(userPath(get(userPath(studentUid)).data.coordinatorUid)).data.role == "coordinator" &&
-        profile().department == get(userPath(get(userPath(studentUid)).data.coordinatorUid)).data.department;
+        departmentKey(profile()) == departmentKey(get(userPath(get(userPath(studentUid)).data.coordinatorUid)).data);
     }
 
     function isOwnStudent(studentUid) {
@@ -138,7 +142,7 @@ service cloud.firestore {
           ])) ||
         (isLive() && request.auth.uid == userId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            "role", "department", "coordinatorUid", "supervisorUid",
+            "role", "department", "departmentId", "major", "coordinatorUid", "supervisorUid",
             "studentRecordId", "studentId", "status", "createdBy",
             "createdAt", "mustChangePassword", "temporaryPassword"
           ].concat(lifecycleKeys())));
@@ -167,7 +171,8 @@ service cloud.firestore {
         (isStudent() && (resource.data.studentUid == request.auth.uid ||
           studentId == request.auth.uid) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            "role", "coordinatorUid", "supervisorUid", "studentUid", "requiredHours", "status", "ojtStatus"
+            "role", "coordinatorUid", "supervisorUid", "studentUid", "requiredHours", "status", "ojtStatus",
+            "department", "departmentId", "major", "course"
           ].concat(lifecycleKeys())));
     }
 

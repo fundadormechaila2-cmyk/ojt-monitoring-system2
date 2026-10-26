@@ -15,6 +15,12 @@ import {
 import { Archive, ArchiveRestore, Eye, KeyRound, Plus, Search, Trash2, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { COURSES } from "../../constants/courses";
+import {
+  departmentIdFor,
+  departmentLabel,
+  recordDepartmentId,
+  studentDepartmentFields,
+} from "../../constants/departments";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
 import AccountActionDialog from "../../components/AccountActionDialog";
@@ -55,20 +61,22 @@ function splitName(student) {
 }
 
 function findCoordinatorForCourse(course, userList) {
-  if (!course || !userList?.length) return null;
-  const normalizedCourse = course.trim().toLowerCase();
+  const departmentId = departmentIdFor(course);
+  if (!departmentId || !userList?.length) return null;
   return (
-    userList.find((account) => {
-      if (account.role !== "coordinator") return false;
-      const dept = String(account.department || "").trim().toLowerCase();
-      if (!dept) return false;
-      return (
-        dept === normalizedCourse ||
-        dept.includes(normalizedCourse) ||
-        normalizedCourse.includes(dept)
-      );
-    }) || null
+    userList.find(
+      (account) =>
+        account.role === "coordinator" &&
+        account.isArchived !== true &&
+        account.isActive !== false &&
+        recordDepartmentId(account) === departmentId,
+    ) || null
   );
+}
+
+function coordinatorMatchesCourse(coordinator, course) {
+  const departmentId = departmentIdFor(course);
+  return Boolean(departmentId) && recordDepartmentId(coordinator) === departmentId;
 }
 
 function coordinatorDisplayName(coordinator) {
@@ -262,6 +270,7 @@ function Students() {
           const studentUpdate = {
             coordinatorUid: coord.id,
             coordinatorName: coordName,
+            ...studentDepartmentFields(student.course),
             updatedAt: serverTimestamp(),
           };
           batch.update(doc(db, "students", student.id), studentUpdate);
@@ -337,8 +346,10 @@ function Students() {
           coordinatorUid: deleteField(),
           coordinatorName: deleteField(),
         };
+    const departmentUpdate = studentDepartmentFields(selectedStudent.course);
     const studentUpdate = {
       ...assignment,
+      ...departmentUpdate,
       updatedAt: serverTimestamp(),
     };
 
@@ -353,6 +364,7 @@ function Students() {
       if (account) {
         assignmentBatch.update(doc(db, "users", account.id), {
           ...assignment,
+          ...departmentUpdate,
           updatedAt: serverTimestamp(),
         });
       }
@@ -470,6 +482,7 @@ function Students() {
       await updateDoc(doc(db, "students", accountStudent.id), {
         studentUid: managedUser.uid,
         accountEmail: accountForm.email.trim(),
+        ...studentDepartmentFields(accountStudent.course),
         ...(coordUid && !accountStudent.coordinatorUid ? { coordinatorUid: coordUid } : {}),
         ...(coordName && !accountStudent.coordinatorName ? { coordinatorName: coordName } : {}),
         updatedAt: serverTimestamp(),
@@ -549,6 +562,7 @@ function Students() {
         email,
         phone: newStudent.phone.trim(),
         course: newStudent.course,
+        ...studentDepartmentFields(newStudent.course),
         company: newStudent.company.trim(),
         ...(targetCoordinatorUid
           ? { coordinatorUid: targetCoordinatorUid }
@@ -899,16 +913,14 @@ function Students() {
                 >
                   <option value="">Unassigned</option>
                   {coordinators.map((coordinator) => {
-                    const isDeptMatch =
-                      coordinator.department &&
-                      selectedStudent.course &&
-                      (coordinator.department.trim().toLowerCase() === selectedStudent.course.trim().toLowerCase() ||
-                        selectedStudent.course.trim().toLowerCase().includes(coordinator.department.trim().toLowerCase()) ||
-                        coordinator.department.trim().toLowerCase().includes(selectedStudent.course.trim().toLowerCase()));
+                    const isDeptMatch = coordinatorMatchesCourse(
+                      coordinator,
+                      selectedStudent.course,
+                    );
                     return (
                       <option key={coordinator.id} value={coordinator.id}>
                         {coordinatorDisplayName(coordinator)}
-                        {coordinator.department ? ` — ${coordinator.department}` : ""}
+                        {coordinator.department ? ` — ${departmentLabel(coordinator.department)}` : ""}
                         {isDeptMatch ? " ★ (Program match)" : ""}
                       </option>
                     );
@@ -1106,7 +1118,7 @@ function Students() {
                     return (
                       <option key={coordinator.id} value={coordinator.id}>
                         {coordinatorDisplayName(coordinator)}
-                        {coordinator.department ? ` — ${coordinator.department}` : ""}
+                        {coordinator.department ? ` — ${departmentLabel(coordinator.department)}` : ""}
                         {isAuto ? " (Auto-matched)" : ""}
                       </option>
                     );

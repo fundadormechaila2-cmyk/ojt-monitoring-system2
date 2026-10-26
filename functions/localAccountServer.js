@@ -7,6 +7,12 @@ const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 
 const usingEmulator = Boolean(process.env.FIREBASE_AUTH_EMULATOR_HOST);
+if (!usingEmulator && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  console.error(
+    'Missing credentials. Set GOOGLE_APPLICATION_CREDENTIALS to your service-account JSON first, e.g.\n  $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\\secure\\service-account.json"; npm run account-server',
+  );
+  process.exit(1);
+}
 initializeApp({
   ...(usingEmulator ? {} : { credential: applicationDefault() }),
   projectId: process.env.GCLOUD_PROJECT || "ojt-monitoringsystem2",

@@ -9,6 +9,7 @@ import { doc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebas
 
 import { secondaryAuth } from "./secondatyAuth";
 import { db } from "./firebase";
+import { departmentFields, studentDepartmentFields } from "../constants/departments";
 
 // GENERATE TEMPORARY PASSWORD
 export const generateTemporaryPassword = (length = 12) => {
@@ -115,7 +116,8 @@ export const createManagedUser = async ({
       ...(company ? { company } : {}),
       ...(coordinatorUid ? { coordinatorUid } : {}),
       ...(coordinatorName ? { coordinatorName } : {}),
-      ...(department ? { department } : {}),
+      ...(department ? { department, ...departmentFields(department) } : {}),
+      ...(role === "student" && course ? studentDepartmentFields(course) : {}),
       ...(assignedIds[0] ? { assignedStudentRecordId: assignedIds[0] } : {}),
       ...(role === "supervisor"
         ? { partnerCompanyId: partnerCompanyId || null }

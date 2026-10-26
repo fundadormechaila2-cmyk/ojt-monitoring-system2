@@ -9,7 +9,12 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { COURSES } from "../../constants/courses";
+import {
+  DEPARTMENTS,
+  departmentIdFor,
+  departmentLabel,
+  recordDepartmentId,
+} from "../../constants/departments";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
@@ -75,8 +80,10 @@ function OJTCoordinators() {
   const departments = useMemo(
     () => [
       ...new Set([
-        ...COURSES,
-        ...coordinators.map((coordinator) => coordinator.department).filter(Boolean),
+        ...DEPARTMENTS.map((department) => department.label),
+        ...coordinators
+          .map((coordinator) => departmentLabel(coordinator.department))
+          .filter(Boolean),
       ]),
     ],
     [coordinators],
@@ -95,7 +102,7 @@ function OJTCoordinators() {
         statusFilter === "All statuses" || status === statusFilter;
       const matchesDepartment =
         departmentFilter === "All departments" ||
-        coordinator.department === departmentFilter;
+        departmentLabel(coordinator.department) === departmentFilter;
       return matchesSearch && matchesStatus && matchesDepartment;
     });
   }, [coordinators, departmentFilter, searchTerm, statusFilter]);
@@ -120,9 +127,22 @@ function OJTCoordinators() {
 
   const createCoordinator = async (event) => {
     event.preventDefault();
-    setSaving(true);
     setError("");
 
+    const departmentId = departmentIdFor(form.department);
+    const existing = coordinators.find(
+      (coordinator) =>
+        recordDepartmentId(coordinator) === departmentId &&
+        String(coordinator.status || "ACTIVE").toUpperCase() !== "INACTIVE",
+    );
+    if (departmentId === "BSBA" && existing) {
+      setError(
+        `${coordinatorName(existing)} already manages the BSBA department (Financial and Marketing Management). Only one BSBA coordinator is allowed.`,
+      );
+      return;
+    }
+
+    setSaving(true);
     let managedUser;
     try {
       managedUser = await createManagedUser({
@@ -363,8 +383,8 @@ function OJTCoordinators() {
                 Department
                 <select required value={form.department} onChange={(event) => updateField("department", event.target.value)}>
                   <option value="">Select department</option>
-                  {COURSES.map((department) => (
-                    <option key={department} value={department}>{department}</option>
+                  {DEPARTMENTS.map((department) => (
+                    <option key={department.id} value={department.label}>{department.label}</option>
                   ))}
                 </select>
               </label>
@@ -402,7 +422,7 @@ function OJTCoordinators() {
             <dl className="coordinators-details">
               <div><dt>Email</dt><dd>{selectedCoordinator.email || "—"}</dd></div>
               <div><dt>Contact number</dt><dd>{selectedCoordinator.phone || "—"}</dd></div>
-              <div><dt>Department</dt><dd>{selectedCoordinator.department || "—"}</dd></div>
+              <div><dt>Department</dt><dd>{departmentLabel(selectedCoordinator.department) || "—"}</dd></div>
               <div><dt>Status</dt><dd>{String(selectedCoordinator.status || "ACTIVE").toUpperCase()}</dd></div>
             </dl>
           </section>
