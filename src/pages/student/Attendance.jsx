@@ -5,7 +5,11 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "../../context/useAuth";
 import { issueStudentAttendanceQrToken } from "../../services/attendanceQrService";
 import { db } from "../../services/firebase";
-import { getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
+import {
+  formatHoursMinutes,
+  getRecordPeriods,
+  summarizeAttendance,
+} from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 import "../../styles/student-attendance-qr.css";
 
@@ -255,7 +259,7 @@ function Attendance() {
               </div>
               <div>
                 <span>Today’s hours</span>
-                <strong>{Number(todaysAttendance?.totalHours ?? todaysAttendance?.hours ?? 0).toFixed(2)}h</strong>
+                <strong>{formatHoursMinutes(todaysAttendance?.totalHours ?? todaysAttendance?.hours ?? 0)}</strong>
               </div>
               <div>
                 <span>Status</span>
@@ -265,7 +269,7 @@ function Attendance() {
           )}
           <div className="student-attendance-accumulated">
             <span>Total recorded hours</span>
-            <strong>{accumulatedHours.toFixed(2)}h</strong>
+            <strong>{formatHoursMinutes(accumulatedHours)}</strong>
           </div>
         </article>
       </section>
@@ -332,7 +336,7 @@ function Attendance() {
                     <td>{record.pmOut || "—"}</td>
                     <td>{record.overtimeIn || "—"}</td>
                     <td>{record.overtimeOut || "—"}</td>
-                    <td>{Number(record.totalHours).toFixed(2)}</td>
+                    <td>{formatHoursMinutes(record.totalHours)}</td>
                     <td>
                       <span className={`status-badge ${record.status === "Present" ? "active" : "pending"}`}>
                         {record.status || "Incomplete"}

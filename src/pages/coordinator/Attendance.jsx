@@ -3,7 +3,11 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Clock3, Download, Printer, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
-import { getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
+import {
+  formatHoursMinutes,
+  getRecordPeriods,
+  summarizeAttendance,
+} from "../../services/manualAttendanceService";
 import { PageHeader, SearchBox, Status } from "../supervisor/SupervisorComponents";
 import "../../styles/coordinator-module.css";
 
@@ -34,6 +38,8 @@ const attendanceGroups = [
     ],
   },
 ];
+const attendancePeriods = attendanceGroups.flatMap((group) => group.columns);
+
 function getLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
@@ -332,7 +338,7 @@ function Attendance() {
         getPeriodTime(record, "pmOut") || "—",
         getPeriodTime(record, "overtimeIn") || "—",
         getPeriodTime(record, "overtimeOut") || "—",
-        hoursForRecord(record).toFixed(2),
+        formatHoursMinutes(hoursForRecord(record)),
       ]),
     ];
     const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
@@ -415,19 +421,41 @@ function Attendance() {
                 <th rowSpan={2}>Student</th>
                 <th rowSpan={2}>ID Number</th>
                 <th rowSpan={2}>Department</th>
+                {attendanceGroups.map((group) => (
+                  <th
+                    className="text-center"
+                    colSpan={group.columns.length}
+                    key={group.value}
+                  >
+                    {group.label}
+                  </th>
+                ))}
+                <th rowSpan={2}>Hours</th>
                 <th rowSpan={2}>Status</th>
+              </tr>
+              <tr>
+                {attendanceGroups.flatMap((group) =>
+                  group.columns.map((column) => (
+                    <th
+                      className="text-center"
+                      key={`${group.value}-${column.value}`}
+                    >
+                      {column.label}
+                    </th>
+                  )),
+                )}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="supervisor-empty" colSpan={5}>
+                  <td className="supervisor-empty" colSpan={12}>
                     Loading attendance records...
                   </td>
                 </tr>
               ) : visibleRecords.length === 0 ? (
                 <tr>
-                  <td className="supervisor-empty" colSpan={5}>
+                  <td className="supervisor-empty" colSpan={12}>
                     {error
                       ? "Attendance records are unavailable."
                       : "No attendance records found for this date."}
@@ -464,6 +492,12 @@ function Attendance() {
                     </td>
                     <td>{record.displayId}</td>
                     <td>{record.displayDepartment}</td>
+                    {attendancePeriods.map((period) => (
+                      <td key={period.value}>
+                        {getPeriodTime(record, period.value) || "—"}
+                      </td>
+                    ))}
+                    <td>{formatHoursMinutes(hoursForRecord(record))}</td>
                     <td>
                       <Status value={statusForRecord(record)} />
                     </td>
@@ -476,9 +510,13 @@ function Attendance() {
         <footer className="px-5 py-3 text-xs text-slate-500">
           Showing {visibleRecords.length} attendance record
           {visibleRecords.length === 1 ? "" : "s"} · Total hours{" "}
-          {visibleRecords.reduce((sum, record) => sum + hoursForRecord(record), 0).toFixed(2)}h
+          {formatHoursMinutes(
+            visibleRecords.reduce((sum, record) => sum + hoursForRecord(record), 0),
+          )}
           {" "}(all dates:{" "}
-          {records.reduce((sum, record) => sum + hoursForRecord(record), 0).toFixed(2)}h)
+          {formatHoursMinutes(
+            records.reduce((sum, record) => sum + hoursForRecord(record), 0),
+          )})
         </footer>
       </section>
 
@@ -552,15 +590,15 @@ function Attendance() {
               </div>
               <div>
                 <span>Total OJT Hours Completed</span>
-                <strong>{selectedDtrCompletedHours.toFixed(2)} hrs</strong>
+                <strong>{formatHoursMinutes(selectedDtrCompletedHours)}</strong>
               </div>
               <div>
                 <span>Required OJT Hours</span>
-                <strong>{selectedDtrRequiredHours.toFixed(2)} hrs</strong>
+                <strong>{formatHoursMinutes(selectedDtrRequiredHours)}</strong>
               </div>
               <div>
                 <span>Remaining OJT Hours</span>
-                <strong>{selectedDtrRemainingHours.toFixed(2)} hrs</strong>
+                <strong>{formatHoursMinutes(selectedDtrRemainingHours)}</strong>
               </div>
             </div>
 
@@ -619,7 +657,7 @@ function Attendance() {
                         <td>{getPeriodTime(record, "pmOut") || "—"}</td>
                         <td>{getPeriodTime(record, "overtimeIn") || "—"}</td>
                         <td>{getPeriodTime(record, "overtimeOut") || "—"}</td>
-                        <td>{hoursForRecord(record).toFixed(2)}</td>
+                        <td>{formatHoursMinutes(hoursForRecord(record))}</td>
                       </tr>
                     ))
                   )}

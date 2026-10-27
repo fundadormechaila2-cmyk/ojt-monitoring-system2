@@ -10,6 +10,7 @@ import {
   FileAxis3d,
   UserRound,
   ClipboardCheck,
+  FileText,
   Settings,
   Menu,
 } from "lucide-react";
@@ -138,6 +139,23 @@ function AdminLayout() {
                 <ClipboardCheck size={18} />
               </span>
               <span className="nav-text">Attendance</span>
+            </NavLink>
+          )}
+
+          {user?.role === "coordinator" && (
+            <NavLink
+              to={`${basePath}/journals`}
+              end
+              onClick={closeSidebarOnMobile}
+              className={({ isActive }) =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+              title="Student Journals"
+            >
+              <span className="nav-icon">
+                <FileText size={18} />
+              </span>
+              <span className="nav-text">Student Journals</span>
             </NavLink>
           )}
 

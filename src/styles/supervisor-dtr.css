@@ -1,0 +1,431 @@
+.supervisor-dtr-student-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2868c7;
+  font: 700 12px "Trebuchet MS", "Segoe UI", sans-serif;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.supervisor-dtr-student-link:hover {
+  color: #1e4f99;
+}
+
+.supervisor-dtr-student-link:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid #2868c7;
+  outline-offset: 3px;
+}
+
+.supervisor-attendance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.supervisor-attendance-summary article {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  border: 1px solid #e3e9f1;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgb(24 38 63 / 3%);
+}
+
+.supervisor-attendance-summary-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 9px;
+}
+
+.supervisor-attendance-summary-icon.blue {
+  background: #e8f0ff;
+  color: #2868c7;
+}
+
+.supervisor-attendance-summary-icon.teal {
+  background: #e0f6f1;
+  color: #138f7d;
+}
+
+.supervisor-attendance-summary-icon.amber {
+  background: #fff2d8;
+  color: #b4771b;
+}
+
+.supervisor-attendance-summary article div {
+  min-width: 0;
+}
+
+.supervisor-attendance-summary article div span,
+.supervisor-attendance-summary article div strong {
+  display: block;
+}
+
+.supervisor-attendance-summary article div span {
+  color: #718096;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.supervisor-attendance-summary article div strong {
+  margin-top: 3px;
+  color: #1e293b;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.supervisor-attendance-table {
+  min-width: 1020px;
+}
+
+.supervisor-attendance-table th {
+  vertical-align: middle;
+}
+
+.supervisor-attendance-table thead tr:first-child th[colspan] {
+  padding-bottom: 5px;
+  color: #64748b;
+  text-align: center;
+}
+
+.supervisor-attendance-table thead tr:nth-child(2) th {
+  padding-top: 6px;
+  text-align: center;
+}
+
+.supervisor-attendance-table tbody tr {
+  transition: background-color .15s ease;
+}
+
+.supervisor-attendance-table tbody tr:hover {
+  background: #f8faff;
+}
+
+.supervisor-attendance-table tbody td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  white-space: nowrap;
+}
+
+.supervisor-attendance-empty {
+  height: 116px;
+  color: #718096 !important;
+  text-align: center;
+}
+
+.supervisor-attendance-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 18px;
+  padding: 12px 18px;
+  border-top: 1px solid #edf0f4;
+  color: #718096;
+  font-size: 11px;
+}
+
+.supervisor-attendance-footer strong {
+  color: #344258;
+}
+
+.supervisor-dtr-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 12px;
+  background: #17203399;
+  backdrop-filter: blur(2px);
+}
+
+.supervisor-dtr-modal {
+  width: min(1020px, 100%);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid #e3e9f1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px #17203340;
+}
+
+.supervisor-dtr-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.supervisor-dtr-header p {
+  margin: 0 0 5px;
+  color: #8995a7;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.supervisor-dtr-header h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 21px;
+}
+
+.supervisor-dtr-close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #dbe3ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.supervisor-dtr-close:hover {
+  border-color: #9ab7e9;
+  color: #2868c7;
+}
+
+.supervisor-dtr-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.supervisor-dtr-meta div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #e3e9f1;
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.supervisor-dtr-meta span,
+.supervisor-dtr-meta strong {
+  display: block;
+}
+
+.supervisor-dtr-meta span {
+  margin-bottom: 3px;
+  color: #8995a7;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.supervisor-dtr-meta strong {
+  overflow-wrap: anywhere;
+  color: #172033;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.supervisor-dtr-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.supervisor-dtr-actions button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid #dbe3ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #344258;
+  font: 700 11px "Trebuchet MS", "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.supervisor-dtr-actions button:hover {
+  border-color: #9ab7e9;
+  background: #f6f9ff;
+  color: #2868c7;
+}
+
+.supervisor-dtr-table-wrap {
+  max-height: 45dvh;
+  overflow: auto;
+  border: 1px solid #edf0f4;
+  border-radius: 9px;
+}
+
+.supervisor-dtr-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.supervisor-dtr-table th {
+  padding: 8px 9px;
+  background: #f8fafc;
+  color: #718096;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.supervisor-dtr-table td {
+  padding: 8px 9px;
+  border-top: 1px solid #edf0f4;
+  color: #344258;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.supervisor-dtr-table .supervisor-dtr-period-heading,
+.supervisor-dtr-table .supervisor-dtr-period-subheading {
+  text-align: center;
+}
+
+.supervisor-dtr-table .supervisor-dtr-period-subheading {
+  border-top: 1px solid #e3e9f1;
+}
+
+@media (max-width: 850px) {
+  .supervisor-attendance-summary {
+    gap: 8px;
+  }
+
+  .supervisor-attendance-summary article {
+    padding: 11px;
+  }
+
+  .supervisor-dtr-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .supervisor-attendance-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .supervisor-attendance-summary article {
+    padding: 10px 12px;
+  }
+
+  .supervisor-dtr-backdrop {
+    place-items: start center;
+    padding: 8px;
+  }
+
+  .supervisor-dtr-modal {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 12px;
+    border-radius: 11px;
+  }
+
+  .supervisor-dtr-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supervisor-dtr-meta div {
+    padding: 8px;
+  }
+
+  .supervisor-dtr-actions button {
+    flex: 1;
+    padding: 6px 7px;
+    font-size: 10px;
+  }
+
+  .supervisor-dtr-table-wrap {
+    max-height: 42dvh;
+  }
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .supervisor-dtr-backdrop,
+  .supervisor-dtr-backdrop * {
+    visibility: visible !important;
+  }
+
+  .supervisor-dtr-backdrop {
+    position: static;
+    display: block;
+    overflow: visible;
+    padding: 0;
+    background: #fff !important;
+    backdrop-filter: none;
+  }
+
+  .supervisor-dtr-modal {
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .supervisor-dtr-close,
+  .supervisor-dtr-actions {
+    display: none !important;
+  }
+
+  .supervisor-dtr-meta div,
+  .supervisor-dtr-table-wrap {
+    break-inside: avoid;
+    border-color: #aaa;
+    background: #fff;
+  }
+
+  .supervisor-dtr-table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .supervisor-dtr-table {
+    min-width: 0;
+  }
+
+  .supervisor-dtr-table th,
+  .supervisor-dtr-table td {
+    padding: 6px 7px;
+    border-color: #aaa;
+    color: #000;
+    font-size: 9px;
+  }
+}

@@ -101,6 +101,17 @@ service cloud.firestore {
       return isStudent() && studentUid == request.auth.uid;
     }
 
+    function coordinatorOwnsJournal(studentUid) {
+      return isCoordinator() &&
+        studentUid is string &&
+        exists(userPath(studentUid)) &&
+        get(userPath(studentUid)).data.role == "student" &&
+        (get(userPath(studentUid)).data.get("coordinatorUid", null) == request.auth.uid ||
+          ("studentRecordId" in get(userPath(studentUid)).data &&
+            exists(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)) &&
+            get(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)).data.coordinatorUid == request.auth.uid));
+    }
+
     match /users/{userId} {
       allow read: if isAdmin() ||
         (signedIn() && request.auth.uid == userId) ||
@@ -180,7 +191,8 @@ service cloud.firestore {
     }
 
     match /journals/{journalId} {
-      allow read: if isOwnStudent(resource.data.studentUid);
+      allow read: if isOwnStudent(resource.data.studentUid) ||
+        coordinatorOwnsJournal(resource.data.studentUid);
       allow create: if isOwnStudent(request.resource.data.studentUid) &&
         request.resource.data.keys().hasOnly([
           "studentUid", "date", "taskPerformed", "skillsLearned",

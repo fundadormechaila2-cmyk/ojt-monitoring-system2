@@ -1,0 +1,224 @@
+.coordinator-journals-page {
+  color: #172033;
+}
+
+.coordinator-journals-search {
+  display: flex;
+  min-width: 220px;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  color: #8c99aa;
+}
+
+.coordinator-journals-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #354257;
+  font: 13px "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.coordinator-journals-search input::placeholder {
+  color: #9aa5b5;
+}
+
+.coordinator-journals-error {
+  margin: 0;
+  padding: 12px 18px;
+  color: #b23d4a;
+  font-size: 13px;
+}
+
+.coordinator-journals-state,
+.coordinator-journals-empty {
+  display: grid;
+  min-height: 220px;
+  place-content: center;
+  padding: 24px;
+  color: #718096;
+  text-align: center;
+}
+
+.coordinator-journals-empty span {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: #e8f0ff;
+  color: #2868c7;
+}
+
+.coordinator-journals-empty h2 {
+  margin: 0;
+  color: #25334a;
+  font-size: 16px;
+}
+
+.coordinator-journals-empty p {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.coordinator-journals-table {
+  min-width: 920px;
+}
+
+.coordinator-journals-table td strong,
+.coordinator-journals-table td small {
+  display: block;
+}
+
+.coordinator-journals-table td small {
+  margin-top: 3px;
+  color: #8995a7;
+  font-size: 11px;
+}
+
+.coordinator-journals-preview {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coordinator-journals-view {
+  padding: 7px 10px;
+  border: 1px solid #dbe3ed;
+  border-radius: 7px;
+  background: #fff;
+  color: #2868c7;
+  font: 700 11px "Trebuchet MS", "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.coordinator-journals-view:hover {
+  border-color: #9ab7e9;
+  background: #f6f9ff;
+}
+
+.coordinator-journals-footer {
+  padding: 12px 18px;
+  border-top: 1px solid #edf0f4;
+  color: #718096;
+  font-size: 11px;
+}
+
+.coordinator-journal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 16px;
+  background: #17203399;
+  backdrop-filter: blur(2px);
+}
+
+.coordinator-journal-modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid #e3e9f1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px #17203340;
+}
+
+.coordinator-journal-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.coordinator-journal-modal > header p {
+  margin: 0 0 5px;
+  color: #8995a7;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.coordinator-journal-modal > header h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 21px;
+}
+
+.coordinator-journal-modal > header span {
+  display: block;
+  margin-top: 5px;
+  color: #718096;
+  font-size: 12px;
+}
+
+.coordinator-journal-modal > header button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #dbe3ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.coordinator-journal-content {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+}
+
+.coordinator-journal-content section {
+  padding: 14px;
+  border: 1px solid #e3e9f1;
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.coordinator-journal-content h3 {
+  margin: 0 0 7px;
+  color: #718096;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.coordinator-journal-content p {
+  margin: 0;
+  color: #344258;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .coordinator-journal-backdrop {
+    place-items: start center;
+    padding: 8px;
+  }
+
+  .coordinator-journal-modal {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 11px;
+  }
+
+  .coordinator-journal-modal > header,
+  .coordinator-journal-content {
+    padding: 14px;
+  }
+}

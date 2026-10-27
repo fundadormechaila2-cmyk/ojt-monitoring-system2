@@ -40,6 +40,13 @@ export const periodLabels = {
 
 export const DEFAULT_SCHEDULE = { pmStart: "12:00", overtimeStart: "17:00" };
 
+export function formatHoursMinutes(value) {
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours <= 0) return "0h 0m";
+  const totalMinutes = Math.round(hours * 60);
+  return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+}
+
 function parseTimeToMinutes(value) {
   const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
   if (!match) return null;

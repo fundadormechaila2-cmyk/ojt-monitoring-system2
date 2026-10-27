@@ -18,6 +18,7 @@ import CoordinatorDashboard from "../pages/coordinator/CoordinatorDashboard";
 import CoordinatorAttendance from "../pages/coordinator/Attendance";
 import CoordinatorStudents from "../pages/coordinator/students";
 import CoordinatorSupervisor from "../pages/coordinator/Supervisor";
+import CoordinatorStudentJournals from "../pages/coordinator/StudentJournals";
 import StudentDashboardLayout from "../layouts/StudentsLayout";
 import SupervisorLayout from "../layouts/SupervisorLayout";
 import SupervisorDashboard from "../pages/supervisor/Dashboard";
@@ -87,6 +88,7 @@ function AppRoutes() {
         >
           <Route index element={<CoordinatorDashboard />} />
           <Route path="attendance" element={<CoordinatorAttendance />} />
+          <Route path="journals" element={<CoordinatorStudentJournals />} />
           <Route path="students" element={<CoordinatorStudents />} />
           <Route path="supervisor" element={<CoordinatorSupervisor />} />
         </Route>
