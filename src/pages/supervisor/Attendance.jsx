@@ -165,7 +165,7 @@ function Attendance() {
     <div className="supervisor-page space-y-6">
       <PageHeader
         eyebrow="Supervisor workspace · Attendance"
-        title="Attendance Records"
+        title="Daily Time Records of Students"
         description="Review student attendance records by date and search."
       />
 

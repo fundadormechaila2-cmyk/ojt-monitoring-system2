@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  runTransaction,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
 import {
   AlertCircle,
+  Building2,
   Check,
   Eye,
+  Pencil,
   Plus,
   Search,
   ShieldCheck,
@@ -69,10 +79,12 @@ function Supervisor() {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [referenceLoading, setReferenceLoading] = useState(true);
-  const [referenceError, setReferenceError] = useState("");
+  const [studentLoadError, setStudentLoadError] = useState("");
+  const [companyLoadError, setCompanyLoadError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -127,11 +139,11 @@ function Supervisor() {
         setStudents(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
         studentsLoaded = true;
         updateReferenceLoading();
-        setReferenceError("");
+        setStudentLoadError("");
       },
       (snapshotError) => {
         console.error("Unable to load coordinator students:", snapshotError);
-        setReferenceError(`Assigned students could not be loaded (${snapshotError.code || "unknown error"}).`);
+        setStudentLoadError(`Assigned students could not be loaded (${snapshotError.code || "unknown error"}).`);
         studentsLoaded = true;
         updateReferenceLoading();
       },
@@ -142,11 +154,11 @@ function Supervisor() {
         setCompanies(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
         companiesLoaded = true;
         updateReferenceLoading();
-        setReferenceError("");
+        setCompanyLoadError("");
       },
       (snapshotError) => {
         console.error("Unable to load partner companies:", snapshotError);
-        setReferenceError(`Partner companies could not be loaded (${snapshotError.code || "unknown error"}).`);
+        setCompanyLoadError(`Partner companies could not be loaded (${snapshotError.code || "unknown error"}).`);
         companiesLoaded = true;
         updateReferenceLoading();
       },
@@ -172,29 +184,55 @@ function Supervisor() {
     return supervisors
       .filter((supervisor) => {
         const fullName = displayName(supervisor);
-        const assigned = students
-          .filter((item) => item.supervisorUid === supervisor.id)
-          .map((item) => `${studentName(item)} ${item.studentId || ""}`)
-          .join(" ");
         const company = companies.find((item) => item.id === supervisor.partnerCompanyId);
-        return (
+        const companyLabel = company
+          ? companyName(company)
+          : supervisor.company || "";
+        const matchesSearch =
           !term ||
-          `${fullName} ${supervisor.email || ""} ${supervisor.phone || ""} ${supervisor.position || ""} ${assigned} ${company ? companyName(company) : supervisor.company || ""}`
-            .toLowerCase()
-            .includes(term)
+          `${fullName} ${companyLabel}`.toLowerCase().includes(term);
+        const status = String(supervisor.status || "ACTIVE").toUpperCase();
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "active" && status === "ACTIVE") ||
+          (statusFilter === "inactive" && status !== "ACTIVE");
+        return (
+          matchesSearch &&
+          matchesStatus
         );
       })
       .sort((a, b) => displayName(a).localeCompare(displayName(b)));
-  }, [companies, search, students, supervisors]);
+  }, [companies, search, statusFilter, supervisors]);
 
   const activeCount = supervisors.filter(
     (supervisor) => String(supervisor.status || "ACTIVE").toUpperCase() === "ACTIVE",
   ).length;
+  const referenceError = [studentLoadError, companyLoadError]
+    .filter(Boolean)
+    .join(" ");
 
   const openAddModal = () => {
     setForm(emptyForm);
     setFormError("");
     setModal({ type: "add" });
+  };
+
+  const openEditModal = (supervisor) => {
+    const linkedCompany = companies.find(
+      (company) => company.id === supervisor.partnerCompanyId,
+    );
+    setForm({
+      ...emptyForm,
+      firstName: supervisor.firstName || "",
+      lastName: supervisor.lastName || "",
+      phone: supervisor.phone || "",
+      partnerCompanyId: supervisor.partnerCompanyId || "",
+      company: supervisor.company || (linkedCompany ? companyName(linkedCompany) : ""),
+      position: supervisor.position || "",
+    });
+    setFormError("");
+    setModalError("");
+    setModal({ type: "edit", supervisorId: supervisor.id });
   };
 
   const closeModal = () => {
@@ -347,6 +385,100 @@ function Supervisor() {
     }
   };
 
+  const updateSupervisor = async (event) => {
+    event.preventDefault();
+    if (saving || modal?.type !== "edit") return;
+    setFormError("");
+
+    const supervisor = supervisors.find(
+      (item) => item.id === modal.supervisorId,
+    );
+    if (!supervisor || supervisor.role !== "supervisor") {
+      setFormError("This supervisor account is no longer available.");
+      return;
+    }
+
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+    const phone = form.phone.trim();
+    const company = form.company.trim();
+    if (!firstName || !lastName || !company) {
+      setFormError("Enter the supervisor's name and partner company.");
+      return;
+    }
+
+    const matchedCompany =
+      companies.find(
+        (item) =>
+          companyName(item).trim().toLowerCase() === company.toLowerCase(),
+      ) ||
+      companies.find((item) => item.id === form.partnerCompanyId);
+    const assignedStudents = studentsOf(supervisor);
+    const supervisorName = `${firstName} ${lastName}`;
+    setSaving(true);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const supervisorRef = doc(db, "users", supervisor.id);
+        const studentRefs = assignedStudents.map((student) =>
+          doc(db, "students", student.id),
+        );
+        const snapshots = await Promise.all([
+          transaction.get(supervisorRef),
+          ...studentRefs.map((studentRef) => transaction.get(studentRef)),
+        ]);
+        const currentSupervisor = snapshots[0];
+        if (
+          !currentSupervisor.exists() ||
+          currentSupervisor.data().role !== "supervisor" ||
+          currentSupervisor.data().department !== user.department
+        ) {
+          throw new Error("You can only edit supervisors in your department.");
+        }
+
+        transaction.update(supervisorRef, {
+          firstName,
+          lastName,
+          phone,
+          position: form.position.trim(),
+          company,
+          partnerCompanyId: matchedCompany?.id || null,
+          updatedAt: serverTimestamp(),
+        });
+
+        snapshots.slice(1).forEach((snapshot, index) => {
+          if (!snapshot.exists()) {
+            throw new Error("An assigned student record could not be found.");
+          }
+          const student = snapshot.data();
+          if (student.coordinatorUid !== user.uid) {
+            throw new Error("You can only edit students in your own roster.");
+          }
+          if (student.supervisorUid === supervisor.id) {
+            transaction.update(studentRefs[index], {
+              supervisorName,
+              company,
+              partnerCompanyId: matchedCompany?.id || null,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        });
+      });
+
+      setModal(null);
+      setNotice({
+        type: "success",
+        text: `${supervisorName}'s supervisor details were updated.`,
+      });
+    } catch (updateError) {
+      console.error("Unable to update supervisor account:", updateError);
+      setFormError(
+        updateError.message || "Supervisor details could not be updated.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (user?.role !== "coordinator" || !user.department) {
     return (
       <main className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
@@ -457,9 +589,9 @@ function Supervisor() {
             <p>{loadError}</p>
           </div>
         )}
-        {referenceError && (
+        {(studentLoadError || companyLoadError) && (
           <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">
-            {referenceError}
+            {[studentLoadError, companyLoadError].filter(Boolean).join(" ")}
           </div>
         )}
 
@@ -473,17 +605,32 @@ function Supervisor() {
                 Supervisor user accounts registered in the system.
               </p>
             </div>
-            <label className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-400 transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 sm:max-w-sm">
-              <Search size={17} aria-hidden="true" />
-              <span className="sr-only">Search supervisors</span>
-              <input
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search name, email, or phone"
-              />
-            </label>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <label className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-400 transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 sm:w-72">
+                <Search size={17} aria-hidden="true" />
+                <span className="sr-only">Search supervisors by name or company</span>
+                <input
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search name or company"
+                />
+              </label>
+              <label className="sr-only" htmlFor="supervisor-status-filter">
+                Filter supervisors by status
+              </label>
+              <select
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                id="supervisor-status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
           </div>
 
           {loading ? (
@@ -497,37 +644,39 @@ function Supervisor() {
                   <UserRound size={20} />
                 </span>
                 <p className="font-semibold text-slate-700">
-                  {search ? "No supervisors match your search" : "No supervisors added yet"}
+                  {search || statusFilter !== "all"
+                    ? "No supervisors match these filters"
+                    : "No supervisors added yet"}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  {search
-                    ? "Try searching with a different name, email, or phone number."
+                  {search || statusFilter !== "all"
+                    ? "Adjust the search or status filter and try again."
                     : "Add a supervisor to create their system account."}
                 </p>
               </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] border-collapse text-left">
+              <table className="w-full min-w-[940px] border-collapse text-left">
                 <thead>
                   <tr className="bg-slate-50/80">
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Supervisor
+                      Supervisor Name
                     </th>
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Email
+                      Email Address
                     </th>
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Phone
+                      Partner Company
                     </th>
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                       Assigned Students
                     </th>
                     <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Account Status
+                      Status
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Action
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -541,6 +690,9 @@ function Supervisor() {
                       .slice(0, 2)
                       .toUpperCase();
                     const status = String(supervisor.status || "ACTIVE").toUpperCase();
+                    const assignedStudents = studentsOf(supervisor);
+                    const company =
+                      companies.find((item) => item.id === supervisor.partnerCompanyId);
                     return (
                       <tr
                         className="border-t border-slate-100 transition hover:bg-slate-50/70"
@@ -551,27 +703,54 @@ function Supervisor() {
                             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-blue-50 text-sm font-bold text-blue-700">
                               {initials}
                             </span>
-                            <strong className="whitespace-nowrap text-sm font-semibold text-slate-800">
-                              {name}
-                            </strong>
+                            <span className="min-w-0">
+                              <strong className="block whitespace-nowrap text-sm font-semibold text-slate-800">
+                                {name}
+                              </strong>
+                              {(supervisor.position || company || supervisor.company) && (
+                                <span className="mt-1 block max-w-48 truncate text-xs text-slate-500">
+                                  {[supervisor.position, company ? companyName(company) : supervisor.company]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              )}
+                            </span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">
                           {supervisor.email || "—"}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">
-                          {supervisor.phone || "—"}
+                          <span className="inline-flex items-center gap-2">
+                            <Building2 size={15} className="shrink-0 text-slate-400" aria-hidden="true" />
+                            {company ? companyName(company) : supervisor.company || "—"}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-xs text-slate-600">
-                          {studentsOf(supervisor).length === 0 ? "—" : (
-                            <ul className="m-0 list-none space-y-1 p-0">
-                              {studentsOf(supervisor).map((student) => (
-                                <li key={student.id}>
-                                  <strong className="text-slate-800">{studentName(student)}</strong> · {student.studentId || student.id} · {student.course || "No course"} · {student.company || supervisor.company || "No company"}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                        <td className="px-6 py-3">
+                          <div className="min-w-44">
+                            <span className="mb-2 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                              {assignedStudents.length} student{assignedStudents.length === 1 ? "" : "s"}
+                            </span>
+                            {assignedStudents.length > 0 ? (
+                              <ul className="m-0 list-none space-y-1 p-0">
+                                {assignedStudents.slice(0, 2).map((student) => (
+                                  <li className="truncate text-xs text-slate-700" key={student.id}>
+                                    {studentName(student)}
+                                    <span className="ml-1 text-slate-400">
+                                      · {student.studentId || student.id}
+                                    </span>
+                                  </li>
+                                ))}
+                                {assignedStudents.length > 2 && (
+                                  <li className="text-xs font-medium text-slate-500">
+                                    +{assignedStudents.length - 2} more
+                                  </li>
+                                )}
+                              </ul>
+                            ) : (
+                              <p className="m-0 text-xs text-slate-400">No students assigned</p>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <span
@@ -587,33 +766,45 @@ function Supervisor() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="inline-flex gap-2">
-                          <button
-                            className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                            type="button"
-                            onClick={() => setModal({ type: "view", supervisor })}
-                            aria-label={`View profile for ${name}`}
-                          >
-                            <Eye size={15} aria-hidden="true" />
-                            View profile
-                          </button>
-                          <button
-                            className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                            type="button"
-                            onClick={() => openManageModal(supervisor)}
-                            aria-label={`Manage students of ${name}`}
-                          >
-                            <UsersRound size={15} aria-hidden="true" />
-                            Students
-                          </button>
-                          <button
-                            className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-rose-700 shadow-sm transition hover:bg-rose-50"
-                            type="button"
-                            onClick={() => { setModalError(""); setModal({ type: "delete", supervisor }); }}
-                            aria-label={`Delete ${name}`}
-                            title="Delete supervisor"
-                          >
-                            <Trash2 size={15} aria-hidden="true" />
-                          </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                              type="button"
+                              onClick={() => setModal({ type: "view", supervisor })}
+                              aria-label={`View profile for ${name}`}
+                              title="View profile"
+                            >
+                              <Eye size={15} aria-hidden="true" />
+                              View
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                              type="button"
+                              onClick={() => openManageModal(supervisor)}
+                              aria-label={`Manage students of ${name}`}
+                              title="Manage assigned students"
+                            >
+                              <UsersRound size={15} aria-hidden="true" />
+                              Students
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                              type="button"
+                              onClick={() => openEditModal(supervisor)}
+                              aria-label={`Edit ${name}`}
+                              title="Edit supervisor"
+                            >
+                              <Pencil size={14} aria-hidden="true" />
+                              Edit
+                            </button>
+                            <button
+                              className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-rose-700 shadow-sm transition hover:bg-rose-50 focus:outline-none focus:ring-4 focus:ring-rose-100"
+                              type="button"
+                              onClick={() => { setModalError(""); setModal({ type: "delete", supervisor }); }}
+                              aria-label={`Delete ${name}`}
+                              title="Delete supervisor"
+                            >
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -795,6 +986,135 @@ function Supervisor() {
         </div>
       )}
 
+      {modal?.type === "edit" && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal();
+          }}
+        >
+          <section
+            aria-labelledby="supervisor-profile-title"
+            aria-modal="true"
+            className="max-h-[90svh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            role="dialog"
+          >
+            <ModalHeader
+              title="Edit Supervisor"
+              onClose={closeModal}
+              disabled={saving}
+            />
+            <form className="space-y-4 p-6" onSubmit={updateSupervisor}>
+              <p className="text-sm text-slate-500">
+                Update the supervisor profile and partner company. Assigned students will retain their supervisor and receive the updated company details.
+              </p>
+              {formError && (
+                <div
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800"
+                  role="alert"
+                >
+                  {formError}
+                </div>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  label="First name"
+                  name="editSupervisorFirstName"
+                  value={form.firstName}
+                  onChange={(value) => setForm((current) => ({ ...current, firstName: value }))}
+                  required
+                  autoComplete="given-name"
+                />
+                <FormField
+                  label="Last name"
+                  name="editSupervisorLastName"
+                  value={form.lastName}
+                  onChange={(value) => setForm((current) => ({ ...current, lastName: value }))}
+                  required
+                  autoComplete="family-name"
+                />
+              </div>
+              <label className="block text-sm font-medium text-slate-700" htmlFor="edit-supervisor-email">
+                Email address
+                <input
+                  className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500"
+                  id="edit-supervisor-email"
+                  type="email"
+                  value={supervisors.find((item) => item.id === modal.supervisorId)?.email || ""}
+                  readOnly
+                />
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  Sign-in email changes require updating the Firebase Authentication account.
+                </span>
+              </label>
+              <FormField
+                label="Phone number"
+                name="editSupervisorPhone"
+                type="tel"
+                value={form.phone}
+                onChange={(value) => setForm((current) => ({ ...current, phone: value }))}
+                autoComplete="tel"
+              />
+              <FormField
+                label="Position"
+                name="editSupervisorPosition"
+                value={form.position}
+                onChange={(value) => setForm((current) => ({ ...current, position: value }))}
+                autoComplete="organization-title"
+              />
+              <label className="block text-sm font-medium text-slate-700" htmlFor="edit-supervisor-company">
+                Partner company <span className="text-rose-600">*</span>
+                <input
+                  className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  id="edit-supervisor-company"
+                  list="edit-partner-company-suggestions"
+                  required
+                  disabled={saving}
+                  value={form.company}
+                  onChange={(event) => {
+                    const company = event.target.value;
+                    const matchedCompany = companies.find(
+                      (item) =>
+                        companyName(item).trim().toLowerCase() ===
+                        company.trim().toLowerCase(),
+                    );
+                    setForm((current) => ({
+                      ...current,
+                      company,
+                      partnerCompanyId: matchedCompany?.id || "",
+                    }));
+                  }}
+                  placeholder="Type partner company"
+                />
+                <datalist id="edit-partner-company-suggestions">
+                  {companies.map((company) => (
+                    <option key={company.id} value={companyName(company)} />
+                  ))}
+                </datalist>
+              </label>
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                  type="button"
+                  onClick={closeModal}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-wait disabled:opacity-60"
+                  type="submit"
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
       {modal?.type === "view" && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
@@ -838,13 +1158,45 @@ function Supervisor() {
                 label="Department"
                 value={modal.supervisor.department || "Not provided"}
               />
-              <ProfileDetail
-                label="Assigned students"
-                value={studentsOf(modal.supervisor).map((student) => `${studentName(student)} (${student.studentId || student.id})`).join(", ") || "Not assigned"}
-              />
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:col-span-2">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Assigned students ({studentsOf(modal.supervisor).length})
+                </dt>
+                {studentsOf(modal.supervisor).length > 0 ? (
+                  <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {studentsOf(modal.supervisor).map((student) => (
+                      <li
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                        key={student.id}
+                      >
+                        <strong className="block text-sm font-semibold text-slate-800">
+                          {studentName(student)}
+                        </strong>
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          {student.studentId || student.id} · {student.course || "No course"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <dd className="mt-2 text-sm font-medium text-slate-600">
+                    No students assigned
+                  </dd>
+                )}
+              </div>
               <ProfileDetail
                 label="Partner company"
-                value={companyName(companies.find((company) => company.id === modal.supervisor.partnerCompanyId) || { name: modal.supervisor.company }) || "Not assigned"}
+                value={
+                  modal.supervisor.company ||
+                  (modal.supervisor.partnerCompanyId
+                    ? companyName(
+                        companies.find(
+                          (company) =>
+                            company.id === modal.supervisor.partnerCompanyId,
+                        ) || {},
+                      ) || "Not assigned"
+                    : "Not assigned")
+                }
               />
               <ProfileDetail
                 label="Account status"

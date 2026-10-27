@@ -106,12 +106,14 @@ service cloud.firestore {
         (signedIn() && request.auth.uid == userId) ||
         (isCoordinator() && resource.data.role == "student" &&
           resource.data.coordinatorUid == request.auth.uid) ||
-        (isCoordinator() && resource.data.role == "supervisor") ||
+        (isCoordinator() && resource.data.role == "supervisor" &&
+          resource.data.department == profile().department) ||
         (isSupervisor() && resource.data.role == "student" &&
           supervisorOwnsStudent(userId));
       allow create: if isAdmin() ||
         (isCoordinator() &&
           request.resource.data.role == "supervisor" &&
+          request.resource.data.department == profile().department &&
           (request.resource.data.createdBy == request.auth.uid ||
             !("createdBy" in request.resource.data)));
       allow update: if (isAdmin() &&
@@ -127,6 +129,7 @@ service cloud.firestore {
           ]) && validSupervisorAssignment(request.resource.data)) ||
         (isCoordinator() &&
           resource.data.role == "supervisor" &&
+          resource.data.department == profile().department &&
           request.resource.data.role == "supervisor" &&
           (resource.data.createdBy == request.auth.uid ||
             !("createdBy" in resource.data)) &&

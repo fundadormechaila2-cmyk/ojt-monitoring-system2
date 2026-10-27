@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   runTransaction,
@@ -298,6 +299,20 @@ export async function saveManualAttendance({
         String(data.studentId || "").trim() === targetStudentId)
     );
   });
+  let coordinatorUid = student.coordinatorUid || "";
+  if (!coordinatorUid && studentUid) {
+    const studentProfile = await getDoc(doc(db, "users", studentUid));
+    if (studentProfile.exists()) {
+      coordinatorUid = studentProfile.data().coordinatorUid || "";
+    }
+  }
+  coordinatorUid ||= existing?.data().coordinatorUid || "";
+  if (!coordinatorUid) {
+    throw new Error(
+      "This student is not linked to an OJT coordinator. Assign a coordinator before recording attendance.",
+    );
+  }
+
   const ref =
     existing?.ref ||
     doc(db, "attendance", `${studentUid || targetStudentId}_${date}`);
@@ -336,7 +351,7 @@ export async function saveManualAttendance({
       studentUid: studentUid || null,
       studentId: targetStudentId,
       studentName,
-      coordinatorUid: student.coordinatorUid || previous.coordinatorUid || null,
+      coordinatorUid,
       coordinatorName:
         student.coordinatorName || previous.coordinatorName || "",
       department:
