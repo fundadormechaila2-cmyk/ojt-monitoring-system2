@@ -176,6 +176,46 @@ service cloud.firestore {
           ].concat(lifecycleKeys())));
     }
 
+    match /journals/{journalId} {
+      allow read: if isOwnStudent(resource.data.studentUid);
+      allow create: if isOwnStudent(request.resource.data.studentUid) &&
+        request.resource.data.keys().hasOnly([
+          "studentUid", "date", "taskPerformed", "skillsLearned",
+          "problemsEncountered", "reflection", "reportTitle", "week",
+          "weeklyAccomplishments", "createdAt", "updatedAt"
+        ]) &&
+        request.resource.data.keys().hasAll([
+          "studentUid", "date", "taskPerformed", "skillsLearned",
+          "problemsEncountered", "reflection", "createdAt", "updatedAt"
+        ]) &&
+        request.resource.data.date is string &&
+        request.resource.data.taskPerformed is string &&
+        request.resource.data.skillsLearned is string &&
+        request.resource.data.problemsEncountered is string &&
+        request.resource.data.reflection is string &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        (!("reportTitle" in request.resource.data) ||
+          request.resource.data.reportTitle is string) &&
+        (!("week" in request.resource.data) ||
+          request.resource.data.week is string) &&
+        (!("weeklyAccomplishments" in request.resource.data) ||
+          request.resource.data.weeklyAccomplishments is string);
+      allow update: if isOwnStudent(resource.data.studentUid) &&
+        request.resource.data.studentUid == resource.data.studentUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "date", "taskPerformed", "skillsLearned",
+          "problemsEncountered", "reflection", "updatedAt"
+        ]) &&
+        request.resource.data.date is string &&
+        request.resource.data.taskPerformed is string &&
+        request.resource.data.skillsLearned is string &&
+        request.resource.data.problemsEncountered is string &&
+        request.resource.data.reflection is string &&
+        request.resource.data.updatedAt == request.time;
+      allow delete: if isOwnStudent(resource.data.studentUid);
+    }
+
     match /attendance/{attendanceId} {
       allow read: if (resource == null && (isAdmin() || isSupervisor())) ||
         isAdmin() ||

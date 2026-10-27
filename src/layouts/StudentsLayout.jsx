@@ -90,7 +90,7 @@ function StudentDashboard() {
           />
           <StudentNavLink
             to="/Student/ojtreports"
-            label="OJT Reports"
+            label="My Journal"
             icon={Summary}
             onClick={closeSidebarOnMobile}
           />

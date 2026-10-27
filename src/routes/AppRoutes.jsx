@@ -7,7 +7,7 @@ import AdminPlaceholder from "../pages/admin/AdminPlaceholder";
 import StudentDashboardPage from "../pages/student/StudentsDashboard";
 import StudentAttendancePage from "../pages/student/Attendance";
 import StudentProfilePage from "../pages/student/Profile";
-import StudentReportsPage from "../pages/student/StudentReports";
+import StudentReportsPage from "../pages/student/MyJournal";
 import StudentSettingsPage from "../pages/student/Settings";
 import Students from "../pages/admin/Students";
 import OJTCoordinators from "../pages/admin/OJTCoordinators";
@@ -58,7 +58,7 @@ function AppRoutes() {
           />
           <Route
             path="ojtreports"
-            element={<AdminPlaceholder title="OJT Reports" />}
+            element={<AdminPlaceholder title="My Journal" />}
           />
           <Route
             path="attendancereports"
