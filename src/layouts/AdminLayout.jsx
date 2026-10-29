@@ -193,7 +193,7 @@ function AdminLayout() {
             </NavLink>
           )}
 
-          {user?.role === "admin" && (
+          {(user?.role === "admin" || user?.role === "coordinator") && (
             <NavLink
               to={`${basePath}/settings`}
               end

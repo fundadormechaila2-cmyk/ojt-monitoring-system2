@@ -25,7 +25,6 @@ import SupervisorDashboard from "../pages/supervisor/Dashboard";
 import SupervisorStudents from "../pages/supervisor/Trainess";
 import SupervisorAttendance from "../pages/supervisor/Attendance";
 import SupervisorHours from "../pages/supervisor/OJTHours";
-import SupervisorSettings from "../pages/supervisor/Settings";
 import SupervisorDailyLogs from "../pages/supervisor/DailyLogs";
 import ScanStudentQR from "../pages/supervisor/ScanStudentQR";
 
@@ -91,6 +90,7 @@ function AppRoutes() {
           <Route path="journals" element={<CoordinatorStudentJournals />} />
           <Route path="students" element={<CoordinatorStudents />} />
           <Route path="supervisor" element={<CoordinatorSupervisor />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
 
         <Route
@@ -126,7 +126,7 @@ function AppRoutes() {
           <Route path="attendance" element={<SupervisorAttendance />} />
           <Route path="ojthours" element={<SupervisorHours />} />
           <Route path="dailylogs" element={<SupervisorDailyLogs />} />
-          <Route path="settings" element={<SupervisorSettings />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

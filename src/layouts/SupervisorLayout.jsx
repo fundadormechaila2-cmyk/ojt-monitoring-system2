@@ -6,6 +6,7 @@ import {
   QrCode,
   ClipboardList,
   Users,
+  Settings,
 } from "lucide-react";
 import { logout } from "../services/authService";
 import { useAuth } from "../context/useAuth";
@@ -98,7 +99,12 @@ function SupervisorLayout() {
             icon={Users}
             onClick={closeSidebarOnMobile}
           />
-
+          <SupervisorNavLink
+            to="/supervisor/settings"
+            label="Settings"
+            icon={Settings}
+            onClick={closeSidebarOnMobile}
+          />
         </aside>
 
         {sidebarOpen && (
