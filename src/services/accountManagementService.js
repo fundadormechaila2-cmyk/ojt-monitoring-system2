@@ -3,11 +3,11 @@ import { auth, functions } from "./firebase";
 
 const LOCAL_API_URL =
   import.meta.env.VITE_ACCOUNT_API_URL || "http://127.0.0.1:5055/manageAccount";
-const USE_CLOUD_FUNCTION = import.meta.env.VITE_ACCOUNT_API === "functions";
+const USE_LOCAL_API = import.meta.env.VITE_ACCOUNT_API === "local";
 const manageAccountCall = httpsCallable(functions, "manageAccount");
 
 async function callServer(payload) {
-  if (USE_CLOUD_FUNCTION) return (await manageAccountCall(payload)).data;
+  if (!USE_LOCAL_API) return (await manageAccountCall(payload)).data;
 
   const token = await auth.currentUser?.getIdToken();
   let response;
@@ -23,7 +23,7 @@ async function callServer(payload) {
   } catch (cause) {
     throw Object.assign(
       new Error(
-        "Cannot reach the account management server. Start it with: node functions/localAccountServer.js",
+        "Cannot reach the local account management server. Start it with `npm run account-server` after configuring GOOGLE_APPLICATION_CREDENTIALS, or remove VITE_ACCOUNT_API=local to use the Firebase Cloud Function.",
       ),
       { code: "functions/unavailable", cause },
     );
@@ -55,7 +55,7 @@ async function run(action, target, extra = {}) {
     const message =
       error.code === "functions/failed-precondition" ||
       error.code === "functions/invalid-argument" ||
-      (error.code === "functions/unavailable" && !USE_CLOUD_FUNCTION)
+      (error.code === "functions/unavailable" && USE_LOCAL_API)
         ? error.message
         : errorMessages[error.code] || error.message || "The operation failed.";
     throw new Error(message, { cause: error });

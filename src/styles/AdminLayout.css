@@ -50,7 +50,7 @@
   justify-content: center;
   border: none;
   background-color: transparent;
-  color: #d7d7d7;
+  color: #64748b;
   border-radius: 8px;
   cursor: pointer;
   transition:
@@ -61,8 +61,8 @@
 }
 
 .sidebar-toggle:hover {
-  background-color: #f0f0f0;
-  color: #111;
+  background-color: #edf4ff;
+  color: #1f5fae;
 }
 
 .sidebar-toggle:active {
@@ -80,8 +80,8 @@
 
 .admin-title h2 {
   margin: 0;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 19px;
+  font-family: inherit;
+  font-size: 18px;
   font-weight: 700;
   color: #172033;
   white-space: nowrap;
@@ -106,7 +106,7 @@
 .admin-user {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 
   flex-shrink: 0;
 }
@@ -114,16 +114,16 @@
 .admin-user > span {
   display: block;
 
-  max-width: none;
+  max-width: 220px;
   width: auto;
 
   white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   color: #53627a;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 
@@ -131,7 +131,7 @@
 
 .logout-btn {
   border: none;
-  background-color: #172033;
+  background-color: #1f3b63;
   color: #ffffff;
   padding: 9px 16px;
   border-radius: 7px;
@@ -144,7 +144,7 @@
 }
 
 .logout-btn:hover {
-  background-color: #393939;
+  background-color: #173052;
 }
 
 .logout-btn:active {
@@ -166,7 +166,7 @@
 .sidebar {
   width: 250px;
   min-width: 250px;
-  background: #fbfcfe;
+  background: #ffffff;
   border-right: 1px solid #e2e8f0;
   padding: 20px 0;
   overflow-y: auto;
@@ -247,8 +247,8 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  margin: 2px 10px;
-  padding: 11px 20px;
+  margin: 4px 10px;
+  padding: 11px 18px;
   border-radius: 8px;
   text-decoration: none;
   color: #64748b;
@@ -304,14 +304,26 @@
 
 /*ACTIVE NAVIGATION*/
 .nav-link.active {
-  background-color: #2868c7;
-  color: #ffffff;
-  font-weight: 600;
+  position: relative;
+  background-color: #eaf1fb;
+  color: #1f5fae;
+  font-weight: 700;
 }
 
 .nav-link.active:hover {
-  background-color: #1f59ae;
-  color: #ffffff;
+  background-color: #e2ecfa;
+  color: #174f96;
+}
+
+.nav-link.active::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #2868c7;
+  content: "";
 }
 
 

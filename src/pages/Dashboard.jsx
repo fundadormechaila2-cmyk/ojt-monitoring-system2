@@ -14,11 +14,11 @@ import {
   Users,
 } from "lucide-react";
 import { db } from "../services/firebase";
-import { withoutArchived } from "../services/recordState";
+import { isAccountLive } from "../services/recordState";
 import { useAuth } from "../context/useAuth";
 import "../styles/admin-dashboard.css";
 
-const collectionNames = ["students", "attendance", "users"];
+const collectionNames = ["students", "users"];
 
 function valueOf(record, keys, fallback = "") {
   return (
@@ -29,55 +29,34 @@ function valueOf(record, keys, fallback = "") {
   );
 }
 
-function getStudentHours(student, attendance) {
-  const keys = [
-    valueOf(student, ["studentId", "studentID", "idNumber", "id"]),
-    student.id,
-    valueOf(student, ["name", "fullName", "studentName"]),
-    `${student.firstName || ""} ${student.lastName || ""}`.trim(),
+function getOjtStatus(student) {
+  const ojtStatuses = [
+    student.ojtStatus,
+    student.deploymentStatus,
+    student.placementStatus,
   ]
-    .filter(Boolean)
-    .map((value) => String(value).trim().toLowerCase());
-
-  return attendance.reduce((sum, record) => {
-    const attendanceKey = String(
-      valueOf(record, ["studentId", "studentID", "student", "studentName"], ""),
-    )
-      .trim()
-      .toLowerCase();
-    if (!attendanceKey || !keys.includes(attendanceKey)) return sum;
-
-    const storedHours = Number(record.totalHours ?? record.hours ?? 0);
-    if (Number.isFinite(storedHours) && storedHours > 0) return sum + storedHours;
-    if (!record.timeIn || !record.timeOut) return sum;
-    const [inHour, inMinute] = String(record.timeIn).split(":").map(Number);
-    const [outHour, outMinute] = String(record.timeOut).split(":").map(Number);
-    const duration =
-      (outHour * 60 + outMinute - (inHour * 60 + inMinute)) / 60;
-    return Number.isFinite(duration) && duration > 0 ? sum + duration : sum;
-  }, 0);
-}
-
-function getOjtStatus(student, hours) {
-  const status = String(
-    valueOf(student, ["ojtStatus", "status", "placementStatus"], ""),
-  ).toLowerCase();
-  const required = Number(
-    valueOf(student, ["requiredHours", "totalRequiredHours", "ojtRequiredHours"], 500),
-  );
-  if (required > 0 && hours >= required) return "Completed";
-  if (
+    .filter((status) => status !== undefined && status !== null)
+    .map((status) => String(status).trim().toLowerCase());
+  const statuses = ojtStatuses.length
+    ? ojtStatuses
+    : [student.status]
+        .filter((status) => status !== undefined && status !== null)
+        .map((status) => String(status).trim().toLowerCase());
+  const isCompleted = (status) =>
     status.includes("complete") &&
     !status.includes("incomplete") &&
-    !status.includes("not complete")
-  ) {
-    return "Completed";
-  }
+    !status.includes("not complete");
+
+  if (statuses.some(isCompleted)) return "Completed";
   if (
-    status.includes("ongoing") ||
-    status.includes("deployed") ||
-    status.includes("progress") ||
-    status.includes("active")
+    statuses.some(
+      (status) =>
+        status.includes("deployed") ||
+        status.includes("ongoing") ||
+        status.includes("in progress") ||
+        status.includes("on ojt") ||
+        status === "active",
+    )
   ) {
     return "Ongoing";
   }
@@ -108,10 +87,12 @@ function Dashboard() {
           if (!active) return;
           setData((current) => ({
             ...current,
-            [name]: withoutArchived(snapshot.docs.map((document) => ({
-              id: document.id,
-              ...document.data(),
-            }))),
+            [name]: snapshot.docs
+              .map((document) => ({
+                id: document.id,
+                ...document.data(),
+              }))
+              .filter(isAccountLive),
           }));
           setReady((current) => ({ ...current, [name]: true }));
           setSourceErrors((current) => {
@@ -140,11 +121,11 @@ function Dashboard() {
 
   const students = useMemo(
     () =>
-      data.students.map((student) => {
-        const hours = getStudentHours(student, data.attendance);
-        return { ...student, status: getOjtStatus(student, hours) };
-      }),
-    [data.attendance, data.students],
+      data.students.map((student) => ({
+        ...student,
+        status: getOjtStatus(student),
+      })),
+    [data.students],
   );
 
   const hasSourceErrors = Object.keys(sourceErrors).length > 0;
@@ -166,7 +147,7 @@ function Dashboard() {
     ["Total Students", students.length, "All student records", Users, "blue", "students"],
     ["OJT Coordinators", coordinators.length, "Coordinator profiles", UserRoundCog, "amber", "ojtcoordinators"],
     ["Students Currently on OJT", ongoingStudents.length, "Ongoing placements", ClipboardClock, "blue", "students"],
-    ["Completed OJT", completedStudents.length, "Required hours reached", CheckCircle2, "teal", "students"],
+    ["Completed OJT", completedStudents.length, "OJT status completed", CheckCircle2, "teal", "students"],
   ];
   const loading = collectionNames.some((name) => !ready[name]);
   const go = (path) => navigate(`/admin/${path}`);
@@ -219,8 +200,7 @@ function Dashboard() {
       <section className="dashboard-stats" aria-label="OJT summary">
         {stats.map(([label, value, detail, Icon, tone, path]) => {
           const isUnavailable = Boolean(
-            sourceErrors[label === "OJT Coordinators" ? "users" : "students"] ||
-              (label !== "OJT Coordinators" && sourceErrors.attendance),
+            sourceErrors[label === "OJT Coordinators" ? "users" : "students"],
           );
 
           return (
@@ -254,10 +234,9 @@ function Dashboard() {
             </div>
             <ClipboardClock size={20} aria-hidden="true" />
           </div>
-          {sourceErrors.students || sourceErrors.attendance ? (
+          {sourceErrors.students ? (
             <p className="dashboard-panel-message">
-              Progress data is unavailable until student and attendance records
-              load.
+              Progress data is unavailable until student records load.
             </p>
           ) : (
             <>
