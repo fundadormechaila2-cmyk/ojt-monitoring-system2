@@ -1,23 +1,20 @@
 import {
-  AlertCircle,
-  ArrowRight,
   Bell,
   CalendarClock,
-  CheckCircle2,
   Clock3,
   FileText,
-  FolderOpen,
   MapPin,
-  Plus,
-  Upload,
-  UserCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
-import { getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
+import {
+  formatHoursMinutes,
+  getRecordPeriods,
+  summarizeAttendance,
+} from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 
 function validHours(record) {
@@ -37,6 +34,9 @@ function StudentsDashboard() {
   const navigate = useNavigate();
   const [studentRecord, setStudentRecord] = useState(null);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [journalRecords, setJournalRecords] = useState([]);
+  const [journalsLoading, setJournalsLoading] = useState(true);
+  const [journalError, setJournalError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -83,36 +83,58 @@ function StudentsDashboard() {
     };
   }, [user?.uid]);
 
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    return onSnapshot(
+      query(collection(db, "journals"), where("studentUid", "==", user.uid)),
+      (snapshot) => {
+        setJournalRecords(
+          snapshot.docs.map((record) => ({ id: record.id, ...record.data() })),
+        );
+        setJournalError("");
+        setJournalsLoading(false);
+      },
+      (error) => {
+        console.error("Unable to load recent student reports:", error);
+        setJournalError("Recent reports could not be loaded.");
+        setJournalsLoading(false);
+      },
+    );
+  }, [user?.uid]);
+
   const studentProfile = { ...user, ...studentRecord };
   const name = studentProfile.name || studentProfile.fullName ||
     `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim() ||
     user?.email || "Student";
   const requiredHours = Number(studentProfile.requiredHours || studentProfile.totalRequiredHours || 0);
   const completedHours = attendanceRecords.reduce((total, record) => total + validHours(record), 0);
+  const presentDays = attendanceRecords.filter(
+    (record) => summarizeAttendance(getRecordPeriods(record)).status === "Present",
+  ).length;
   const remainingHours = Math.max(0, requiredHours - completedHours);
   const progressPercent = requiredHours ? Math.min(100, Math.round((completedHours / requiredHours) * 100)) : 0;
   const attendanceHistory = [...attendanceRecords]
     .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")))
     .slice(0, 4);
-  const recentReports = [];
-  const recentDocuments = [];
-  const notifications = [];
+  const recentReports = [...journalRecords]
+    .sort((left, right) => {
+      const leftDate = String(left.date || "");
+      const rightDate = String(right.date || "");
+      return rightDate.localeCompare(leftDate);
+    })
+    .slice(0, 4);
 
   const summaryStats = useMemo(
     () => [
       { label: "OJT Status", value: studentProfile.ojtStatus || studentProfile.status || "Not started", trend: "neutral" },
-      { label: "Completed Hours", value: `${completedHours.toFixed(2)}h`, trend: "positive" },
-      { label: "Attendance", value: `${attendanceRecords.filter((record) => record.status === "Present").length} days`, trend: "neutral" },
-      { label: "Remaining", value: `${remainingHours.toFixed(2)}h`, trend: "neutral" },
+      { label: "Completed Hours", value: formatHoursMinutes(completedHours), trend: "positive" },
+      { label: "Attendance", value: `${presentDays} days`, trend: "neutral" },
+      { label: "Remaining", value: formatHoursMinutes(remainingHours), trend: "neutral" },
     ],
-    [attendanceRecords, completedHours, remainingHours, studentProfile.ojtStatus, studentProfile.status]
+    [completedHours, presentDays, remainingHours, studentProfile.ojtStatus, studentProfile.status]
   );
 
   const handleTimeIn = () => {
-    navigate("/Student/attendance");
-  };
-
-  const handleTimeOut = () => {
     navigate("/Student/attendance");
   };
 
@@ -127,13 +149,9 @@ function StudentsDashboard() {
           <p>Track your OJT progress, attendance, and required submissions.</p>
         </div>
         <div className="student-header-actions">
-          <button type="button" className="student-button secondary" onClick={handleTimeIn}>
+          <button type="button" className="student-button primary" onClick={handleTimeIn}>
             <Clock3 size={15} />
-            Time In
-          </button>
-          <button type="button" className="student-button primary" onClick={handleTimeOut}>
-            <CheckCircle2 size={15} />
-            Time Out
+            Record Attendance
           </button>
         </div>
       </header>
@@ -215,19 +233,19 @@ function StudentsDashboard() {
             <div className="student-card student-stat-card">
               <p className="student-stat-label">Required</p>
               <div className="student-stat-value">
-                <strong>{requiredHours || "Not set"}</strong>
+                <strong>{requiredHours ? formatHoursMinutes(requiredHours) : "Not set"}</strong>
               </div>
             </div>
             <div className="student-card student-stat-card">
               <p className="student-stat-label">Completed</p>
               <div className="student-stat-value">
-                <strong>{completedHours.toFixed(2)}</strong>
+                <strong>{formatHoursMinutes(completedHours)}</strong>
               </div>
             </div>
             <div className="student-card student-stat-card">
               <p className="student-stat-label">Remaining</p>
               <div className="student-stat-value">
-                <strong>{remainingHours.toFixed(2)}</strong>
+                <strong>{formatHoursMinutes(remainingHours)}</strong>
               </div>
             </div>
           </div>
@@ -244,16 +262,8 @@ function StudentsDashboard() {
 
           <div className="student-metric-list">
             <div className="student-metric-item">
-              <strong>{attendanceRecords.filter((record) => record.status === "Present").length}</strong>
+              <strong>{presentDays}</strong>
               <span className="student-meta">Present days</span>
-            </div>
-            <div className="student-metric-item">
-              <strong>Not tracked</strong>
-              <span className="student-meta">Absences</span>
-            </div>
-            <div className="student-metric-item">
-              <strong>Not tracked</strong>
-              <span className="student-meta">Late arrivals</span>
             </div>
           </div>
         </div>
@@ -266,7 +276,15 @@ function StudentsDashboard() {
               <p className="student-panel-subtitle">Recent entries</p>
               <h2 className="student-panel-title">Recent Attendance Records</h2>
             </div>
-            <ArrowRight size={18} color="#2868c7" />
+            <button
+              type="button"
+              className="student-panel-link"
+              onClick={() => navigate("/Student/attendance")}
+              aria-label="View all attendance records"
+              title="View all attendance records"
+            >
+              View all
+            </button>
           </div>
 
           <table className="student-table">
@@ -293,7 +311,10 @@ function StudentsDashboard() {
                   </td>
                 </tr>
               ))}
-              {!loading && attendanceHistory.length === 0 && <tr><td colSpan="4">No attendance records yet.</td></tr>}
+              {loading && <tr><td colSpan="4">Loading attendance records...</td></tr>}
+              {!loading && attendanceHistory.length === 0 && (
+                <tr><td colSpan="4">No attendance records yet.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -304,121 +325,51 @@ function StudentsDashboard() {
               <p className="student-panel-subtitle">Submitted work</p>
               <h2 className="student-panel-title">Recent Reports</h2>
             </div>
-            <FileText size={18} color="#2868c7" />
+            <div className="student-panel-heading-actions">
+              <FileText size={18} color="#2868c7" />
+              <button
+                type="button"
+                className="student-panel-link"
+                onClick={() => navigate("/Student/ojtreports")}
+                aria-label="View all journal reports"
+                title="View all reports"
+              >
+                View all
+              </button>
+            </div>
           </div>
 
           <ul className="student-notification-list">
+            {journalError && <li className="student-dashboard-error" role="alert">{journalError}</li>}
             {recentReports.map((report) => (
-              <li key={report.title}>
+              <li key={report.id}>
                 <div className="student-notification-item">
-                  <strong>{report.title}</strong>
-                  <span>{report.submitted}</span>
+                  <strong>{report.taskPerformed || "Journal report"}</strong>
+                  <span>{formatDate(report.date)}</span>
                 </div>
-                <span className={
-                  report.status === "Approved"
-                    ? "status-badge active"
-                    : report.status === "Pending"
-                      ? "status-badge pending"
-                      : "status-badge completed"
-                }>
-                  {report.status}
-                </span>
+                <span className="status-badge active">Submitted</span>
               </li>
             ))}
-            {recentReports.length === 0 && <li>No report records available.</li>}
+            {!journalsLoading && !journalError && recentReports.length === 0 && (
+              <li>
+                <div className="student-notification-item">
+                  <strong>No reports submitted yet.</strong>
+                  <span>Write a journal report to see it here.</span>
+                </div>
+                <button
+                  type="button"
+                  className="student-button primary"
+                  onClick={() => navigate("/Student/ojtreports")}
+                >
+                  Submit report
+                </button>
+              </li>
+            )}
+            {journalsLoading && <li>Loading reports...</li>}
           </ul>
         </div>
       </section>
 
-      <section className="student-grid-two" style={{ marginTop: "18px" }}>
-        <div className="student-card student-panel">
-          <div className="student-panel-header">
-            <div>
-              <p className="student-panel-subtitle">Files</p>
-              <h2 className="student-panel-title">Recent Documents</h2>
-            </div>
-            <FolderOpen size={18} color="#2868c7" />
-          </div>
-
-          <ul className="student-notification-list">
-            {recentDocuments.map((doc) => (
-              <li key={doc.name}>
-                <div className="student-notification-item">
-                  <strong>{doc.name}</strong>
-                  <span>{doc.date}</span>
-                </div>
-                <span className={
-                  doc.status === "Submitted" || doc.status === "Approved"
-                    ? "status-badge active"
-                    : doc.status === "Pending Review"
-                      ? "status-badge pending"
-                      : "status-badge completed"
-                }>
-                  {doc.status}
-                </span>
-              </li>
-            ))}
-            {recentDocuments.length === 0 && <li>No document records available.</li>}
-          </ul>
-        </div>
-
-        <div className="student-card student-panel">
-          <div className="student-panel-header">
-            <div>
-              <p className="student-panel-subtitle">Announcements</p>
-              <h2 className="student-panel-title">Notifications</h2>
-            </div>
-            <AlertCircle size={18} color="#2868c7" />
-          </div>
-
-          <ul className="student-notification-list">
-            {notifications.map((notify) => (
-              <li key={notify.title}>
-                <div className="student-notification-item">
-                  <strong>{notify.title}</strong>
-                  <span>{notify.detail}</span>
-                </div>
-                <span className={
-                  notify.type === "warning" ? "status-badge pending" : notify.type === "success" ? "status-badge active" : "status-badge completed"
-                }>
-                  {notify.type}
-                </span>
-              </li>
-            ))}
-            {notifications.length === 0 && <li>No notifications available.</li>}
-          </ul>
-        </div>
-      </section>
-
-      <section className="student-panel student-card" style={{ marginTop: "18px" }}>
-        <div className="student-panel-header">
-          <div>
-            <p className="student-panel-subtitle">Quick actions</p>
-            <h2 className="student-panel-title">Manage your OJT tasks</h2>
-          </div>
-        </div>
-
-        <div className="student-header-actions">
-          <button type="button" className="student-button primary" onClick={handleTimeIn}>
-            <Clock3 size={15} /> Time In
-          </button>
-          <button type="button" className="student-button secondary" onClick={handleTimeOut}>
-            <CheckCircle2 size={15} /> Time Out
-          </button>
-          <button type="button" className="student-button">
-            <FileText size={15} /> Submit Report
-          </button>
-          <button type="button" className="student-button">
-            <Upload size={15} /> Upload Document
-          </button>
-          <button type="button" className="student-button">
-            <UserCheck size={15} /> View Progress
-          </button>
-          <button type="button" className="student-button danger">
-            <Plus size={15} /> Add Note
-          </button>
-        </div>
-      </section>
     </div>
   );
 }

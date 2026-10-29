@@ -15,6 +15,7 @@ import {
 import { collection, onSnapshot } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../../services/firebase";
+import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
 import "../../styles/coordinatordashboard.css";
 
@@ -310,7 +311,7 @@ function AdminReportsDashboard() {
         >
           <Clock3 size={20} />
           <span>Total OJT Hours</span>
-          <strong>{totalHours.toLocaleString()}</strong>
+          <strong>{formatHoursMinutes(totalHours)}</strong>
           <ArrowRight size={16} />
         </button>
         <button
@@ -373,7 +374,7 @@ function AdminReportsDashboard() {
               <span>Completed OJT</span>
             </div>
             <div>
-              <strong>{totalHours.toLocaleString()}</strong>
+              <strong>{formatHoursMinutes(totalHours)}</strong>
               <span>Attendance hours</span>
             </div>
           </div>
@@ -485,7 +486,7 @@ function AdminReportsDashboard() {
                   <td>{student.course}</td>
                   <td>{student.company}</td>
                   <td>
-                    {student.hours} / {student.required}
+                    {formatHoursMinutes(student.hours)} / {formatHoursMinutes(student.required)}
                   </td>
                   <td>{student.startDate || "—"}</td>
                   <td>

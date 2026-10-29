@@ -5,6 +5,7 @@ import { ArrowRight, CalendarCheck, ClipboardCheck, Clock3, Users } from "lucide
 import { useAuth } from "../../context/useAuth";
 import { PageHeader, StatCard, Status } from "./SupervisorComponents";
 import { db } from "../../services/firebase";
+import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
 
 function getLocalDate() {
@@ -77,7 +78,7 @@ function Dashboard() {
 			<section className="supervisor-grid" aria-label="Supervisor summary">
 				<StatCard icon={Users} label="Assigned Students" value={students.length} detail="Active trainee records" />
 				<StatCard icon={CalendarCheck} label="Attendance Issues" value={attendanceLoading ? "…" : attendanceIssues} detail="Incomplete records today" tone="coral" />
-				<StatCard icon={Clock3} label="Today's Recorded Hours" value={attendanceLoading ? "…" : totalHours.toFixed(2)} detail="From today's attendance scans" tone="amber" />
+				<StatCard icon={Clock3} label="Today's Recorded Hours" value={attendanceLoading ? "…" : formatHoursMinutes(totalHours)} detail="From today's attendance scans" tone="amber" />
 				<StatCard icon={ClipboardCheck} label="Needs Review" value={attention} detail="Students needing follow-up" tone="teal" />
 			</section>
 

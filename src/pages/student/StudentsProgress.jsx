@@ -1,13 +1,14 @@
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckCircle2, CircleDashed, Clock3, TrendingUp } from "lucide-react";
 import { useMemo } from "react";
+import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 
 const weeklyHours = [22, 30, 18, 34, 29, 41, 26];
 const tasks = [
-  { label: "Web application development", status: "Completed", value: "18 hrs" },
-  { label: "Client onboarding tasks", status: "Completed", value: "12 hrs" },
-  { label: "Documentation and testing", status: "In progress", value: "8 hrs" },
-  { label: "Presentation prep", status: "Scheduled", value: "5 hrs" },
+  { label: "Web application development", status: "Completed", value: 18 },
+  { label: "Client onboarding tasks", status: "Completed", value: 12 },
+  { label: "Documentation and testing", status: "In progress", value: 8 },
+  { label: "Presentation prep", status: "Scheduled", value: 5 },
 ];
 
 const evaluationSummary = [
@@ -53,7 +54,7 @@ function StudentsProgress() {
         <div className="student-card student-stat-card">
           <p className="student-stat-label">Required Hours</p>
           <div className="student-stat-value">
-            <strong>{requiredHours}</strong>
+            <strong>{formatHoursMinutes(requiredHours)}</strong>
             <span className="student-stat-trend neutral">Target</span>
           </div>
         </div>
@@ -61,7 +62,7 @@ function StudentsProgress() {
         <div className="student-card student-stat-card">
           <p className="student-stat-label">Completed Hours</p>
           <div className="student-stat-value">
-            <strong>{completedHours}</strong>
+            <strong>{formatHoursMinutes(completedHours)}</strong>
             <span className="student-stat-trend positive">+24% vs plan</span>
           </div>
         </div>
@@ -69,7 +70,7 @@ function StudentsProgress() {
         <div className="student-card student-stat-card">
           <p className="student-stat-label">Remaining Hours</p>
           <div className="student-stat-value">
-            <strong>{remainingHours}</strong>
+            <strong>{formatHoursMinutes(remainingHours)}</strong>
             <span className="student-stat-trend neutral">On track</span>
           </div>
         </div>
@@ -173,7 +174,7 @@ function StudentsProgress() {
                 <div
                   className="student-bar-fill"
                   style={{ height: `${Math.max((value / 48) * 100, 18)}%` }}
-                  title={`${value} hours`}
+                  title={formatHoursMinutes(value)}
                 />
                 <span>{["M", "T", "W", "T", "F", "S", "S"][index]}</span>
               </div>
@@ -193,21 +194,21 @@ function StudentsProgress() {
             <li>
               <div>
                 <strong>April</strong>
-                <span>156 hours logged</span>
+                <span>{formatHoursMinutes(156)} logged</span>
               </div>
               <span className="status-badge active">+9%</span>
             </li>
             <li>
               <div>
                 <strong>May</strong>
-                <span>164 hours logged</span>
+                <span>{formatHoursMinutes(164)} logged</span>
               </div>
               <span className="status-badge completed">+12%</span>
             </li>
             <li>
               <div>
                 <strong>June</strong>
-                <span>142 hours logged</span>
+                <span>{formatHoursMinutes(142)} logged</span>
               </div>
               <span className="status-badge pending">Stable</span>
             </li>
@@ -230,7 +231,7 @@ function StudentsProgress() {
               <li key={task.label}>
                 <div>
                   <strong>{task.label}</strong>
-                  <span>{task.value}</span>
+                  <span>{formatHoursMinutes(task.value)}</span>
                 </div>
                 <span className={
                   task.status === "Completed"
