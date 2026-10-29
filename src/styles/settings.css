@@ -387,153 +387,6 @@
 .settings-danger-button:hover {
   background: #fde9e9;
 }
-.settings-toggle {
-  position: relative;
-  width: 38px;
-  height: 22px;
-  flex: 0 0 38px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: #cbd4df;
-  cursor: pointer;
-}
-.settings-toggle span {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px #18263f33;
-  transition: transform 0.2s ease;
-}
-.settings-toggle.on {
-  background: #2868c7;
-}
-.settings-toggle.on span {
-  transform: translateX(16px);
-}
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 14px;
-}
-.theme-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  padding: 14px;
-  border: 1px solid #dbe3ed;
-  border-radius: 8px;
-  background: #fff;
-  color: #536176;
-  text-align: left;
-  cursor: pointer;
-}
-.theme-card:hover,
-.theme-card.selected {
-  border-color: #78a5e2;
-  background: #f7faff;
-}
-.theme-card > span {
-  display: grid;
-  place-items: center;
-  width: 31px;
-  height: 31px;
-  border-radius: 7px;
-  background: #eef3fb;
-  color: #2868c7;
-}
-.theme-card strong {
-  font-size: 12px;
-}
-.theme-card small {
-  color: #8995a7;
-  font-size: 10px;
-}
-.theme-card i {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: #2868c7;
-  color: #fff;
-  font-style: normal;
-}
-.font-options {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-.font-options button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid #dbe3ed;
-  border-radius: 7px;
-  background: #fff;
-  color: #607086;
-  font:
-    700 11px "Trebuchet MS",
-    "Segoe UI",
-    sans-serif;
-  cursor: pointer;
-}
-.font-options button span {
-  color: #172033;
-  font-size: 14px;
-}
-.font-options button:first-child span {
-  font-size: 11px;
-}
-.font-options button:last-child span {
-  font-size: 18px;
-}
-.font-options button.selected {
-  border-color: #78a5e2;
-  background: #eaf2ff;
-  color: #2868c7;
-}
-.notification-list {
-  padding: 0 22px;
-}
-.notification-row {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 15px 0;
-  border-bottom: 1px solid #edf0f4;
-}
-.notification-row:last-child {
-  border-bottom: 0;
-}
-.notification-row > div {
-  flex: 1;
-}
-.notification-row strong {
-  display: block;
-  color: #344258;
-  font-size: 12px;
-}
-.notification-row div > span {
-  display: block;
-  margin-top: 3px;
-  color: #8995a7;
-  font-size: 11px;
-}
-.notification-row .settings-toggle {
-  margin-left: auto;
-}
 .settings-info-strip {
   display: flex;
   align-items: center;
@@ -673,13 +526,9 @@
     align-items: flex-start;
     flex-wrap: wrap;
   }
-  .settings-option-row .settings-toggle,
   .settings-option-row .settings-row-button,
   .privacy-row .settings-row-button {
     margin-left: 46px;
-  }
-  .theme-grid {
-    grid-template-columns: 1fr;
   }
   .settings-footer {
     position: sticky;
@@ -690,9 +539,6 @@
   }
   .settings-footer button {
     flex: 1;
-  }
-  .font-options {
-    flex-wrap: wrap;
   }
 }
 .settings-alert {
@@ -733,49 +579,4 @@
 .settings-primary-button:disabled {
   cursor: wait;
   opacity: 0.65;
-}
-[data-theme="dark"] .settings-page {
-  --settings-ink: #edf3fb;
-  --settings-muted: #9eacbf;
-  --settings-line: #34445b;
-}
-[data-theme="dark"] .settings-nav,
-[data-theme="dark"] .settings-card,
-[data-theme="dark"] .settings-empty-state,
-[data-theme="dark"] .settings-field input,
-[data-theme="dark"] .theme-card,
-[data-theme="dark"] .font-options button,
-[data-theme="dark"] .settings-outline-button,
-[data-theme="dark"] .settings-cancel-button,
-[data-theme="dark"] .settings-row-button {
-  background: #182438;
-  color: #dbe7f5;
-}
-[data-theme="dark"] .settings-nav button,
-[data-theme="dark"] .settings-field input,
-[data-theme="dark"] .settings-field input[readonly],
-[data-theme="dark"] .theme-card,
-[data-theme="dark"] .font-options button,
-[data-theme="dark"] .settings-outline-button,
-[data-theme="dark"] .settings-cancel-button,
-[data-theme="dark"] .settings-row-button {
-  color: #c4d0e0;
-}
-[data-theme="dark"] .settings-card-heading,
-[data-theme="dark"] .profile-identity,
-[data-theme="dark"] .settings-subsection,
-[data-theme="dark"] .settings-option-row,
-[data-theme="dark"] .notification-row {
-  border-color: #2c3b51;
-}
-[data-theme="dark"] .settings-card-heading h2,
-[data-theme="dark"] .settings-subsection h3,
-[data-theme="dark"] .settings-option-row strong,
-[data-theme="dark"] .notification-row strong,
-[data-theme="dark"] .security-detail strong {
-  color: #edf3fb;
-}
-[data-theme="dark"] .settings-header h1,
-[data-theme="dark"] .profile-identity h3 {
-  color: #edf3fb;
 }

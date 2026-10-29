@@ -2,29 +2,18 @@ import { useEffect, useState } from "react";
 import { EmailAuthProvider, reauthenticateWithCredential, signOut, updatePassword } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import {
-  Bell,
   Check,
   ChevronRight,
   KeyRound,
   LogOut,
-  Monitor,
-  Palette,
   Save,
   ShieldCheck,
-  Smartphone,
   UserRound,
   X,
 } from "lucide-react";
 import { auth, db } from "../../services/firebase";
 import { useAuth } from "../../context/useAuth";
 import "../../styles/settings.css";
-
-const defaultNotifications = {
-  application: true,
-  attendance: true,
-  reports: false,
-  evaluation: true,
-};
 
 const defaultProfile = {
   firstName: "",
@@ -37,8 +26,6 @@ function Settings() {
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState("profile");
   const [profile, setProfile] = useState(defaultProfile);
-  const [notifications, setNotifications] = useState(defaultNotifications);
-  const [theme, setTheme] = useState(() => localStorage.getItem("ojt-theme") || "Light");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -69,8 +56,6 @@ function Settings() {
             contactNumber: data.contactNumber || data.contact || "",
             department: data.department || data.course || "",
           });
-          setNotifications({ ...defaultNotifications, ...(data.settings?.notifications || data.notifications || {}) });
-          if (data.settings?.theme || data.theme) setTheme(data.settings?.theme || data.theme);
         }
       } catch (loadError) {
         console.error("Unable to load settings:", loadError);
@@ -82,11 +67,6 @@ function Settings() {
     loadSettings();
     return () => { mounted = false; };
   }, [user?.uid]);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme.toLowerCase();
-    localStorage.setItem("ojt-theme", theme);
-  }, [theme]);
 
   const showNotice = (message) => {
     setError("");
@@ -115,7 +95,6 @@ function Settings() {
         lastName: profile.lastName.trim(),
         contactNumber: profile.contactNumber.trim(),
         department: profile.department.trim(),
-        settings: { theme, notifications },
         updatedAt: serverTimestamp(),
       });
       showNotice("Settings saved successfully.");
@@ -134,8 +113,6 @@ function Settings() {
       contactNumber: user?.contactNumber || "",
       department: user?.department || "",
     });
-    setNotifications(defaultNotifications);
-    setTheme("Light");
     showNotice("Settings reset to default values. Save changes to apply them.");
   };
 
@@ -178,8 +155,6 @@ function Settings() {
   const navItems = [
     { id: "profile", label: "Profile settings", icon: UserRound },
     { id: "account", label: "Account settings", icon: KeyRound },
-    { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "notifications", label: "Notifications", icon: Bell },
     { id: "security", label: "Security", icon: ShieldCheck },
   ];
 
@@ -203,10 +178,6 @@ function Settings() {
 
           {activeSection === "account" && <section className="settings-card"><SettingsHeading icon={KeyRound} eyebrow="Account access" title="Account" description="Manage your password and sign out of this account." /><form className="settings-subsection" onSubmit={changePassword}><h3>Change Password</h3><p>Use your current password to set a new secure password.</p><div className="settings-password-grid"><PasswordField label="Current password" value={passwords.current} onChange={(value) => updatePasswordField("current", value)} visible={showPasswords} /><PasswordField label="New password" value={passwords.next} onChange={(value) => updatePasswordField("next", value)} visible={showPasswords} /><PasswordField label="Confirm new password" value={passwords.confirm} onChange={(value) => updatePasswordField("confirm", value)} visible={showPasswords} /></div><label className="settings-check"><input type="checkbox" checked={showPasswords} onChange={(event) => setShowPasswords(event.target.checked)} /> Show password characters</label><button type="submit" className="settings-primary-button">Change Password</button></form><div className="settings-option-row"><div className="settings-option-icon red"><LogOut size={17} /></div><div><strong>Logout</strong><span>Sign out of your current account.</span></div><button type="button" className="settings-danger-button" onClick={() => signOut(auth)}>Logout</button></div></section>}
 
-          {activeSection === "appearance" && <section className="settings-card"><SettingsHeading icon={Palette} eyebrow="Workspace display" title="Appearance" description="Choose the theme used across your account." /><div className="settings-subsection"><h3>Theme</h3><p>Your choice is applied immediately and saved to your profile.</p><div className="theme-grid">{[{ name: "Light", icon: Monitor, copy: "Bright and focused" }, { name: "Dark", icon: Palette, copy: "Easy on the eyes" }, { name: "System", icon: Smartphone, copy: "Follow device setting" }].map(({ name, icon: Icon, copy }) => <button type="button" key={name} className={`theme-card ${theme === name ? "selected" : ""}`} onClick={() => setTheme(name)}><span><Icon size={19} /></span><strong>{name} mode</strong><small>{copy}</small>{theme === name && <i><Check size={13} /></i>}</button>)}</div></div><SettingsActions saving={saving} onCancel={cancelChanges} onReset={resetDefaults} onSave={saveChanges} /></section>}
-
-          {activeSection === "notifications" && <section className="settings-card"><SettingsHeading icon={Bell} eyebrow="Stay informed" title="Notifications" description="Choose which updates should appear in your workspace." /><div className="notification-list"><NotificationRow title="Application Notifications" description="Receive updates when applications change." checked={notifications.application} onChange={() => setNotifications((current) => ({ ...current, application: !current.application }))} /><NotificationRow title="Attendance Notifications" description="Get alerts when attendance needs review." checked={notifications.attendance} onChange={() => setNotifications((current) => ({ ...current, attendance: !current.attendance }))} />          <NotificationRow title="My Journal Notifications" description="Get updates when reports are ready." checked={notifications.reports} onChange={() => setNotifications((current) => ({ ...current, reports: !current.reports }))} /><NotificationRow title="Evaluation Notifications" description="Know when an evaluation is submitted." checked={notifications.evaluation} onChange={() => setNotifications((current) => ({ ...current, evaluation: !current.evaluation }))} /></div><SettingsActions saving={saving} onCancel={cancelChanges} onReset={resetDefaults} onSave={saveChanges} /></section>}
-
           {activeSection === "security" && <section className="settings-card"><SettingsHeading icon={ShieldCheck} eyebrow="Account protection" title="Security" description="Review the account details used to protect your access." /><div className="security-grid"><div className="security-detail"><span>Email</span><strong>{email || "—"}</strong><small>Firebase Authentication account</small></div><div className="security-detail"><span>Account Role</span><strong>{roleLabel}</strong><small>Role changes are managed by administrators.</small></div><div className="security-detail"><span>Account Status</span><strong>Active</strong><small>Your account is currently enabled.</small></div></div><div className="settings-option-row"><div className="settings-option-icon"><ShieldCheck size={17} /></div><div><strong>Change password</strong><span>Use your current password to update your credentials.</span></div><button type="button" className="settings-row-button" onClick={() => setActiveSection("account")}>Change <ChevronRight size={15} /></button></div></section>}
         </div>
       </div>
@@ -218,7 +189,6 @@ function SettingsHeading({ icon: Icon, eyebrow, title, description }) { return <
 function TextField({ label, value, onChange }) { return <label className="settings-field"><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
 function ReadOnlyField({ label, value }) { return <label className="settings-field"><span>{label}</span><input value={value} readOnly /></label>; }
 function PasswordField({ label, value, onChange, visible }) { return <label className="settings-field"><span>{label}</span><input type={visible ? "text" : "password"} value={value} onChange={(event) => onChange(event.target.value)} autoComplete="current-password" /></label>; }
-function NotificationRow({ title, description, checked, onChange }) { return <div className="notification-row"><div><strong>{title}</strong><span>{description}</span></div><button type="button" role="switch" aria-checked={checked} aria-label={title} className={`settings-toggle ${checked ? "on" : ""}`} onClick={onChange}><span /></button></div>; }
 function SettingsActions({ saving, onCancel, onReset, onSave }) { return <div className="settings-card-actions"><button type="button" className="settings-cancel-button" onClick={onCancel}><X size={14} /> Cancel</button><button type="button" className="settings-outline-button" onClick={onReset}>Reset to Default</button><button type={onSave ? "button" : "submit"} className="settings-primary-button" onClick={onSave} disabled={saving}><Save size={14} /> {saving ? "Saving..." : "Save Changes"}</button></div>; }
 
 export default Settings;

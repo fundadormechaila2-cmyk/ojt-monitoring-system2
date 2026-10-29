@@ -17,6 +17,7 @@ import {
   ArchiveRestore,
   Eye,
   KeyRound,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -90,13 +91,6 @@ function findCoordinatorForCourse(course, userList) {
   );
 }
 
-function coordinatorMatchesCourse(coordinator, course) {
-  const departmentId = departmentIdFor(course);
-  return (
-    Boolean(departmentId) && recordDepartmentId(coordinator) === departmentId
-  );
-}
-
 function coordinatorDisplayName(coordinator) {
   if (!coordinator) return "";
   return (
@@ -145,7 +139,8 @@ function Students() {
   const [courseFilter, setCourseFilter] = useState("All courses");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [coordinatorAssignment, setCoordinatorAssignment] = useState("");
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [editForm, setEditForm] = useState(emptyNewStudent);
   const [accountStudent, setAccountStudent] = useState(null);
   const [addingStudent, setAddingStudent] = useState(false);
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
@@ -359,130 +354,195 @@ function Students() {
   };
 
   const openStudentDetails = (student) => {
-    const account = accountForStudent(student, users);
     setSelectedStudent(student);
-    const existing = student.coordinatorUid || account?.coordinatorUid || "";
-    if (!existing && student.course) {
-      const matched = findCoordinatorForCourse(student.course, users);
-      setCoordinatorAssignment(matched ? matched.id : "");
-    } else {
-      setCoordinatorAssignment(existing);
-    }
     setError("");
   };
 
-  const saveCoordinatorAssignment = async () => {
-    if (!selectedStudent) return;
+  const openStudentEdit = (student) => {
+    const account = accountForStudent(student, users);
+    const { firstName, lastName } = splitName(student);
+    setEditingStudent(student);
+    setEditForm({
+      firstName,
+      lastName,
+      studentId: student.studentId || "",
+      email: account?.email || student.email || student.accountEmail || "",
+      phone: student.phone || account?.phone || "",
+      course: student.course || "",
+      company: student.company || account?.company || "",
+      coordinatorUid: student.coordinatorUid || account?.coordinatorUid || "",
+      requiredHours: String(student.required || student.requiredHours || 486),
+    });
+    setError("");
+  };
 
-    const account = accountForStudent(selectedStudent, users);
-    const studentUid = selectedStudent.studentUid || account?.id;
-    const selectedCoordinator = users.find(
-      (u) => u.id === coordinatorAssignment,
+  const handleEditCourseChange = (course) => {
+    const matched = findCoordinatorForCourse(course, users);
+    setEditForm((current) => ({
+      ...current,
+      course,
+      coordinatorUid: matched ? matched.id : current.coordinatorUid,
+    }));
+  };
+
+  const saveStudentEdits = async (event) => {
+    event.preventDefault();
+    if (!editingStudent) return;
+    if (sourceErrors.users) {
+      setError("Student accounts could not be checked. Reload the page and try again.");
+      return;
+    }
+
+    const studentId = editForm.studentId.trim();
+    const email = editForm.email.trim();
+    const normalizedEmail = email.toLowerCase();
+    const account = accountForStudent(editingStudent, users);
+    if (
+      studentId &&
+      records.some(
+        (student) =>
+          student.id !== editingStudent.id &&
+          String(student.studentId || "").trim().toLowerCase() ===
+            studentId.toLowerCase(),
+      )
+    ) {
+      setError("A student with this student ID already exists.");
+      return;
+    }
+    if (
+      users.some(
+        (userRecord) =>
+          userRecord.id !== account?.id &&
+          String(userRecord.email || "").trim().toLowerCase() ===
+            normalizedEmail,
+      )
+    ) {
+      setError("An account with this email address already exists.");
+      return;
+    }
+
+    const requiredHours = Number(editForm.requiredHours);
+    if (!Number.isFinite(requiredHours) || requiredHours < 1) {
+      setError("Required OJT hours must be at least 1.");
+      return;
+    }
+
+    const name = `${editForm.firstName.trim()} ${editForm.lastName.trim()}`;
+    const coordinator = users.find(
+      (userRecord) => userRecord.id === editForm.coordinatorUid,
     );
-    const coordinatorName = coordinatorDisplayName(selectedCoordinator);
-    const assignment = coordinatorAssignment
+    const coordinatorName = coordinatorDisplayName(coordinator);
+    const coordinatorChanged =
+      editForm.coordinatorUid !==
+      (editingStudent.coordinatorUid || account?.coordinatorUid || "");
+    const coordinatorFields = editForm.coordinatorUid
       ? {
-          coordinatorUid: coordinatorAssignment,
+          coordinatorUid: editForm.coordinatorUid,
           ...(coordinatorName ? { coordinatorName } : {}),
         }
       : {
           coordinatorUid: deleteField(),
           coordinatorName: deleteField(),
         };
-    const departmentUpdate = studentDepartmentFields(selectedStudent.course);
+    const departmentFields = studentDepartmentFields(editForm.course);
     const studentUpdate = {
-      ...assignment,
-      ...departmentUpdate,
+      name,
+      firstName: editForm.firstName.trim(),
+      lastName: editForm.lastName.trim(),
+      studentId,
+      email,
+      accountEmail: account ? account.email : email,
+      phone: editForm.phone.trim(),
+      course: editForm.course,
+      ...departmentFields,
+      company: editForm.company.trim(),
+      ...coordinatorFields,
+      requiredHours,
       updatedAt: serverTimestamp(),
     };
 
     setSaving(true);
     setError("");
     try {
-      const assignmentBatch = writeBatch(db);
-      assignmentBatch.update(
-        doc(db, "students", selectedStudent.id),
-        studentUpdate,
-      );
+      const batch = writeBatch(db);
+      batch.update(doc(db, "students", editingStudent.id), studentUpdate);
       if (account) {
-        assignmentBatch.update(doc(db, "users", account.id), {
-          ...assignment,
-          ...departmentUpdate,
+        batch.update(doc(db, "users", account.id), {
+          firstName: editForm.firstName.trim(),
+          lastName: editForm.lastName.trim(),
+          studentId,
+          course: editForm.course,
+          ...departmentFields,
+          company: editForm.company.trim(),
+          phone: editForm.phone.trim(),
+          ...coordinatorFields,
           updatedAt: serverTimestamp(),
         });
       }
-      await assignmentBatch.commit();
+      await batch.commit();
 
-      const attendanceQueries = await Promise.all([
-        ...(studentUid
-          ? [
-              getDocs(
-                query(
-                  collection(db, "attendance"),
-                  where("studentUid", "==", studentUid),
+      if (coordinatorChanged) {
+        const studentUid = editingStudent.studentUid || account?.id;
+        const attendanceQueries = await Promise.all([
+          ...(studentUid
+            ? [
+                getDocs(
+                  query(
+                    collection(db, "attendance"),
+                    where("studentUid", "==", studentUid),
+                  ),
                 ),
-              ),
-            ]
-          : []),
-        ...(selectedStudent.studentId
-          ? [
-              getDocs(
-                query(
-                  collection(db, "attendance"),
-                  where("studentId", "==", String(selectedStudent.studentId)),
+              ]
+            : []),
+          ...(studentId
+            ? [
+                getDocs(
+                  query(
+                    collection(db, "attendance"),
+                    where("studentId", "==", studentId),
+                  ),
                 ),
-              ),
-            ]
-          : []),
-      ]);
-      const attendanceRecords = new Map();
-      attendanceQueries.forEach((snapshot) => {
-        snapshot.docs.forEach((record) => {
-          const recordUid = record.data().studentUid;
-          if (!studentUid || !recordUid || recordUid === studentUid) {
-            attendanceRecords.set(record.id, record);
-          }
-        });
-      });
-      const records = [...attendanceRecords.values()];
-
-      const updateRecords = async (recordReferences) => {
-        for (let offset = 0; offset < recordReferences.length; offset += 450) {
-          const batch = writeBatch(db);
-          recordReferences.slice(offset, offset + 450).forEach((record) => {
-            batch.update(record.ref, assignment);
+              ]
+            : []),
+        ]);
+        const attendanceRecords = new Map();
+        attendanceQueries.forEach((snapshot) => {
+          snapshot.docs.forEach((record) => {
+            const recordUid = record.data().studentUid;
+            if (!studentUid || !recordUid || recordUid === studentUid) {
+              attendanceRecords.set(record.id, record);
+            }
           });
-          await batch.commit();
+        });
+        const relatedRecords = [...attendanceRecords.values()];
+        if (studentUid) {
+          const loginSnapshot = await getDocs(
+            query(
+              collection(db, "studentLoginActivity"),
+              where("userId", "==", studentUid),
+            ),
+          );
+          relatedRecords.push(...loginSnapshot.docs);
         }
-      };
-      await updateRecords(records);
-
-      let signInsUpdated = 0;
-      if (studentUid) {
-        const loginSnapshot = await getDocs(
-          query(
-            collection(db, "studentLoginActivity"),
-            where("userId", "==", studentUid),
-          ),
-        );
-        signInsUpdated = loginSnapshot.size;
-        await updateRecords(loginSnapshot.docs);
+        for (let offset = 0; offset < relatedRecords.length; offset += 450) {
+          const relatedBatch = writeBatch(db);
+          relatedRecords.slice(offset, offset + 450).forEach((record) => {
+            relatedBatch.update(record.ref, {
+              ...coordinatorFields,
+              updatedAt: serverTimestamp(),
+            });
+          });
+          await relatedBatch.commit();
+        }
       }
 
-      setNotice(
-        coordinatorAssignment
-          ? `Coordinator assignment saved. ${records.length} attendance record${records.length === 1 ? "" : "s"} and ${signInsUpdated} sign-in record${signInsUpdated === 1 ? "" : "s"} updated.`
-          : `Coordinator assignment removed. ${records.length} attendance record${records.length === 1 ? "" : "s"} and ${signInsUpdated} sign-in record${signInsUpdated === 1 ? "" : "s"} updated.`,
-      );
-      setSelectedStudent(null);
+      setNotice(`Student details updated for ${name}.`);
+      setEditingStudent(null);
       window.setTimeout(() => setNotice(""), 5000);
     } catch (saveError) {
-      console.error("Unable to save coordinator assignment:", saveError);
-      const errorCode = String(saveError?.code || "");
+      console.error("Unable to update student details:", saveError);
       setError(
-        errorCode.includes("permission-denied")
-          ? "Firestore denied this update. Publish the latest Firestore rules and confirm your user profile has the admin role."
-          : `The coordinator assignment could not be fully saved. ${saveError.message || "Check your connection and try again."}`,
+        `Student details could not be fully saved. ${saveError.message || "Check your connection and try again."}`,
       );
     } finally {
       setSaving(false);
@@ -716,6 +776,23 @@ function Students() {
     setPage(1);
   };
 
+  const detailAccount = selectedStudent
+    ? accountForStudent(selectedStudent, users)
+    : null;
+  const detailCoordinatorUid =
+    selectedStudent?.coordinatorUid || detailAccount?.coordinatorUid;
+  const detailCoordinator = users.find(
+    (account) => account.id === detailCoordinatorUid,
+  );
+  const detailCoordinatorName =
+    coordinatorDisplayName(detailCoordinator) ||
+    selectedStudent?.coordinatorName ||
+    detailAccount?.coordinatorName ||
+    "Not assigned";
+  const editingCoordinator = users.find(
+    (account) => account.id === editForm.coordinatorUid,
+  );
+
   if (loading) {
     return (
       <main className="students-page students-state">
@@ -924,6 +1001,15 @@ function Students() {
                         >
                           <Eye size={15} />
                         </button>
+                        <button
+                          type="button"
+                          className="student-action"
+                          title="Edit student"
+                          aria-label={`Edit ${student.name}`}
+                          onClick={() => openStudentEdit(student)}
+                        >
+                          <Pencil size={15} />
+                        </button>
                         {student.isArchived === true ? (
                           <button
                             type="button"
@@ -1088,44 +1174,219 @@ function Students() {
                   hours
                 </strong>
               </div>
-              <label className="student-detail">
-                <span>Assigned coordinator</span>
-                <select
-                  value={coordinatorAssignment}
-                  disabled={saving}
+              <div className="student-detail">
+                <label>Assigned coordinator</label>
+                <strong>{detailCoordinatorName}</strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {editingStudent && (
+        <div
+          className="students-modal-backdrop"
+          role="presentation"
+          onClick={(event) =>
+            event.target === event.currentTarget &&
+            !saving &&
+            setEditingStudent(null)
+          }
+        >
+          <section
+            className="students-modal students-add-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-student-title"
+          >
+            <header className="students-modal-header">
+              <div>
+                <h2 id="edit-student-title">Edit Student</h2>
+                <p>Update this enrolled student record.</p>
+              </div>
+              <button
+                type="button"
+                className="students-modal-close"
+                aria-label="Close edit student form"
+                disabled={saving}
+                onClick={() => setEditingStudent(null)}
+              >
+                <X size={17} />
+              </button>
+            </header>
+            <form
+              className="students-account-form students-add-form"
+              onSubmit={saveStudentEdits}
+            >
+              <label>
+                First name
+                <input
+                  required
+                  value={editForm.firstName}
                   onChange={(event) =>
-                    setCoordinatorAssignment(event.target.value)
+                    setEditForm((current) => ({
+                      ...current,
+                      firstName: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  required
+                  value={editForm.lastName}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      lastName: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Student ID
+                <input
+                  required
+                  value={editForm.studentId}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      studentId: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Email address
+                <input
+                  type="email"
+                  required
+                  readOnly={Boolean(accountForStudent(editingStudent, users))}
+                  value={editForm.email}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+                {accountForStudent(editingStudent, users) && (
+                  <small>Change the email through account management for a linked login.</small>
+                )}
+              </label>
+              <label>
+                Phone
+                <input
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Course / Program
+                <select
+                  required
+                  value={editForm.course}
+                  onChange={(event) =>
+                    handleEditCourseChange(event.target.value)
+                  }
+                >
+                  <option value="">Select a course</option>
+                  {COURSES.map((course) => (
+                    <option key={course} value={course}>
+                      {course}
+                    </option>
+                  ))}
+                  {editForm.course && !COURSES.includes(editForm.course) && (
+                    <option value={editForm.course}>{editForm.course}</option>
+                  )}
+                </select>
+              </label>
+              <label>
+                Partner company
+                <input value={editForm.company} disabled />
+              </label>
+              <label>
+                Assigned coordinator
+                <select
+                  value={editForm.coordinatorUid}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      coordinatorUid: event.target.value,
+                    }))
                   }
                 >
                   <option value="">Unassigned</option>
-                  {coordinators.map((coordinator) => {
-                    const isDeptMatch = coordinatorMatchesCourse(
-                      coordinator,
-                      selectedStudent.course,
-                    );
-                    return (
-                      <option key={coordinator.id} value={coordinator.id}>
-                        {coordinatorDisplayName(coordinator)}
-                        {coordinator.department
-                          ? ` — ${departmentLabel(coordinator.department)}`
-                          : ""}
-                        {isDeptMatch ? " ★ (Program match)" : ""}
+                  {editForm.coordinatorUid &&
+                    !coordinators.some(
+                      (coordinator) =>
+                        coordinator.id === editForm.coordinatorUid,
+                    ) && (
+                      <option value={editForm.coordinatorUid}>
+                        {coordinatorDisplayName(editingCoordinator) ||
+                          editingStudent.coordinatorName ||
+                          "Current assignment"}
                       </option>
-                    );
-                  })}
+                    )}
+                  {coordinators.map((coordinator) => (
+                    <option key={coordinator.id} value={coordinator.id}>
+                      {coordinatorDisplayName(coordinator)}
+                      {coordinator.department
+                        ? ` — ${departmentLabel(coordinator.department)}`
+                        : ""}
+                    </option>
+                  ))}
                 </select>
               </label>
-            </div>
-            <footer className="students-modal-footer">
-              <button
-                type="button"
-                className="students-primary"
-                disabled={saving}
-                onClick={saveCoordinatorAssignment}
-              >
-                {saving ? "Saving assignment..." : "Save coordinator"}
-              </button>
-            </footer>
+              <label>
+                Required OJT hours
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={editForm.requiredHours}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      requiredHours: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              {error && (
+                <div
+                  className="students-error"
+                  role="alert"
+                  style={{ gridColumn: "1 / -1" }}
+                >
+                  {error}
+                </div>
+              )}
+              <footer>
+                <button
+                  type="button"
+                  className="students-secondary"
+                  disabled={saving}
+                  onClick={() => setEditingStudent(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="students-primary"
+                  disabled={saving}
+                >
+                  {saving ? "Saving changes..." : "Save changes"}
+                </button>
+              </footer>
+            </form>
           </section>
         </div>
       )}

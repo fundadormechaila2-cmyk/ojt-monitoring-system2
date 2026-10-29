@@ -438,31 +438,6 @@
   overflow-wrap: anywhere;
 }
 
-.coordinators-details-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 18px;
-}
-
-.coordinators-delete-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid #e3a1a1;
-  border-radius: 7px;
-  background: #fff;
-  color: #b42323;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.coordinators-delete-button:hover {
-  background: #fff5f5;
-}
-
 @keyframes coordinator-page-enter {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }

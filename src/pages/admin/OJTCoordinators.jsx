@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
 import {
   AlertCircle,
   CheckCircle2,
   Eye,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -12,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   DEPARTMENTS,
+  departmentFields,
   departmentIdFor,
   departmentLabel,
   recordDepartmentId,
@@ -55,6 +63,7 @@ function OJTCoordinators() {
   const [departmentFilter, setDepartmentFilter] = useState("All departments");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [selectedCoordinator, setSelectedCoordinator] = useState(null);
+  const [editingCoordinator, setEditingCoordinator] = useState(null);
   const [addingCoordinator, setAddingCoordinator] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -124,7 +133,22 @@ function OJTCoordinators() {
   const closeForm = () => {
     if (saving) return;
     setAddingCoordinator(false);
+    setEditingCoordinator(null);
     setForm(emptyForm);
+    setError("");
+  };
+
+  const openEditCoordinator = (coordinator) => {
+    setSelectedCoordinator(null);
+    setEditingCoordinator(coordinator);
+    setForm({
+      coordinatorId: coordinator.coordinatorId || "",
+      firstName: coordinator.firstName || "",
+      lastName: coordinator.lastName || "",
+      email: coordinator.email || "",
+      phone: coordinator.phone || "",
+      department: departmentLabel(coordinator.department) || "",
+    });
     setError("");
   };
 
@@ -148,13 +172,14 @@ function OJTCoordinators() {
     window.setTimeout(() => setNotice(""), 5000);
   };
 
-  const createCoordinator = async (event) => {
+  const saveCoordinator = async (event) => {
     event.preventDefault();
     setError("");
 
     const departmentId = departmentIdFor(form.department);
     const existing = coordinators.find(
       (coordinator) =>
+        coordinator.id !== editingCoordinator?.id &&
         recordDepartmentId(coordinator) === departmentId &&
         String(coordinator.status || "ACTIVE").toUpperCase() !== "INACTIVE",
     );
@@ -168,6 +193,25 @@ function OJTCoordinators() {
     setSaving(true);
     let managedUser;
     try {
+      if (editingCoordinator) {
+        await updateDoc(doc(db, "users", editingCoordinator.id), {
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          coordinatorId: form.coordinatorId.trim(),
+          phone: form.phone.trim(),
+          department: form.department,
+          ...departmentFields(form.department),
+          updatedAt: serverTimestamp(),
+        });
+        setEditingCoordinator(null);
+        setForm(emptyForm);
+        setNotice(
+          `Coordinator details updated for ${form.firstName.trim()} ${form.lastName.trim()}.`,
+        );
+        window.setTimeout(() => setNotice(""), 5000);
+        return;
+      }
+
       managedUser = await createManagedUser({
         firstName: form.firstName,
         lastName: form.lastName,
@@ -334,6 +378,15 @@ function OJTCoordinators() {
                       <button
                         type="button"
                         className="coordinators-icon-button"
+                        title="Edit coordinator"
+                        aria-label={`Edit ${coordinatorName(coordinator)}`}
+                        onClick={() => openEditCoordinator(coordinator)}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="coordinators-icon-button"
                         title="Permanently delete coordinator"
                         aria-label={`Permanently delete ${coordinatorName(coordinator)}`}
                         onClick={() => openDeleteCoordinator(coordinator)}
@@ -361,7 +414,7 @@ function OJTCoordinators() {
         </footer>
       </section>
 
-      {addingCoordinator && (
+      {(addingCoordinator || editingCoordinator) && (
         <div
           className="coordinators-backdrop"
           role="presentation"
@@ -373,13 +426,19 @@ function OJTCoordinators() {
             className="coordinators-dialog"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="add-coordinator-title"
+            aria-labelledby="coordinator-form-title"
           >
             <header>
               <div>
                 <p>Coordinator account</p>
-                <h2 id="add-coordinator-title">Add Coordinator</h2>
-                <span>Create the coordinator profile and login credentials.</span>
+                <h2 id="coordinator-form-title">
+                  {editingCoordinator ? "Edit Coordinator" : "Add Coordinator"}
+                </h2>
+                <span>
+                  {editingCoordinator
+                    ? "Update the coordinator profile."
+                    : "Create the coordinator profile and login credentials."}
+                </span>
               </div>
               <button
                 type="button"
@@ -390,7 +449,7 @@ function OJTCoordinators() {
                 <X size={18} />
               </button>
             </header>
-            <form className="coordinators-form" onSubmit={createCoordinator}>
+            <form className="coordinators-form" onSubmit={saveCoordinator}>
               <label>
                 First name
                 <input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
@@ -401,7 +460,13 @@ function OJTCoordinators() {
               </label>
               <label>
                 Email address
-                <input type="email" required value={form.email} onChange={(event) => updateField("email", event.target.value)} />
+                <input
+                  type="email"
+                  required
+                  readOnly={Boolean(editingCoordinator)}
+                  value={form.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                />
               </label>
               <label>
                 Coordinator ID
@@ -421,12 +486,20 @@ function OJTCoordinators() {
                 </select>
               </label>
               <p className="coordinators-form-note">
-                A temporary password will be generated. The coordinator will be asked to change it after signing in.
+                {editingCoordinator
+                  ? "Email address is the coordinator's login and cannot be changed here."
+                  : "A temporary password will be generated. The coordinator will be asked to change it after signing in."}
               </p>
               <footer>
                 <button type="button" className="coordinators-secondary" disabled={saving} onClick={closeForm}>Cancel</button>
                 <button type="submit" className="coordinators-primary" disabled={saving}>
-                  {saving ? "Creating account..." : "Create coordinator"}
+                  {saving
+                    ? editingCoordinator
+                      ? "Saving changes..."
+                      : "Creating account..."
+                    : editingCoordinator
+                      ? "Save changes"
+                      : "Create coordinator"}
                 </button>
               </footer>
             </form>
@@ -457,15 +530,6 @@ function OJTCoordinators() {
               <div><dt>Department</dt><dd>{departmentLabel(selectedCoordinator.department) || "—"}</dd></div>
               <div><dt>Status</dt><dd>{String(selectedCoordinator.status || "ACTIVE").toUpperCase()}</dd></div>
             </dl>
-            <footer className="coordinators-details-actions">
-              <button
-                type="button"
-                className="coordinators-delete-button"
-                onClick={() => openDeleteCoordinator(selectedCoordinator)}
-              >
-                <Trash2 size={16} /> Permanently delete coordinator
-              </button>
-            </footer>
           </section>
         </div>
       )}
