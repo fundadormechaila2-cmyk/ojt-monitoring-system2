@@ -1,0 +1,443 @@
+.admin-layout {
+  --campus-ink: #17345d;
+  --campus-blue: #1d5eaa;
+  --campus-blue-deep: #123f79;
+  --campus-muted: #687b95;
+  --campus-border: #e2eaf4;
+  background: #f3f7fc;
+  color: var(--campus-ink);
+}
+
+.admin-header {
+  border-bottom-color: #dce7f4;
+  background: linear-gradient(100deg, #fff 0%, #f6faff 100%);
+  box-shadow: 0 4px 18px rgba(27, 62, 107, 0.08);
+}
+
+.admin-title h2 {
+  color: #174b88;
+  letter-spacing: -0.025em;
+}
+
+.admin-logo {
+  padding: 3px;
+  border: 1px solid #e6edf7;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.sidebar {
+  border-right-color: #e1eaf5;
+  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+}
+
+.nav-link {
+  border-radius: 11px;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    padding 0.25s ease,
+    transform 0.2s ease;
+}
+
+.nav-link:hover {
+  transform: translateX(2px);
+  background: #edf5ff;
+}
+
+.nav-link.active {
+  background: linear-gradient(100deg, #e5f0ff, #f1f7ff);
+  color: #15569b;
+}
+
+.nav-link.active::before {
+  background: linear-gradient(180deg, #348be0, #16539b);
+}
+
+.logout-btn {
+  border-radius: 10px;
+  background: linear-gradient(135deg, #246eb9, #164c8a);
+  box-shadow: 0 4px 10px rgba(23, 78, 139, 0.16);
+}
+
+.logout-btn:hover {
+  background: linear-gradient(135deg, #1d5fA8, #103f78);
+}
+
+.admin-body,
+.content {
+  background:
+    radial-gradient(ellipse at 92% 6%, rgba(147, 195, 247, 0.13), transparent 28rem),
+    #f3f7fc;
+}
+
+.admin-dashboard,
+.coordinator-dashboard,
+.supervisor-page,
+.student-portal-page {
+  color: var(--campus-ink);
+}
+
+.dashboard-intro,
+.coordinator-dashboard-header,
+.supervisor-header,
+.student-page-header {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  box-sizing: border-box;
+  min-height: 164px;
+  margin-bottom: 24px;
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 94% 5%, rgba(255, 255, 255, 0.2), transparent 30%),
+    linear-gradient(116deg, #123f79 0%, #1c62a9 55%, #3e86cb 100%);
+  box-shadow: 0 16px 34px rgba(24, 76, 134, 0.2);
+}
+
+.dashboard-intro::before,
+.coordinator-dashboard-header::before,
+.supervisor-header::before,
+.student-page-header::before {
+  position: absolute;
+  z-index: -1;
+  top: -118px;
+  right: 7%;
+  width: 270px;
+  height: 270px;
+  border: 1px solid rgba(255, 255, 255, 0.19);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 23px rgba(255, 255, 255, 0.035),
+    0 0 0 48px rgba(255, 255, 255, 0.035);
+  content: "";
+}
+
+.dashboard-intro::after,
+.coordinator-dashboard-header::after,
+.supervisor-header::after,
+.student-page-header::after {
+  position: absolute;
+  z-index: -1;
+  right: 14%;
+  bottom: -155px;
+  width: 310px;
+  height: 220px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
+  content: "";
+}
+
+.dashboard-intro > *,
+.coordinator-dashboard-header > *,
+.supervisor-header > *,
+.student-page-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-intro .dashboard-eyebrow,
+.coordinator-dashboard-header .dashboard-eyebrow,
+.supervisor-header .supervisor-eyebrow,
+.student-page-header .student-meta {
+  color: #d7eaff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+}
+
+.dashboard-intro h1,
+.coordinator-dashboard-header h1,
+.supervisor-header h1,
+.student-page-header h1 {
+  color: #fff;
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+
+.dashboard-intro .dashboard-subtitle,
+.coordinator-dashboard-header p:last-child,
+.supervisor-header p:last-child,
+.student-page-header > div > p:last-child {
+  color: rgba(240, 247, 255, 0.88);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.dashboard-date-button {
+  position: relative;
+  z-index: 1;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+
+.dashboard-date-button:hover {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.dashboard-stat,
+.dashboard-panel,
+.coordinator-stats article,
+.coordinator-stats button,
+.coordinator-panel,
+.supervisor-card,
+.supervisor-panel,
+.student-card {
+  border: 1px solid var(--campus-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(28, 62, 103, 0.07);
+}
+
+.dashboard-stat,
+.coordinator-stats button,
+.supervisor-card,
+.student-stat-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.dashboard-stat:hover,
+.coordinator-stats button:hover,
+.supervisor-card:hover,
+.student-stat-card:hover {
+  transform: translateY(-3px);
+  border-color: #c4d9f1;
+  box-shadow: 0 14px 28px rgba(28, 72, 123, 0.12);
+}
+
+.dashboard-stat:nth-child(4n + 1),
+.coordinator-stats > :nth-child(4n + 1),
+.supervisor-grid > :nth-child(4n + 1),
+.student-overview-grid > :nth-child(4n + 1) {
+  background: linear-gradient(145deg, #fff 62%, #eff6ff);
+}
+
+.dashboard-stat:nth-child(4n + 2),
+.coordinator-stats > :nth-child(4n + 2),
+.supervisor-grid > :nth-child(4n + 2),
+.student-overview-grid > :nth-child(4n + 2) {
+  background: linear-gradient(145deg, #fff 62%, #eefaf7);
+}
+
+.dashboard-stat:nth-child(4n + 3),
+.coordinator-stats > :nth-child(4n + 3),
+.supervisor-grid > :nth-child(4n + 3),
+.student-overview-grid > :nth-child(4n + 3) {
+  background: linear-gradient(145deg, #fff 62%, #fff7e9);
+}
+
+.dashboard-stat:nth-child(4n + 4),
+.coordinator-stats > :nth-child(4n + 4),
+.supervisor-grid > :nth-child(4n + 4),
+.student-overview-grid > :nth-child(4n + 4) {
+  background: linear-gradient(145deg, #fff 62%, #fff0ed);
+}
+
+.dashboard-panel,
+.coordinator-panel,
+.supervisor-panel,
+.student-panel {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.panel-heading h2,
+.coordinator-panel h2,
+.supervisor-panel-heading h2,
+.student-panel-title {
+  color: #173d6a;
+  font-weight: 600;
+}
+
+.stat-icon,
+.supervisor-card-icon {
+  border-radius: 12px;
+}
+
+.student-portal-page {
+  background: transparent;
+}
+
+.student-page-header {
+  align-items: center;
+  min-height: 172px;
+  padding: clamp(24px, 3vw, 38px);
+}
+
+.student-page-header h1 {
+  margin-top: 6px;
+}
+
+.student-page-header .student-header-actions {
+  z-index: 1;
+}
+
+.student-page-header .student-button.primary {
+  border-color: #fff;
+  background: #fff;
+  color: #17579b;
+  box-shadow: 0 8px 18px rgba(9, 43, 82, 0.18);
+}
+
+.student-page-header .student-button.primary:hover {
+  background: #edf5ff;
+}
+
+.student-profile-summary {
+  border-color: #d9e8f7;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(108, 166, 230, 0.16), transparent 45%),
+    linear-gradient(135deg, #fafdff, #edf5ff);
+}
+
+.student-avatar {
+  border: 4px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, #3982ce, #1d579c);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(27, 87, 152, 0.22);
+}
+
+.student-stat-label {
+  color: #70829a;
+}
+
+.coordinator-stats {
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.coordinator-stats article,
+.coordinator-stats button {
+  min-height: 104px;
+  border-radius: 16px;
+}
+
+.coordinator-stats button {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.coordinator-panel {
+  padding: 20px;
+}
+
+.supervisor-card {
+  min-height: 120px;
+}
+
+.supervisor-panel {
+  border-radius: 16px;
+}
+
+.supervisor-table th {
+  background: #f5f9fe;
+}
+
+.content :is(input, select, textarea) {
+  border-color: #d6e1ef;
+  border-radius: 9px;
+}
+
+.content :is(input, select, textarea):focus {
+  border-color: #488bd0;
+  outline: 3px solid rgba(72, 139, 208, 0.14);
+}
+
+.content :is(.student-table, .supervisor-table, .admin-reports-table) th {
+  background-color: #f5f9fe;
+  color: #60738e;
+  font-weight: 600;
+}
+
+.login-container {
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(80, 146, 216, 0.18), transparent 38%),
+    radial-gradient(ellipse at 95% 92%, rgba(86, 164, 217, 0.16), transparent 38%),
+    linear-gradient(135deg, #edf4fc, #f8fbff 52%, #eaf2fb);
+}
+
+.login-card {
+  border-color: #dce7f3;
+  border-radius: 20px;
+  box-shadow:
+    0 24px 55px rgba(20, 57, 101, 0.12),
+    0 3px 8px rgba(20, 57, 101, 0.05);
+}
+
+.login-heading h1 {
+  color: #174b88;
+}
+
+.login-submit {
+  border-radius: 11px;
+  background: linear-gradient(110deg, #1d5eaa, #2d7ac1);
+  box-shadow: 0 6px 14px rgba(29, 94, 170, 0.18);
+}
+
+.login-submit:hover:not(:disabled) {
+  background: linear-gradient(110deg, #174f91, #246aa9);
+}
+
+@media (max-width: 760px) {
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header {
+    min-height: 0;
+    padding: 24px;
+    border-radius: 18px;
+  }
+
+  .student-page-header {
+    align-items: flex-start;
+  }
+
+  .student-page-header .student-header-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header {
+    padding: 21px 18px;
+    border-radius: 15px;
+  }
+
+  .dashboard-intro::before,
+  .coordinator-dashboard-header::before,
+  .supervisor-header::before,
+  .student-page-header::before {
+    right: -95px;
+  }
+
+  .dashboard-intro::after,
+  .coordinator-dashboard-header::after,
+  .supervisor-header::after,
+  .student-page-header::after {
+    right: -75px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-link,
+  .dashboard-stat,
+  .coordinator-stats button,
+  .supervisor-card,
+  .student-stat-card {
+    transition: none;
+  }
+}

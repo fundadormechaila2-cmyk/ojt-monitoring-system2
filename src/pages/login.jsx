@@ -7,29 +7,19 @@ import {
   Check,
   Eye,
   EyeOff,
-  GraduationCap,
-  Info,
   Loader2,
   Lock,
   Mail,
   ShieldCheck,
-  UserCog,
-  Briefcase,
   X,
 } from "lucide-react";
 import { login, logout } from "../services/authService";
 import { useAuth } from "../context/useAuth";
 import { getUserData } from "../services/userService";
+import { isAccountLive } from "../services/recordState";
 import { completePasswordChange } from "../services/userManagementSevice";
 import { auth } from "../services/firebase";
 import schoolLogo from "../assets/school-logo.png";
-
-const ROLES = [
-  { id: "student", label: "OJT Student", icon: GraduationCap },
-  { id: "coordinator", label: "Adviser", icon: UserCog },
-  { id: "supervisor", label: "Supervisor", icon: Briefcase },
-  { id: "admin", label: "Admin", icon: ShieldCheck },
-];
 
 const ROLE_HOME = {
   admin: "/admin",
@@ -222,7 +212,6 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
 function Login() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [role, setRole] = useState("student");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -254,16 +243,9 @@ function Login() {
       const credential = await login(email, password);
       const userData = await getUserData(credential.user.uid);
 
-      if (!userData || !ROLE_HOME[userData.role]) {
+      if (!userData || !Object.hasOwn(ROLE_HOME, userData.role) || !isAccountLive(userData)) {
         await logout();
-        setError("Your account profile is missing or has an invalid role.");
-        return;
-      }
-
-      if (userData.role !== role) {
-        await logout();
-        const selected = ROLES.find((r) => r.id === role).label;
-        setError(`This account is not registered as ${selected}. Please choose the correct role.`);
+        setError("Your account profile is missing, inactive, or has an invalid role. Contact an administrator.");
         return;
       }
 
@@ -314,24 +296,7 @@ function Login() {
           <p>Sign in to continue to your account.</p>
         </div>
 
-        <div className="role-tabs" role="radiogroup" aria-label="Sign in as">
-          {ROLES.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={role === id}
-              className={role === id ? "active" : ""}
-              onClick={() => setRole(id)}
-            >
-              <Icon size={16} aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="alert alert-info">
-          <Info size={16} aria-hidden="true" />
+        <div className="alert alert-info" role="note">
           <span>
             <strong>First time here?</strong> Use the temporary password sent to your email or
             given by your administrator. You will be asked to create a new one.
