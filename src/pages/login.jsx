@@ -13,7 +13,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { login, logout } from "../services/authService";
+import { login, logout, sendPasswordReset } from "../services/authService";
 import { useAuth } from "../context/useAuth";
 import { getUserData } from "../services/userService";
 import { isAccountLive } from "../services/recordState";
@@ -212,10 +212,14 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
 function Login() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const emailInputRef = useRef(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pendingRole, setPendingRole] = useState(null);
   const [tempPassword, setTempPassword] = useState("");
@@ -232,6 +236,8 @@ function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setResetError("");
+    setResetMessage("");
 
     if (!email.trim() || !password) {
       setError("Please enter your email and password.");
@@ -261,6 +267,46 @@ function Login() {
       setError(invalid.includes(err.code) ? "Incorrect email or password." : err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    setResetError("");
+    setResetMessage("");
+    setError("");
+
+    if (!email.trim()) {
+      setResetError("Enter your email address above to receive a password reset link.");
+      emailInputRef.current?.focus();
+      return;
+    }
+
+    if (!emailInputRef.current?.checkValidity()) {
+      emailInputRef.current?.reportValidity();
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      await sendPasswordReset(email);
+      setResetMessage(
+        "If an account exists for this email, password reset instructions will be sent shortly. Check your inbox and spam folder.",
+      );
+    } catch (err) {
+      if (err.code === "auth/user-not-found") {
+        setResetMessage(
+          "If an account exists for this email, password reset instructions will be sent shortly. Check your inbox and spam folder.",
+        );
+      } else if (err.code === "auth/too-many-requests") {
+        setResetError("Too many reset attempts. Please wait a while before trying again.");
+      } else if (err.code === "auth/invalid-email") {
+        setResetError("Enter a valid email address and try again.");
+      } else {
+        console.error("Unable to send password reset email:", err);
+        setResetError("We couldn't send a reset email right now. Please try again later or contact your administrator.");
+      }
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -310,11 +356,16 @@ function Login() {
               <Mail className="field-icon" size={17} aria-hidden="true" />
               <input
                 id="email"
+                ref={emailInputRef}
                 type="email"
                 placeholder="you@example.com"
                 autoComplete="username"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setResetError("");
+                  setResetMessage("");
+                }}
               />
             </div>
           </div>
@@ -343,6 +394,36 @@ function Login() {
             </div>
           </div>
 
+          <button
+            className="link-button forgot-password"
+            type="button"
+            onClick={handlePasswordReset}
+            disabled={loading || resetLoading}
+          >
+            {resetLoading ? (
+              <>
+                <Loader2 className="spin" size={14} aria-hidden="true" />
+                Sending reset link...
+              </>
+            ) : (
+              "Forgot password?"
+            )}
+          </button>
+
+          {resetMessage && (
+            <div className="alert alert-success" role="status">
+              <Check size={16} aria-hidden="true" />
+              <span>{resetMessage}</span>
+            </div>
+          )}
+
+          {resetError && (
+            <div className="alert alert-error" role="alert">
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>{resetError}</span>
+            </div>
+          )}
+
           {error && (
             <div className="alert alert-error" role="alert">
               <AlertCircle size={16} aria-hidden="true" />
@@ -350,7 +431,7 @@ function Login() {
             </div>
           )}
 
-          <button className="login-submit" type="submit" disabled={loading}>
+          <button className="login-submit" type="submit" disabled={loading || resetLoading}>
             {loading ? <Loader2 className="spin" size={16} /> : null}
             {loading ? "Signing in..." : "Sign in"}
           </button>
