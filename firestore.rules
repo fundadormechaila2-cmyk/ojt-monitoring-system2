@@ -97,11 +97,7 @@ service cloud.firestore {
         departmentKey(profile()) == departmentKey(get(userPath(get(userPath(studentUid)).data.coordinatorUid)).data);
     }
 
-    function isOwnStudent(studentUid) {
-      return isStudent() && studentUid == request.auth.uid;
-    }
-
-    function coordinatorOwnsJournal(studentUid) {
+    function coordinatorOwnsStudent(studentUid) {
       return isCoordinator() &&
         studentUid is string &&
         exists(userPath(studentUid)) &&
@@ -110,6 +106,14 @@ service cloud.firestore {
           ("studentRecordId" in get(userPath(studentUid)).data &&
             exists(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)) &&
             get(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)).data.coordinatorUid == request.auth.uid));
+    }
+
+    function isOwnStudent(studentUid) {
+      return isStudent() && studentUid == request.auth.uid;
+    }
+
+    function coordinatorOwnsJournal(studentUid) {
+      return coordinatorOwnsStudent(studentUid);
     }
 
     match /users/{userId} {
@@ -235,11 +239,13 @@ service cloud.firestore {
       allow read: if (resource == null && (isAdmin() || isSupervisor())) ||
         isAdmin() ||
         coordinatorOwns(resource.data) ||
+        (resource.data.get("studentUid", null) is string &&
+          coordinatorOwnsStudent(resource.data.get("studentUid", null))) ||
         isOwnStudent(resource.data.studentUid) ||
         (isSupervisor() &&
           resource.data.supervisorId == request.auth.uid) ||
-        (resource.data.studentUid is string &&
-          supervisorOwnsStudent(resource.data.studentUid));
+        (resource.data.get("studentUid", null) is string &&
+          supervisorOwnsStudent(resource.data.get("studentUid", null)));
       allow create: if isAdmin() ||
         (isSupervisor() &&
           request.resource.data.supervisorId == request.auth.uid &&

@@ -68,8 +68,9 @@ function Dashboard() {
 	).length;
 	const totalHours = attendance.reduce((total, record) => total + Number(record.totalHours ?? record.hours ?? 0), 0);
 	return (
-		<div className="supervisor-page">
+		<div className="supervisor-page supervisor-dashboard-page">
 			<PageHeader
+				className="dashboard-hero"
 				eyebrow="LCCI · Supervisor workspace"
 				title="Supervisor Dashboard"
 				description={`Welcome back, ${user?.firstName || user?.email || "Supervisor"}. Here is your current OJT monitoring overview.`}

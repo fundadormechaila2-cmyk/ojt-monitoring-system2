@@ -116,7 +116,7 @@ function StudentNavLink({ to, label, icon: Icon, end, onClick }) {
       to={to}
       end={end}
       onClick={onClick}
-      className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+      className="nav-link"
       title={label}
     >
       <span className="nav-icon">

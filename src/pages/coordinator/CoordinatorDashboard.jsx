@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Building2, ClipboardCheck, Users } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, ClipboardCheck, Users } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import "../../styles/coordinatordashboard.css";
@@ -49,13 +49,25 @@ function CoordinatorDashboard() {
 
   return (
     <main className="coordinator-dashboard">
-      <header className="coordinator-dashboard-header">
+      <header className="coordinator-dashboard-header dashboard-hero">
         <div>
           <p className="dashboard-eyebrow">OJT coordination workspace</p>
           <h1>Coordinator Dashboard</h1>
           <p>Welcome back, {user?.firstName || user?.email || "Coordinator"}. Here is your current monitoring overview.</p>
         </div>
       </header>
+
+      <div className="dashboard-date-button" aria-label="Today's date">
+        <CalendarDays size={18} />
+        <span>
+          {new Date().toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+        <ArrowRight className="dashboard-date-arrow" size={18} aria-hidden="true" />
+      </div>
 
       {failedSources.length > 0 && <div className="coordinator-dashboard-error" role="alert">Unable to load: {failedSources.join(", ")}. Check Firestore permissions.</div>}
 

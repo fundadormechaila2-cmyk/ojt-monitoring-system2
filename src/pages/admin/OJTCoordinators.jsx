@@ -28,6 +28,7 @@ import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
 import AccountActionDialog from "../../components/AccountActionDialog";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import "./OJTCoordinators.css";
 
 const emptyForm = {
@@ -356,7 +357,7 @@ function OJTCoordinators() {
                   <tr key={coordinator.id}>
                     <td><strong>{coordinatorName(coordinator)}</strong></td>
                     <td>{coordinatorIdentifier(coordinator)}</td>
-                    <td>{coordinator.department || "—"}</td>
+                    <td><DepartmentBadge value={coordinator.department || coordinator.departmentId} /></td>
                     <td>{coordinator.email || "—"}</td>
                     <td>{coordinator.phone || "—"}</td>
                     <td>
@@ -527,7 +528,7 @@ function OJTCoordinators() {
             <dl className="coordinators-details">
               <div><dt>Email</dt><dd>{selectedCoordinator.email || "—"}</dd></div>
               <div><dt>Contact number</dt><dd>{selectedCoordinator.phone || "—"}</dd></div>
-              <div><dt>Department</dt><dd>{departmentLabel(selectedCoordinator.department) || "—"}</dd></div>
+              <div><dt>Department</dt><dd><DepartmentBadge value={selectedCoordinator.department || selectedCoordinator.departmentId} /></dd></div>
               <div><dt>Status</dt><dd>{String(selectedCoordinator.status || "ACTIVE").toUpperCase()}</dd></div>
             </dl>
           </section>

@@ -5,7 +5,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   CalendarDays,
-  CheckCircle2,
   ClipboardClock,
   FileText,
   Settings,
@@ -18,7 +17,7 @@ import { isAccountLive } from "../services/recordState";
 import { useAuth } from "../context/useAuth";
 import "../styles/admin-dashboard.css";
 
-const collectionNames = ["students", "users"];
+const collectionNames = ["students", "users", "attendance"];
 
 function valueOf(record, keys, fallback = "") {
   return (
@@ -66,7 +65,11 @@ function getOjtStatus(student) {
 function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState({ students: [], users: [] });
+  const [data, setData] = useState({
+    students: [],
+    users: [],
+    attendance: [],
+  });
   const [ready, setReady] = useState({});
   const [sourceErrors, setSourceErrors] = useState({});
 
@@ -92,7 +95,9 @@ function Dashboard() {
                 id: document.id,
                 ...document.data(),
               }))
-              .filter(isAccountLive),
+              .filter((record) =>
+                name === "attendance" ? true : isAccountLive(record),
+              ),
           }));
           setReady((current) => ({ ...current, [name]: true }));
           setSourceErrors((current) => {
@@ -147,7 +152,7 @@ function Dashboard() {
     ["Total Students", students.length, "All student records", Users, "blue", "students"],
     ["OJT Coordinators", coordinators.length, "Coordinator profiles", UserRoundCog, "amber", "ojtcoordinators"],
     ["Students Currently on OJT", ongoingStudents.length, "Ongoing placements", ClipboardClock, "blue", "students"],
-    ["Completed OJT", completedStudents.length, "OJT status completed", CheckCircle2, "teal", "students"],
+    ["Attendance", data.attendance.length, "Recorded attendance entries", CalendarDays, "teal", "attendance"],
   ];
   const loading = collectionNames.some((name) => !ready[name]);
   const go = (path) => navigate(`/admin/${path}`);
@@ -171,24 +176,28 @@ function Dashboard() {
 
   return (
     <div className="admin-dashboard">
-      <section className="dashboard-intro">
+      <section className="dashboard-intro dashboard-hero">
         <div>
-          <p className="dashboard-eyebrow">LCCI · OJT monitoring system</p>
+          <p className="dashboard-eyebrow">LCCI • OJT monitoring system</p>
           <h1>Admin Dashboard</h1>
           <p className="dashboard-subtitle">
             Welcome back, {user?.firstName || user?.email || "Admin"}. Here is
             your live placement overview.
           </p>
         </div>
-        <div className="dashboard-date-button" aria-label="Today's date">
-          <CalendarDays size={16} />
+      </section>
+
+      <div className="dashboard-date-button" aria-label="Today's date">
+        <CalendarDays size={18} />
+        <span>
           {new Date().toLocaleDateString("en-US", {
             month: "long",
             day: "numeric",
             year: "numeric",
           })}
-        </div>
-      </section>
+        </span>
+          <ArrowRight className="dashboard-date-arrow" size={18} aria-hidden="true" />
+      </div>
 
       {hasSourceErrors && (
         <div className="dashboard-error" role="alert">
@@ -199,9 +208,13 @@ function Dashboard() {
 
       <section className="dashboard-stats" aria-label="OJT summary">
         {stats.map(([label, value, detail, Icon, tone, path]) => {
-          const isUnavailable = Boolean(
-            sourceErrors[label === "OJT Coordinators" ? "users" : "students"],
-          );
+          const sourceName =
+            path === "ojtcoordinators"
+              ? "users"
+              : path === "attendance"
+                ? "attendance"
+                : "students";
+          const isUnavailable = Boolean(sourceErrors[sourceName]);
 
           return (
             <button

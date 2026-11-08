@@ -4,6 +4,7 @@ import {
   ArrowRight,
   BarChart3,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
@@ -17,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../../services/firebase";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/coordinatordashboard.css";
 
 const sources = [
@@ -228,7 +230,7 @@ function AdminReportsDashboard() {
 
   return (
     <main className="coordinator-dashboard">
-      <header className="coordinator-dashboard-header">
+      <header className="coordinator-dashboard-header dashboard-hero">
         <div>
           <p className="dashboard-eyebrow">LCCI · OJT monitoring system</p>
           <h1>Admin Reports Dashboard</h1>
@@ -245,6 +247,18 @@ function AdminReportsDashboard() {
           <BarChart3 size={16} /> Open OJT reports
         </button>
       </header>
+
+      <div className="dashboard-date-button" aria-label="Today's date">
+        <CalendarDays size={18} />
+        <span>
+          {new Date().toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+        <ArrowRight className="dashboard-date-arrow" size={18} aria-hidden="true" />
+      </div>
 
       {failedSources.length > 0 && (
         <div className="coordinator-dashboard-error" role="alert">
@@ -483,7 +497,7 @@ function AdminReportsDashboard() {
                     <strong>{student.name}</strong>
                     <small>{student.studentId || "No student ID"}</small>
                   </td>
-                  <td>{student.course}</td>
+                  <td><DepartmentBadge value={student.course || student.department} /></td>
                   <td>{student.company}</td>
                   <td>
                     {formatHoursMinutes(student.hours)} / {formatHoursMinutes(student.required)}

@@ -97,9 +97,7 @@ function AdminLayout() {
             to={basePath}
             end
             onClick={closeSidebarOnMobile}
-            className={({ isActive }) =>
-              isActive ? "nav-link active" : "nav-link"
-            }
+            className="nav-link"
             title="Dashboard"
           >
             <span className="nav-icon">
@@ -113,9 +111,7 @@ function AdminLayout() {
             to={`${basePath}/students`}
             end
             onClick={closeSidebarOnMobile}
-            className={({ isActive }) =>
-              isActive ? "nav-link active" : "nav-link"
-            }
+            className="nav-link"
             title="Students"
           >
             <span className="nav-icon">
@@ -130,9 +126,7 @@ function AdminLayout() {
               to={`${basePath}/attendance`}
               end
               onClick={closeSidebarOnMobile}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
+              className="nav-link"
               title="Attendance"
             >
               <span className="nav-icon">
@@ -147,9 +141,7 @@ function AdminLayout() {
               to={`${basePath}/journals`}
               end
               onClick={closeSidebarOnMobile}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
+              className="nav-link"
               title="Student Journals"
             >
               <span className="nav-icon">
@@ -164,9 +156,7 @@ function AdminLayout() {
               to={`${basePath}/supervisor`}
               end
               onClick={closeSidebarOnMobile}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
+              className="nav-link"
               title="Supervisor"
             >
               <span className="nav-icon">
@@ -181,9 +171,7 @@ function AdminLayout() {
               to={`${basePath}/ojtcoordinators`}
               end
               onClick={closeSidebarOnMobile}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
+              className="nav-link"
               title="OJT Coordinators"
             >
               <span className="nav-icon">
@@ -198,9 +186,7 @@ function AdminLayout() {
               to={`${basePath}/settings`}
               end
               onClick={closeSidebarOnMobile}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
+              className="nav-link"
               title="Settings"
             >
               <span className="nav-icon">

@@ -303,19 +303,19 @@
 
 
 /*ACTIVE NAVIGATION*/
-.nav-link.active {
+.nav-link[aria-current="page"] {
   position: relative;
   background-color: #eaf1fb;
   color: #1f5fae;
   font-weight: 700;
 }
 
-.nav-link.active:hover {
+.nav-link[aria-current="page"]:hover {
   background-color: #e2ecfa;
   color: #174f96;
 }
 
-.nav-link.active::before {
+.nav-link[aria-current="page"]::before {
   position: absolute;
   top: 8px;
   bottom: 8px;

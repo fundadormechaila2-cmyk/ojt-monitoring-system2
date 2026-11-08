@@ -11,12 +11,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { subscribeToAssignedAttendance } from "../../services/assignedAttendanceService";
 import {
   formatHoursMinutes,
   getRecordPeriods,
   summarizeAttendance,
 } from "../../services/manualAttendanceService";
 import { PageHeader } from "./SupervisorComponents";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/tailwind.css";
 import "../../styles/supervisor-dtr.css";
 
@@ -124,25 +126,6 @@ function Attendance() {
 
   useEffect(() => {
     if (!user?.uid) return undefined;
-    const unsubscribeRecords = onSnapshot(
-      query(
-        collection(db, "attendance"),
-        where("supervisorId", "==", user.uid),
-      ),
-      (snapshot) => {
-        setRecords(
-          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-        );
-        setLoading(false);
-        setError("");
-      },
-      (snapshotError) => {
-        console.error("Unable to load supervisor attendance records:", snapshotError);
-        setLoading(false);
-        setError("Attendance records could not be loaded. Check Firestore permissions.");
-      },
-    );
-
     const unsubscribeStudents = onSnapshot(
       query(
         collection(db, "students"),
@@ -160,9 +143,30 @@ function Attendance() {
     );
 
     return () => {
-      unsubscribeRecords();
       unsubscribeStudents();
     };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    return subscribeToAssignedAttendance({
+      role: "supervisor",
+      userUid: user.uid,
+      onRecords: (items) => {
+        setRecords(items);
+        setLoading(false);
+        setError("");
+      },
+      onError: (snapshotError) => {
+        console.error("Unable to load assigned supervisor attendance:", snapshotError);
+        setLoading(false);
+        setError(
+          snapshotError.code === "permission-denied"
+            ? "Access to attendance records was denied. Check the deployed Firestore rules and supervisor assignment."
+            : "Attendance records could not be loaded. Please try again.",
+        );
+      },
+    });
   }, [user?.uid]);
 
   const studentById = useMemo(
@@ -528,11 +532,11 @@ function Attendance() {
               <div>
                 <span>Department / Course</span>
                 <strong>
-                  {selectedStudent.department ||
+                  <DepartmentBadge value={selectedStudent.department ||
                     selectedStudent.course ||
                     selectedStudent.program ||
                     selectedStudent.courseProgram ||
-                    "—"}
+                    "—"} />
                 </strong>
               </div>
               <div>

@@ -3,12 +3,14 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Clock3, Download, Printer, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { subscribeToAssignedAttendance } from "../../services/assignedAttendanceService";
 import {
   formatHoursMinutes,
   getRecordPeriods,
   summarizeAttendance,
 } from "../../services/manualAttendanceService";
 import { PageHeader, SearchBox, Status } from "../supervisor/SupervisorComponents";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/coordinator-module.css";
 
 const recentLoginLimit = 8;
@@ -128,12 +130,6 @@ function Attendance() {
   const [selectedDtr, setSelectedDtr] = useState(null);
 
   useEffect(() => {
-    let studentsLoaded = false;
-    let attendanceLoaded = false;
-    const finishLoading = () => {
-      if (studentsLoaded && attendanceLoaded) setLoading(false);
-    };
-
     const unsubscribeStudents = onSnapshot(
       query(
         collection(db, "students"),
@@ -143,33 +139,10 @@ function Attendance() {
         setStudents(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
         );
-        studentsLoaded = true;
-        finishLoading();
       },
       (snapshotError) => {
         console.error("Unable to load students for attendance:", snapshotError);
         setError("Student records could not be loaded. Check Firestore permissions.");
-        studentsLoaded = true;
-        finishLoading();
-      },
-    );
-    const unsubscribeAttendance = onSnapshot(
-      query(
-        collection(db, "attendance"),
-        where("coordinatorUid", "==", user.uid),
-      ),
-      (snapshot) => {
-        setRecords(
-          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-        );
-        attendanceLoaded = true;
-        finishLoading();
-      },
-      (snapshotError) => {
-        console.error("Unable to load attendance records:", snapshotError);
-        setError("Attendance records could not be loaded. Check Firestore permissions.");
-        attendanceLoaded = true;
-        finishLoading();
       },
     );
     const unsubscribeLoginActivity = onSnapshot(
@@ -202,10 +175,28 @@ function Attendance() {
 
     return () => {
       unsubscribeStudents();
-      unsubscribeAttendance();
       unsubscribeLoginActivity();
     };
   }, [user.uid]);
+
+  useEffect(() => subscribeToAssignedAttendance({
+    role: "coordinator",
+    userUid: user.uid,
+    onRecords: (items) => {
+      setRecords(items);
+      setLoading(false);
+      setError("");
+    },
+    onError: (snapshotError) => {
+      console.error("Unable to load assigned coordinator attendance:", snapshotError);
+      setError(
+        snapshotError.code === "permission-denied"
+          ? "Access to attendance records was denied. Check the deployed Firestore rules and coordinator assignment."
+          : "Attendance records could not be loaded. Please try again.",
+      );
+      setLoading(false);
+    },
+  }), [user.uid]);
 
   const studentById = useMemo(
     () => new Map(students.map((student) => [getStudentId(student), student])),
@@ -491,7 +482,7 @@ function Attendance() {
                       </button>
                     </td>
                     <td>{record.displayId}</td>
-                    <td>{record.displayDepartment}</td>
+                    <td><DepartmentBadge value={record.displayDepartment} /></td>
                     {attendancePeriods.map((period) => (
                       <td key={period.value}>
                         {getPeriodTime(record, period.value) || "—"}
@@ -560,12 +551,12 @@ function Attendance() {
               <div>
                 <span>Department / Course</span>
                 <strong>
-                  {selectedDtr.department ||
+                  <DepartmentBadge value={selectedDtr.department ||
                     selectedStudent.department ||
                     selectedStudent.course ||
-                  selectedStudent.program ||
-                  selectedStudent.courseProgram ||
-                  "—"}
+                    selectedStudent.program ||
+                    selectedStudent.courseProgram ||
+                    "—"} />
                 </strong>
               </div>
               <div>

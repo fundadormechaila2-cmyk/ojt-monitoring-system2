@@ -13,6 +13,7 @@ import { ChevronRight, ShieldCheck, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { auth, db } from "../../services/firebase";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/student-portal.css";
 
 function Profile() {
@@ -178,7 +179,7 @@ function Profile() {
           <div className="student-avatar">{initials}</div>
           <div>
             <h2>{profile.fullName || "Loading..."}</h2>
-            <p>{profile.studentId || "No student ID"} • {profile.program || "No program"}</p>
+            <p>{profile.studentId || "No student ID"} • <DepartmentBadge value={profile.program || "No program"} /></p>
             <p>{profile.yearLevel}</p>
           </div>
         </div>

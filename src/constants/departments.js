@@ -25,6 +25,18 @@ export function departmentIdFor(value) {
   if (raw.includes("business administration") || /\bbsba\b/.test(raw)) {
     return BSBA_DEPARTMENT_ID;
   }
+  if (raw.includes("information technology") || /\bbsit\b/.test(raw)) {
+    return "BSIT";
+  }
+  if (raw.includes("hospitality management") || /\bbshm\b/.test(raw)) {
+    return "BSHM";
+  }
+  if (raw.includes("secondary education") || /\bbsed\b/.test(raw)) {
+    return "BSED";
+  }
+  if (raw.includes("elementary education") || /\bbeed\b/.test(raw)) {
+    return "BEED";
+  }
   const byLabel = DEPARTMENTS.find(
     (department) =>
       text(department.label) === raw ||

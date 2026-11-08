@@ -1,5 +1,7 @@
 import {
   Bell,
+  ArrowRight,
+  CalendarDays,
   CalendarClock,
   Clock3,
   FileText,
@@ -10,6 +12,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import {
   formatHoursMinutes,
   getRecordPeriods,
@@ -139,22 +142,34 @@ function StudentsDashboard() {
   };
 
   return (
-    <div className="student-portal-page">
+    <div className="student-portal-page student-dashboard-page">
       {loadError && <p className="student-empty-state" role="alert">{loadError}</p>}
       {loading && <p className="student-meta" role="status">Loading your OJT information...</p>}
-      <header className="student-page-header">
+      <header className="student-page-header dashboard-hero">
         <div>
           <p className="student-meta">Student portal</p>
           <h1>Welcome back, {name.split(" ")[0]}!</h1>
           <p>Track your OJT progress, attendance, and required submissions.</p>
-        </div>
-        <div className="student-header-actions">
-          <button type="button" className="student-button primary" onClick={handleTimeIn}>
-            <Clock3 size={15} />
-            Record Attendance
-          </button>
+          <div className="student-header-actions">
+            <button type="button" className="student-button primary" onClick={handleTimeIn}>
+              <Clock3 size={15} />
+              Record Attendance
+            </button>
+          </div>
         </div>
       </header>
+
+      <div className="dashboard-date-button" aria-label="Today's date">
+        <CalendarDays size={18} />
+        <span>
+          {new Date().toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+        <ArrowRight className="dashboard-date-arrow" size={18} aria-hidden="true" />
+      </div>
 
       <section className="student-overview-grid">
         {summaryStats.map((item) => (
@@ -178,7 +193,7 @@ function StudentsDashboard() {
               <span className="status-badge active">{studentProfile.ojtStatus || studentProfile.status || "OJT"}</span>
             </div>
             <h2>{name}</h2>
-            <p>{studentProfile.studentId || "Student ID unavailable"} • {studentProfile.course || studentProfile.program || "Program unavailable"}</p>
+            <p>{studentProfile.studentId || "Student ID unavailable"} • <DepartmentBadge value={studentProfile.course || studentProfile.program || studentProfile.department || "Program unavailable"} /></p>
             <p>{studentProfile.yearLevel || ""}</p>
           </div>
         </div>

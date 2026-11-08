@@ -10,6 +10,7 @@ import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
 import { PageHeader } from "../supervisor/SupervisorComponents";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/coordinator-journals.css";
 
 function studentName(student) {
@@ -301,9 +302,9 @@ function StudentJournals() {
                       <small>{studentId(journal.student) || "ID not available"}</small>
                     </td>
                     <td>
-                      {journal.student.department ||
-                        journal.student.course ||
-                        "—"}
+                      <DepartmentBadge
+                        value={journal.student.department || journal.student.course}
+                      />
                     </td>
                     <td className="coordinator-journals-preview">
                       {journal.taskPerformed || "—"}
@@ -358,9 +359,11 @@ function StudentJournals() {
                 <span>
                   {studentId(selectedJournal.student) || "ID not available"}
                   {" · "}
-                  {selectedJournal.student.course ||
-                    selectedJournal.student.department ||
-                    "Course not available"}
+                  <DepartmentBadge
+                    value={selectedJournal.student.course ||
+                      selectedJournal.student.department ||
+                      "Course not available"}
+                  />
                 </span>
               </div>
               <button

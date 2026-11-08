@@ -15,7 +15,7 @@
 
   font: clamp(14px, calc(13px + 0.22vw), 16px)/1.55 var(--sans);
   color: var(--text);
-  background: var(--bg);
+  background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -25,7 +25,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--bg);
+  background: transparent;
   font-weight: 400;
 }
 
@@ -43,9 +43,25 @@ textarea {
 }
 
 #root {
+  position: relative;
+  isolation: isolate;
   width: 100%;
   min-height: 100svh;
   box-sizing: border-box;
+}
+
+#root::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(247, 250, 255, 0.8), rgba(235, 244, 255, 0.8)),
+    url("/lcc-school-building.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  content: "";
+  pointer-events: none;
 }
 
 h1,

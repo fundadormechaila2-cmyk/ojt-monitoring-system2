@@ -112,21 +112,23 @@ function AccountActionDialog({ action, target, onClose, onDone }) {
         )}
         {isSelf && <p className="users-error" role="alert">You cannot perform this action on your own account.</p>}
         {blocker && <p className="users-error" role="alert">{blocker}</p>}
-        {needsTyping && !blocker && !isSelf && (
+        {needsTyping && preview && !blocker && !isSelf && (
           <label>Type DELETE to confirm<input value={typed} disabled={busy} onChange={(event) => setTyped(event.target.value)} autoComplete="off" /></label>
         )}
         {error && <p className="users-error" role="alert">{error}</p>}
         <footer>
           <button type="button" className="users-secondary" disabled={busy} onClick={onClose}>Cancel</button>
-          <button
-            type="button"
-            className="users-primary"
-            style={action === "delete" ? { background: "#b91c1c", borderColor: "#b91c1c" } : undefined}
-            disabled={!canSubmit}
-            onClick={submit}
-          >
-            {busy ? "Processing..." : config.button}
-          </button>
+          {(!needsTyping || preview) && (
+            <button
+              type="button"
+              className="users-primary"
+              style={action === "delete" ? { background: "#b91c1c", borderColor: "#b91c1c" } : undefined}
+              disabled={!canSubmit}
+              onClick={submit}
+            >
+              {busy ? "Processing..." : config.button}
+            </button>
+          )}
         </footer>
         </div>
       </section>

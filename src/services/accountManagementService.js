@@ -46,6 +46,8 @@ const errorMessages = {
   "functions/unavailable":
     "Network error. Check your connection and try again.",
   "functions/not-found": "This record no longer exists.",
+  "functions/internal":
+    "Account management is unavailable. The Firebase project owner must enable the Cloud Build API and deploy the manageAccount function.",
 };
 
 async function run(action, target, extra = {}) {

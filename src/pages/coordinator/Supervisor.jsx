@@ -32,6 +32,7 @@ import {
 } from "../../services/supervisorAssignmentService";
 import { withoutArchived } from "../../services/recordState";
 import { createManagedUser } from "../../services/userManagementSevice";
+import DepartmentBadge from "../../components/DepartmentBadge";
 
 const emptyForm = {
   firstName: "",
@@ -959,7 +960,7 @@ function Supervisor() {
                 </ul>
               </fieldset>
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="block font-medium text-slate-700">Department</span><span className="text-slate-500">{user?.department || "Not assigned"}</span></div>
+                <div><span className="block font-medium text-slate-700">Department</span><DepartmentBadge value={user?.department || "Not assigned"} /></div>
                 <div><span className="block font-medium text-slate-700">Account status</span><span className="text-slate-500">Active</span></div>
               </div>
               {referenceError && <p className="text-sm text-rose-700" role="alert">{referenceError}</p>}
@@ -1156,7 +1157,7 @@ function Supervisor() {
               />
               <ProfileDetail
                 label="Department"
-                value={modal.supervisor.department || "Not provided"}
+                value={<DepartmentBadge value={modal.supervisor.department || "Not provided"} />}
               />
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:col-span-2">
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1173,7 +1174,7 @@ function Supervisor() {
                           {studentName(student)}
                         </strong>
                         <span className="mt-0.5 block text-xs text-slate-500">
-                          {student.studentId || student.id} · {student.course || "No course"}
+                          {student.studentId || student.id} · <DepartmentBadge value={student.course || student.department || "No course"} />
                         </span>
                       </li>
                     ))}
@@ -1254,7 +1255,7 @@ function Supervisor() {
                         <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" key={student.id}>
                           <span>
                             <strong className="text-slate-800">{studentName(student)}</strong>
-                            <span className="block text-xs text-slate-500">{student.studentId || student.id} · {student.course || "No course"} · {student.company || supervisor.company || "No company"}</span>
+                            <span className="block text-xs text-slate-500">{student.studentId || student.id} · <DepartmentBadge value={student.course || student.department || "No course"} /> · {student.company || supervisor.company || "No company"}</span>
                           </span>
                           <span className="flex items-center gap-2">
                             {others.length > 0 && (
@@ -1286,7 +1287,7 @@ function Supervisor() {
                         <li key={student.id}>
                           <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
                             <input type="checkbox" checked={manageSelection.includes(student.id)} disabled={busy} onChange={() => setManageSelection((current) => toggleId(current, student.id))} />
-                            <span>{studentName(student)} <span className="text-xs text-slate-500">· {student.studentId || student.id} · {student.course || "No course"}</span></span>
+                            <span>{studentName(student)} <span className="text-xs text-slate-500">· {student.studentId || student.id} · <DepartmentBadge value={student.course || student.department || "No course"} /></span></span>
                           </label>
                         </li>
                       ))}

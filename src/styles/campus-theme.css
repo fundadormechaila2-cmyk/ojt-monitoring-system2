@@ -4,14 +4,74 @@
   --campus-blue-deep: #123f79;
   --campus-muted: #687b95;
   --campus-border: #e2eaf4;
-  background: #f3f7fc;
+  background: transparent;
   color: var(--campus-ink);
 }
 
+.department-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 9px;
+  border: 1px solid var(--department-border, #d8dee8);
+  border-radius: 999px;
+  background: var(--department-bg, #f1f3f6);
+  color: var(--department-ink, #4b5563);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.department-badge[data-department="BSIT"] {
+  --department-bg: #f0f2f5;
+  --department-border: #d7dce3;
+  --department-ink: #4b5563;
+}
+
+.department-badge[data-department="BSHM"] {
+  --department-bg: #fff0e5;
+  --department-border: #ffd1ad;
+  --department-ink: #a64b00;
+}
+
+.department-badge[data-department="BSED"],
+.department-badge[data-department="BEED"] {
+  --department-bg: #e8f1ff;
+  --department-border: #c4d9ff;
+  --department-ink: #1e56a0;
+}
+
+.department-badge[data-department="BSBA"] {
+  --department-bg: #fff7cc;
+  --department-border: #f2df83;
+  --department-ink: #775900;
+}
+
 .admin-header {
+  width: calc(100% - 28px);
+  margin: 10px 14px 0;
   border-bottom-color: #dce7f4;
-  background: linear-gradient(100deg, #fff 0%, #f6faff 100%);
+  border: 1px solid rgba(220, 231, 244, 0.9);
+  background: rgba(248, 251, 255, 0.84);
+  border-radius: 18px;
   box-shadow: 0 4px 18px rgba(27, 62, 107, 0.08);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+  backdrop-filter: blur(14px) saturate(125%);
+}
+
+.sidebar {
+  top: 82px;
+  bottom: 12px;
+  left: 12px;
+  overflow-x: hidden;
+  border: 1px solid #e1eaf5;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(27, 62, 107, 0.08);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+  backdrop-filter: blur(14px) saturate(125%);
 }
 
 .admin-title h2 {
@@ -28,30 +88,67 @@
 
 .sidebar {
   border-right-color: #e1eaf5;
-  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+}
+
+.sidebar .nav-link {
+  margin-inline: 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #e1e8f0;
+  border-radius: 9px;
+  background: #eef2f7;
+  color: #53677f;
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .nav-link {
-  border-radius: 11px;
+  border-radius: 9px;
   transition:
     background-color 0.2s ease,
+    border-color 0.2s ease,
     color 0.2s ease,
-    padding 0.25s ease,
+    box-shadow 0.2s ease,
     transform 0.2s ease;
 }
 
 .nav-link:hover {
   transform: translateX(2px);
-  background: #edf5ff;
+  border-color: #cfdae8;
+  background: #e4ebf3;
+  color: #365a82;
+  box-shadow: 0 2px 6px rgba(27, 62, 107, 0.08);
 }
 
-.nav-link.active {
-  background: linear-gradient(100deg, #e5f0ff, #f1f7ff);
-  color: #15569b;
+.sidebar .nav-link[aria-current="page"] {
+  position: relative;
+  border-color: #2868b2;
+  background: #2868b2;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 3px 8px rgba(28, 91, 153, 0.18);
 }
 
-.nav-link.active::before {
-  background: linear-gradient(180deg, #348be0, #16539b);
+.sidebar .nav-link[aria-current="page"]:hover {
+  border-color: #205a9e;
+  background: #205a9e;
+  color: #fff;
+}
+
+.sidebar .nav-link[aria-current="page"] .nav-text {
+  color: #fff;
+  background: transparent;
+}
+
+.sidebar .nav-link[aria-current="page"]::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgba(255, 255, 255, 0.8);
+  content: "";
 }
 
 .logout-btn {
@@ -64,11 +161,12 @@
   background: linear-gradient(135deg, #1d5fA8, #103f78);
 }
 
-.admin-body,
+.admin-body {
+  background: transparent;
+}
+
 .content {
-  background:
-    radial-gradient(ellipse at 92% 6%, rgba(147, 195, 247, 0.13), transparent 28rem),
-    #f3f7fc;
+  background: rgba(243, 247, 252, 0.16);
 }
 
 .admin-dashboard,
@@ -76,6 +174,205 @@
 .supervisor-page,
 .student-portal-page {
   color: var(--campus-ink);
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero {
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 230px;
+  margin-bottom: 16px;
+  padding: clamp(26px, 4vw, 42px);
+  border: 1px solid rgba(201, 222, 245, 0.82);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 10% 100%, rgba(216, 237, 255, 0.9), transparent 58%),
+    linear-gradient(110deg, #f8fbff 0%, #eff7ff 62%, #e8f4ff 100%);
+  box-shadow: 0 14px 32px rgba(24, 76, 134, 0.1);
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero::before {
+  z-index: 0;
+  top: 0;
+  right: 0;
+  width: 61%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background-image:
+    linear-gradient(90deg, #f5faff 0%, rgba(245, 250, 255, 0.82) 14%, rgba(245, 250, 255, 0.2) 53%, rgba(245, 250, 255, 0.02) 100%),
+    linear-gradient(rgba(242, 248, 255, 0.24), rgba(242, 248, 255, 0.24)),
+    url("/lcc-school-building.png");
+  background-position: center right;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow: none;
+  clip-path: ellipse(100% 125% at 100% 50%);
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero::after {
+  z-index: 1;
+  right: -5%;
+  bottom: -43px;
+  left: -5%;
+  width: auto;
+  height: 64px;
+  border: 0;
+  border-radius: 52% 48% 0 0 / 76% 88% 0 0;
+  background: linear-gradient(100deg, rgba(103, 180, 236, 0.64), rgba(38, 119, 196, 0.82));
+  box-shadow: none;
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero > * {
+  z-index: 2;
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero > div:first-child {
+  max-width: 58%;
+}
+
+.dashboard-hero .dashboard-eyebrow,
+.dashboard-hero .supervisor-eyebrow,
+.dashboard-hero .student-meta {
+  display: inline-flex;
+  margin-bottom: 12px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(222, 238, 255, 0.9);
+  color: #356da8;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero h1 {
+  margin: 0 0 8px;
+  color: #142f55;
+  font-size: clamp(30px, 3.2vw, 42px);
+  letter-spacing: -0.045em;
+}
+
+.dashboard-hero .dashboard-subtitle,
+.dashboard-hero > div:first-child > p:last-child {
+  max-width: 430px;
+  color: #647b98;
+  font-size: 14px;
+}
+
+.dashboard-date-button,
+.dashboard-hero .supervisor-date {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  box-sizing: border-box;
+  margin-bottom: 18px;
+  padding: 0 17px;
+  border: 1px solid rgba(219, 231, 246, 0.95);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 7px 20px rgba(35, 75, 120, 0.07);
+  color: #29496e;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: default;
+}
+
+.dashboard-date-button > svg:first-child,
+.dashboard-hero .supervisor-date svg {
+  color: #347ac5;
+}
+
+.dashboard-date-arrow {
+  margin-left: auto;
+  color: #9aaec5;
+}
+
+.admin-dashboard .dashboard-stat,
+.coordinator-dashboard .coordinator-stat,
+.supervisor-dashboard-page .supervisor-card,
+.student-dashboard-page .student-stat-card {
+  min-height: 136px;
+  border-color: rgba(214, 229, 247, 0.92);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: 0 9px 22px rgba(29, 66, 108, 0.08);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+  backdrop-filter: blur(10px) saturate(115%);
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-card {
+  min-height: 132px;
+  padding: 22px 24px;
+  border-color: #e2eaf4;
+  border-radius: 18px;
+  box-shadow: 0 6px 18px rgba(29, 66, 108, 0.07);
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-card:first-child {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-card:first-child .student-stat-value {
+  justify-content: center;
+  width: 100%;
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-label {
+  margin-bottom: 14px;
+  color: #71839b;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-value {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-value strong {
+  font-size: clamp(20px, 2vw, 27px);
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.student-dashboard-page .student-overview-grid .student-stat-trend {
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
+.admin-dashboard .dashboard-stat:hover,
+.coordinator-dashboard .coordinator-stat:hover,
+.supervisor-dashboard-page .supervisor-card:hover,
+.student-dashboard-page .student-stat-card:hover {
+  background: #fff;
+  box-shadow: 0 13px 28px rgba(29, 66, 108, 0.13);
+}
+
+.admin-dashboard .stat-icon,
+.supervisor-dashboard-page .supervisor-card-icon {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border-radius: 12px;
+}
+
+.admin-dashboard .stat-copy p {
+  color: #516985;
+  font-size: 12px;
+}
+
+.admin-dashboard .stat-copy strong,
+.coordinator-dashboard .coordinator-stat strong,
+.supervisor-dashboard-page .supervisor-card strong,
+.student-dashboard-page .student-stat-value strong {
+  color: #15345d;
+  font-size: 31px;
 }
 
 .dashboard-intro,
@@ -147,6 +444,19 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.13em;
+}
+
+.dashboard-hero.dashboard-intro .dashboard-eyebrow,
+.dashboard-hero.coordinator-dashboard-header .dashboard-eyebrow,
+.dashboard-hero.supervisor-header .supervisor-eyebrow,
+.dashboard-hero.student-page-header .student-meta {
+  border: 1px solid #c5dcf5;
+  background: #e4f0ff;
+  color: #174b80;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: none;
 }
 
 .dashboard-intro h1,
@@ -244,11 +554,29 @@
   background: linear-gradient(145deg, #fff 62%, #fff0ed);
 }
 
+.dashboard-stat,
+.coordinator-stats article,
+.coordinator-stats button,
+.supervisor-card,
+.student-card {
+  border-color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+
+.dashboard-stat:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .dashboard-panel,
 .coordinator-panel,
 .supervisor-panel,
 .student-panel {
-  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.84);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
 }
 
 .panel-heading h2,
@@ -280,6 +608,15 @@
 
 .student-page-header .student-header-actions {
   z-index: 1;
+}
+
+.student-dashboard-page .dashboard-hero .student-header-actions {
+  width: auto;
+  margin-top: 18px;
+}
+
+.student-dashboard-page .dashboard-hero .student-header-actions .student-button {
+  flex: 0 0 auto;
 }
 
 .student-page-header .student-button.primary {
@@ -361,18 +698,18 @@
 }
 
 .login-container {
-  background:
-    radial-gradient(ellipse at 12% 8%, rgba(80, 146, 216, 0.18), transparent 38%),
-    radial-gradient(ellipse at 95% 92%, rgba(86, 164, 217, 0.16), transparent 38%),
-    linear-gradient(135deg, #edf4fc, #f8fbff 52%, #eaf2fb);
+  background: transparent;
 }
 
 .login-card {
-  border-color: #dce7f3;
+  border-color: rgba(255, 255, 255, 0.82);
   border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
   box-shadow:
     0 24px 55px rgba(20, 57, 101, 0.12),
     0 3px 8px rgba(20, 57, 101, 0.05);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
 .login-heading h1 {
@@ -390,6 +727,18 @@
 }
 
 @media (max-width: 760px) {
+  .admin-header {
+    width: calc(100% - 16px);
+    margin: 8px 8px 0;
+  }
+
+  .sidebar {
+    top: 80px;
+    bottom: 10px;
+    left: 9px;
+    border-radius: 16px;
+  }
+
   .dashboard-intro,
   .coordinator-dashboard-header,
   .supervisor-header,
@@ -404,7 +753,46 @@
   }
 
   .student-page-header .student-header-actions {
-    width: 100%;
+    width: auto;
+  }
+
+  :is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero {
+    min-height: 210px;
+  }
+
+  :is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero::before {
+    width: 70%;
+    opacity: 0.82;
+  }
+
+  .coordinator-dashboard .dashboard-hero {
+    flex-direction: row;
+  }
+
+  .student-dashboard-page .dashboard-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: 255px;
+  }
+}
+
+@media (max-width: 700px) {
+  .admin-header {
+    height: 65px;
+  }
+
+  .sidebar {
+    top: 73px;
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .sidebar-open .sidebar-overlay {
+    top: 73px;
+  }
+
+  .sidebar-closed .sidebar {
+    left: 8px;
   }
 }
 
@@ -415,6 +803,38 @@
   .student-page-header {
     padding: 21px 18px;
     border-radius: 15px;
+  }
+
+  :is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero {
+    min-height: 220px;
+    padding: 24px 20px;
+    border-radius: 18px;
+  }
+
+  :is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero > div:first-child {
+    max-width: 78%;
+  }
+
+  :is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero::before {
+    width: 78%;
+    opacity: 0.66;
+  }
+
+  .admin-dashboard .dashboard-intro .dashboard-subtitle,
+  .coordinator-dashboard .dashboard-hero > div:first-child > p:last-child,
+  .supervisor-dashboard-page .dashboard-hero > div:first-child > p:last-child,
+  .student-dashboard-page .dashboard-hero > div:first-child > p:last-child {
+    font-size: 12px;
+  }
+
+  .dashboard-date-button,
+  .dashboard-hero .supervisor-date {
+    min-height: 50px;
+    padding-inline: 14px;
+  }
+
+  .student-dashboard-page .dashboard-hero {
+    min-height: 250px;
   }
 
   .dashboard-intro::before,

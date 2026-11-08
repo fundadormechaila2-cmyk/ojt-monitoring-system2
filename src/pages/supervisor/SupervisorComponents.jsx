@@ -1,9 +1,9 @@
 import { CalendarDays, Search } from "lucide-react";
 import "../../styles/supervisor.css";
 
-export function PageHeader({ eyebrow = "Supervisor workspace", title, description, action }) {
+export function PageHeader({ eyebrow = "Supervisor workspace", title, description, action, className = "" }) {
   return (
-    <header className="supervisor-header">
+    <header className={`supervisor-header ${className}`.trim()}>
       <div>
         <p className="supervisor-eyebrow">{eyebrow}</p>
         <h1>{title}</h1>

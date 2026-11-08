@@ -166,7 +166,7 @@ function Attendance() {
         <div>
           <p className="student-meta">Daily attendance</p>
           <h1>My Attendance</h1>
-          <p>Show your current QR code to your OJT supervisor to record attendance.</p>
+          <p>Show your current QR code to your OJT supervisor to record attendance. Your assigned coordinator and supervisor can review your attendance history.</p>
         </div>
       </header>
 

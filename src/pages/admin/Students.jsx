@@ -34,6 +34,7 @@ import {
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
 import AccountActionDialog from "../../components/AccountActionDialog";
+import DepartmentBadge from "../../components/DepartmentBadge";
 import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
 
@@ -984,7 +985,7 @@ function Students() {
                         {student.studentId || "—"}
                       </span>
                     </td>
-                    <td>{student.course}</td>
+                    <td><DepartmentBadge value={student.course || student.department} /></td>
                     <td>
                       <span className={`student-status ${statusClass}`}>
                         {student.status}
@@ -1142,7 +1143,7 @@ function Students() {
                 <h2 id="student-modal-title">{selectedStudent.name}</h2>
                 <p>
                   {selectedStudent.studentId || "No student ID"} ·{" "}
-                  {selectedStudent.course}
+                  <DepartmentBadge value={selectedStudent.course || selectedStudent.department} />
                 </p>
               </div>
               <button
@@ -1412,7 +1413,9 @@ function Students() {
                 <h2 id="account-modal-title">Create student login</h2>
                 <p>
                   {accountStudent.name} ·{" "}
-                  {accountStudent.studentId || accountStudent.course}
+                  {accountStudent.studentId || (
+                    <DepartmentBadge value={accountStudent.course || accountStudent.department} />
+                  )}
                 </p>
               </div>
               <button
