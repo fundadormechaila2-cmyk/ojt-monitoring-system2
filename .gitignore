@@ -27,5 +27,6 @@ dist-ssr
 *.sw?
 
 # Service account keys (never commit)
-service-account*.json
-*-firebase-adminsdk-*.json
+*service-account*.json
+*firebase-adminsdk*.json
+*adminsdk*.json

@@ -216,13 +216,19 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    () => sessionStorage.getItem("account-session-message") || "",
+  );
   const [resetError, setResetError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pendingRole, setPendingRole] = useState(null);
   const [tempPassword, setTempPassword] = useState("");
+
+  useEffect(() => {
+    sessionStorage.removeItem("account-session-message");
+  }, []);
 
   // Also covers resuming an unfinished forced reset after a page refresh.
   const needsReset = Boolean(user?.mustChangePassword) || pendingRole !== null;

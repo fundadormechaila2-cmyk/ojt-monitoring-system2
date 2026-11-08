@@ -1,5 +1,24 @@
 # Attendance QR Functions
 
+## Account management
+
+`manageAccountApi` is the trusted HTTP backend for account lifecycle
+operations; it verifies the Firebase ID token from the Bearer authorization
+header before invoking the shared account-management logic. The callable
+`manageAccount` remains available for compatibility. In Cloud Functions, the
+Admin SDK uses the function's service identity. For local
+development, the root `npm run account-server` script starts
+`localAccountServer.js`; set `GOOGLE_APPLICATION_CREDENTIALS` to a Firebase
+Admin service-account key stored outside the repository and set
+`GCLOUD_PROJECT=ojt-monitoringsystem2`. The server verifies Firebase ID tokens
+and checks the caller's active Firestore profile before acting. Permanent
+deletion is restricted to administrators and retains student roster and
+academic records.
+
+Deploy both Cloud Functions with the command in the root README. See that
+README for the exact PowerShell commands to start the local backend and
+frontend.
+
 Student QR codes are signed by Firebase Functions and validated by the
 server before attendance is written. Never place the signing secret in the
 React application.

@@ -53,8 +53,36 @@ const server = http.createServer(async (req, res) => {
     let decoded;
     try {
       decoded = await getAuth().verifyIdToken(token, true);
-    } catch {
-      return send(res, 401, { error: { code: "unauthenticated", message: "Your session has expired. Please sign in again." } }, origin);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return send(res, 401, {
+          error: {
+            code: "token-expired",
+            message: "The sign-in token expired. Refreshing the session.",
+          },
+        }, origin);
+      }
+      if ([
+        "auth/id-token-revoked",
+        "auth/invalid-id-token",
+        "auth/invalid-user-token",
+        "auth/user-disabled",
+        "auth/user-not-found",
+      ].includes(error.code)) {
+        return send(res, 401, {
+          error: {
+            code: "unauthenticated",
+            message: "Your session is no longer valid. Please sign in again.",
+          },
+        }, origin);
+      }
+      console.error("Unable to verify Firebase ID token:", error);
+      return send(res, 500, {
+        error: {
+          code: "internal",
+          message: "The account server could not verify the sign-in token.",
+        },
+      }, origin);
     }
 
     let raw = "";

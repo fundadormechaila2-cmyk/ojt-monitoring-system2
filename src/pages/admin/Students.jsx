@@ -862,7 +862,7 @@ function Students() {
 
       {!accountManagementAvailable && (
         <div className="students-error" role="alert">
-          Account management is unavailable. Deploy the manageAccount function or enable the local account server before managing student access.
+          Account management could not be verified. Check the manageAccountApi deployment or start the local account server before managing student access.
         </div>
       )}
 
@@ -1059,7 +1059,6 @@ function Students() {
                           className="student-action"
                           title="Delete permanently"
                           aria-label={`Delete ${student.name}`}
-                          disabled={!accountManagementAvailable}
                           onClick={() =>
                             openAccountAction("delete", student, account)
                           }

@@ -1,14 +1,102 @@
 const { createHmac, randomBytes, timingSafeEqual } = require("node:crypto");
 const { initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
-const { HttpsError, onCall } = require("firebase-functions/v2/https");
+const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
 
 initializeApp();
 
 const { isAccountLive, isRecordArchived } = require("./accountState");
 const { recordDepartmentId, sameDepartment } = require("./departments");
-exports.manageAccount = require("./accountManagement").manageAccount;
+const { handleManageAccount, manageAccount } = require("./accountManagement");
+exports.manageAccount = manageAccount;
+
+const accountManagementOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
+  "https://ojt-monitoringsystem2.web.app",
+  "https://ojt-monitoringsystem2.firebaseapp.com",
+];
+
+exports.manageAccountApi = onRequest(
+  { cors: accountManagementOrigins },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.set("Allow", "POST").status(405).json({
+        error: { code: "invalid-argument", message: "Use POST for account management." },
+      });
+      return;
+    }
+
+    const authorization = req.get("authorization") || "";
+    const match = /^Bearer\s+(.+)$/i.exec(authorization);
+    if (!match || match[1].length > 8192) {
+      res.status(401).json({
+        error: { code: "unauthenticated", message: "Sign in to manage accounts." },
+      });
+      return;
+    }
+
+    let decoded;
+    try {
+      decoded = await getAuth().verifyIdToken(match[1], true);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        res.status(401).json({
+          error: { code: "token-expired", message: "The Firebase ID token expired." },
+        });
+        return;
+      }
+      if ([
+        "auth/id-token-revoked",
+        "auth/invalid-id-token",
+        "auth/invalid-user-token",
+        "auth/user-disabled",
+        "auth/user-not-found",
+      ].includes(error.code)) {
+        res.status(401).json({
+          error: { code: "unauthenticated", message: "The Firebase session is no longer valid." },
+        });
+        return;
+      }
+      console.error("manageAccountApi token verification failed", error);
+      res.status(500).json({
+        error: { code: "internal", message: "The server could not verify the Firebase ID token." },
+      });
+      return;
+    }
+
+    try {
+      const requestData = req.body?.data ?? req.body ?? {};
+      const result = await handleManageAccount({
+        auth: { uid: decoded.uid, token: decoded },
+        data: requestData,
+      });
+      res.status(200).json({ data: result });
+    } catch (error) {
+      const code = typeof error.code === "string" && !error.code.includes("/")
+        ? error.code
+        : "internal";
+      const statuses = {
+        "unauthenticated": 401,
+        "permission-denied": 403,
+        "invalid-argument": 400,
+        "not-found": 404,
+        "failed-precondition": 409,
+      };
+      if (!statuses[code]) console.error("manageAccountApi operation failed", error);
+      res.status(statuses[code] || 500).json({
+        error: {
+          code: statuses[code] ? code : "internal",
+          message: statuses[code] ? error.message : "The account operation did not complete.",
+        },
+      });
+    }
+  },
+);
 
 const db = getFirestore();
 const attendanceQrSecret = defineSecret("ATTENDANCE_QR_SECRET");

@@ -25,36 +25,19 @@ async function requireActor(db, request) {
   return profile;
 }
 
-// Coordinators may only preview or delete supervisors of their own department.
+// Coordinators may only preview supervisors of their own department.
 function assertCoordinatorScope(actor, action, target) {
   if (
-    !["preview", "delete"].includes(action) ||
+    action !== "preview" ||
     target.user?.role !== "supervisor" ||
     !recordDepartmentId(actor) ||
     !sameDepartment(actor, target.user)
   ) {
     throw new HttpsError(
       "permission-denied",
-      "Coordinators can only delete supervisors in their own department.",
+      "Coordinators can only preview supervisors in their own department.",
     );
   }
-}
-
-async function unassignStudents(db, supervisorUid) {
-  const students = await db.collection("students").where("supervisorUid", "==", supervisorUid).get();
-  for (const student of students.docs) {
-    const clear = {
-      supervisorUid: FieldValue.delete(),
-      supervisorName: FieldValue.delete(),
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-    await student.ref.update(clear);
-    const studentUid = student.data().studentUid;
-    if (studentUid) {
-      await db.collection("users").doc(studentUid).update(clear).catch(() => {});
-    }
-  }
-  return students.size;
 }
 
 async function unassignCoordinatorStudents(db, coordinatorUid) {
@@ -97,6 +80,57 @@ async function findRosterRefs(db, uid, user) {
   return [...refs.values()];
 }
 
+async function findStudentUser(db, roster, studentId) {
+  const candidates = new Map();
+  const addUser = async (uid) => {
+    if (typeof uid !== "string" || !uid || candidates.has(uid)) return;
+    const snapshot = await db.collection("users").doc(uid).get();
+    if (snapshot.exists && snapshot.data().role === "student") {
+      candidates.set(uid, { ref: snapshot.ref, user: snapshot.data() });
+    }
+  };
+
+  for (const uid of [roster.studentUid, roster.userUid, roster.accountUid]) {
+    await addUser(uid);
+  }
+
+  if (candidates.size === 0) {
+    const linked = await db.collection("users")
+      .where("studentRecordId", "==", studentId)
+      .get();
+    linked.docs
+      .filter((doc) => doc.data().role === "student")
+      .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
+  }
+
+  if (candidates.size === 0 && roster.studentId) {
+    const byStudentId = await db.collection("users")
+      .where("studentId", "==", roster.studentId)
+      .get();
+    byStudentId.docs
+      .filter((doc) => doc.data().role === "student")
+      .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
+  }
+
+  const rosterEmail = String(roster.email || roster.accountEmail || "").trim();
+  if (candidates.size === 0 && rosterEmail) {
+    const byEmail = await db.collection("users")
+      .where("email", "==", rosterEmail)
+      .get();
+    byEmail.docs
+      .filter((doc) => doc.data().role === "student")
+      .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
+  }
+
+  if (candidates.size > 1) {
+    throw new HttpsError(
+      "failed-precondition",
+      "More than one student login matches this student record. Resolve the duplicate account links before deleting.",
+    );
+  }
+  return candidates.entries().next().value || [null, null];
+}
+
 async function resolveTarget(db, data) {
   const { targetType, targetId } = data ?? {};
   if (
@@ -125,12 +159,12 @@ async function resolveTarget(db, data) {
     throw new HttpsError("not-found", "The student record no longer exists.");
   }
   const roster = rosterSnapshot.data();
-  const uid = roster.studentUid || null;
-  const userSnapshot = uid ? await db.collection("users").doc(uid).get() : null;
+  const [linkedUid, linkedUser] = await findStudentUser(db, roster, targetId);
+  const uid = linkedUid || roster.studentUid || roster.userUid || roster.accountUid || null;
   return {
     uid,
-    userRef: userSnapshot?.exists ? userSnapshot.ref : null,
-    user: userSnapshot?.exists ? userSnapshot.data() : null,
+    userRef: linkedUser ? db.collection("users").doc(linkedUid) : null,
+    user: linkedUser,
     roster,
     rosterRefs: [rosterSnapshot.ref],
   };
@@ -164,9 +198,6 @@ async function relatedSummary(db, target) {
   } else if (role === "supervisor") {
     counts.assignedStudents = await count(db.collection("students").where("supervisorUid", "==", uid));
     counts.attendance = await count(db.collection("attendance").where("supervisorId", "==", uid));
-    if (counts.assignedStudents > 0) {
-      blockers.push("This supervisor still has assigned students. Reassign them first, or archive the account instead.");
-    }
   } else if (role === "coordinator") {
     counts.assignedStudents = await count(db.collection("students").where("coordinatorUid", "==", uid));
     counts.createdSupervisors = await count(db.collection("users").where("createdBy", "==", uid));
@@ -174,6 +205,31 @@ async function relatedSummary(db, target) {
 
   const preserved = (counts.attendance || 0) + (counts.evaluations || 0) + (counts.applications || 0);
   return { role, counts, blockers, hasAcademicRecords: preserved > 0 };
+}
+
+async function unassignSupervisorStudents(db, supervisorUid) {
+  const [studentRecords, studentProfiles] = await Promise.all([
+    db.collection("students").where("supervisorUid", "==", supervisorUid).get(),
+    db.collection("users").where("supervisorUid", "==", supervisorUid).get(),
+  ]);
+  const refs = new Map();
+  studentRecords.docs.forEach((doc) => refs.set(doc.ref.path, doc.ref));
+  studentProfiles.docs
+    .filter((doc) => doc.data().role === "student")
+    .forEach((doc) => refs.set(doc.ref.path, doc.ref));
+
+  const documents = [...refs.values()];
+  for (let offset = 0; offset < documents.length; offset += 400) {
+    const batch = db.batch();
+    documents.slice(offset, offset + 400).forEach((ref) => {
+      batch.update(ref, {
+        supervisorUid: FieldValue.delete(),
+        supervisorName: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
 }
 
 async function assertNotLastAdmin(db, uid) {
@@ -269,6 +325,9 @@ async function handleManageAccount(request) {
   if (!ACTIONS.includes(action)) {
     throw new HttpsError("invalid-argument", "Unsupported account action.");
   }
+  if (action === "delete" && adminProfile.role !== "admin") {
+    throw new HttpsError("permission-denied", "Only administrators can permanently delete accounts.");
+  }
 
   const target = await resolveTarget(db, request.data);
   if (!target.user && !target.roster) {
@@ -323,26 +382,16 @@ async function handleManageAccount(request) {
       if (request.data?.confirm !== true) {
         throw new HttpsError("failed-precondition", "Permanent deletion must be confirmed.");
       }
-      if (related.blockers.length && !isCoordinatorActor) {
+      if (related.blockers.length) {
         throw new HttpsError("failed-precondition", related.blockers[0]);
-      }
-      if (isCoordinatorActor) {
-        await unassignStudents(db, target.uid);
-      }
-
-      if (!target.user) {
-        if (related.hasAcademicRecords) {
-          throw new HttpsError("failed-precondition", "This student record has academic history and can only be archived.");
-        }
-        await Promise.all(target.rosterRefs.map((ref) => ref.delete()));
-        await writeAudit(db, { ...auditBase, outcome: "completed" });
-        return { ok: true, action, message: messages.delete, warnings, ...base };
       }
 
       const auditRef = await writeAudit(db, { ...auditBase, outcome: "started" });
-      // Step 1: lock the account and preserve student history on the archived roster record.
+      // Step 1: lock the account and retain any student roster and academic history.
       await applyLifecycle(db, target, "archive", adminUid, warnings, { deletionPending: true });
-      if (role === "coordinator" && !isCoordinatorActor) {
+      if (target.user && role === "supervisor") {
+        await unassignSupervisorStudents(db, target.uid);
+      } else if (target.user && role === "coordinator") {
         await unassignCoordinatorStudents(db, target.uid);
       }
       if (target.rosterRefs.length) {
@@ -354,22 +403,34 @@ async function handleManageAccount(request) {
         await batch.commit();
       }
       // Step 2: remove the Authentication account (already-missing is fine), then the profile.
-      try {
-        await getAuth().deleteUser(target.uid);
-      } catch (error) {
-        if (error.code !== "auth/user-not-found") {
-          await auditRef.update({ outcome: "auth_delete_failed", error: String(error.message || error) });
+      if (target.uid) {
+        try {
+          await getAuth().deleteUser(target.uid);
+        } catch (error) {
+          if (error.code !== "auth/user-not-found") {
+            await auditRef.update({ outcome: "auth_delete_failed", error: String(error.message || error) });
+            throw error;
+          }
+        }
+      }
+      if (target.userRef && target.user) {
+        try {
+          await target.userRef.delete();
+        } catch (error) {
+          await auditRef.update({ outcome: "profile_delete_failed", error: String(error.message || error) });
           throw error;
         }
       }
-      try {
-        await target.userRef.delete();
-      } catch (error) {
-        await auditRef.update({ outcome: "profile_delete_failed", error: String(error.message || error) });
-        throw error;
-      }
       await auditRef.update({ outcome: "completed" });
-      return { ok: true, action, message: messages.delete, warnings, ...base };
+      return {
+        ok: true,
+        action,
+        message: target.user
+          ? messages.delete
+          : "No user profile was found. The student record and academic history were retained.",
+        warnings,
+        ...base,
+      };
     }
 
     await writeAudit(db, { ...auditBase, outcome: "completed" });
