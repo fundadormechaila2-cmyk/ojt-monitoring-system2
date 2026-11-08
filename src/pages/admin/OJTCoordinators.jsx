@@ -27,6 +27,7 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
+import { isAccountManagementAvailable } from "../../services/accountManagementService";
 import AccountActionDialog from "../../components/AccountActionDialog";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "./OJTCoordinators.css";
@@ -69,6 +70,15 @@ function OJTCoordinators() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [accountAction, setAccountAction] = useState(null);
+  const [accountManagementAvailable, setAccountManagementAvailable] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    isAccountManagementAvailable()
+      .then((isAvailable) => active && setAccountManagementAvailable(isAvailable))
+      .catch(() => active && setAccountManagementAvailable(false));
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     return onSnapshot(
@@ -274,6 +284,13 @@ function OJTCoordinators() {
         </button>
       </header>
 
+      {!accountManagementAvailable && (
+        <div className="coordinators-alert" role="alert">
+          <AlertCircle size={17} />
+          <span>Account management is unavailable. Deploy the manageAccount function or enable the local account server before managing coordinator access.</span>
+        </div>
+      )}
+
       {(loadError || error) && (
         <div className="coordinators-alert" role="alert">
           <AlertCircle size={17} />
@@ -390,6 +407,7 @@ function OJTCoordinators() {
                         className="coordinators-icon-button"
                         title="Permanently delete coordinator"
                         aria-label={`Permanently delete ${coordinatorName(coordinator)}`}
+                        disabled={!accountManagementAvailable}
                         onClick={() => openDeleteCoordinator(coordinator)}
                       >
                         <Trash2 size={16} />

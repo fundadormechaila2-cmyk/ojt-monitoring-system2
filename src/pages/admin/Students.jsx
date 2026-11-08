@@ -33,6 +33,7 @@ import {
 } from "../../constants/departments";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
+import { isAccountManagementAvailable } from "../../services/accountManagementService";
 import AccountActionDialog from "../../components/AccountActionDialog";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import { normalizedStudents } from "../coordinator/coordinatorData";
@@ -152,10 +153,19 @@ function Students() {
   });
   const [saving, setSaving] = useState(false);
   const [accountAction, setAccountAction] = useState(null);
+  const [accountManagementAvailable, setAccountManagementAvailable] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  useEffect(() => {
+    let active = true;
+    isAccountManagementAvailable()
+      .then((isAvailable) => active && setAccountManagementAvailable(isAvailable))
+      .catch(() => active && setAccountManagementAvailable(false));
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const snapshots = { students: false, users: false };
@@ -850,6 +860,12 @@ function Students() {
         </div>
       </header>
 
+      {!accountManagementAvailable && (
+        <div className="students-error" role="alert">
+          Account management is unavailable. Deploy the manageAccount function or enable the local account server before managing student access.
+        </div>
+      )}
+
       {(error || Object.values(sourceErrors).length > 0) && (
         <div className="students-error" role="alert">
           {error || Object.values(sourceErrors).join(" ")}
@@ -1017,6 +1033,7 @@ function Students() {
                             className="student-action"
                             title="Restore student"
                             aria-label={`Restore ${student.name}`}
+                            disabled={!accountManagementAvailable}
                             onClick={() =>
                               openAccountAction("restore", student, account)
                             }
@@ -1029,6 +1046,7 @@ function Students() {
                             className="student-action"
                             title="Archive student"
                             aria-label={`Archive ${student.name}`}
+                            disabled={!accountManagementAvailable}
                             onClick={() =>
                               openAccountAction("archive", student, account)
                             }
@@ -1041,6 +1059,7 @@ function Students() {
                           className="student-action"
                           title="Delete permanently"
                           aria-label={`Delete ${student.name}`}
+                          disabled={!accountManagementAvailable}
                           onClick={() =>
                             openAccountAction("delete", student, account)
                           }
