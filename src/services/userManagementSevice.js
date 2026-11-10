@@ -150,6 +150,11 @@ export const createManagedUser = async ({
           if (student.supervisorUid) {
             throw new Error(`${student.name || student.studentId || "A selected student"} already has an assigned supervisor.`);
           }
+          if (schoolYear && student.schoolYear && student.schoolYear !== schoolYear) {
+            throw new Error(
+              `${student.name || student.studentId || "A selected student"} is assigned to School Year ${student.schoolYear}.`,
+            );
+          }
         });
 
         transaction.set(userRef, profile);
@@ -158,6 +163,7 @@ export const createManagedUser = async ({
           transaction.update(studentRefs[index], {
             supervisorUid: firebaseUser.uid,
             supervisorName,
+            supervisorSchoolYear: schoolYear || snapshot.data().schoolYear || "",
             partnerCompanyId: partnerCompanyId || null,
             company,
             updatedAt: serverTimestamp(),
@@ -171,11 +177,13 @@ export const createManagedUser = async ({
             updateDoc(doc(db, "users", studentUserUid), {
               supervisorUid: firebaseUser.uid,
               supervisorName,
+              supervisorSchoolYear: schoolYear || "",
               updatedAt: serverTimestamp(),
             }),
             syncStudentAccount(studentUserUid, {
               supervisorUid: firebaseUser.uid,
               supervisorName,
+              supervisorSchoolYear: schoolYear || "",
               updatedAt: serverTimestamp(),
             }),
           ]).catch((syncError) => {

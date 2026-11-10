@@ -115,6 +115,13 @@ service cloud.firestore {
         get(/databases/$(database)/documents/students/$(recordId)).data.coordinatorUid == request.auth.uid;
     }
 
+    function coordinatorOwnsSupervisorRecord(supervisorId) {
+      return isCoordinator() &&
+        exists(userPath(supervisorId)) &&
+        get(userPath(supervisorId)).data.role == "supervisor" &&
+        get(userPath(supervisorId)).data.department == profile().department;
+    }
+
     function isOwnStudent(studentUid) {
       return isStudent() && studentUid == request.auth.uid;
     }
@@ -152,18 +159,22 @@ service cloud.firestore {
           resource.data.role == "student" &&
           request.resource.data.coordinatorUid == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "supervisorUid", "supervisorName", "updatedAt"
+            "supervisorUid", "supervisorName", "supervisorSchoolYear", "updatedAt"
           ]) && validSupervisorAssignment(request.resource.data)) ||
         (isCoordinator() &&
           resource.data.role == "supervisor" &&
           resource.data.department == profile().department &&
           request.resource.data.role == "supervisor" &&
-          (resource.data.createdBy == request.auth.uid ||
-            !("createdBy" in resource.data)) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "firstName", "lastName", "phone", "position", "company",
-            "partnerCompanyId", "updatedAt"
-          ])) ||
+            "partnerCompanyId", "schoolYear", "isArchived", "isActive",
+            "status", "archivedAt", "archivedBy", "archivedSchoolYear",
+            "restoredAt", "restoredBy", "updatedAt"
+          ]) &&
+          request.resource.data.department == resource.data.department &&
+          request.resource.data.role == "supervisor" &&
+          request.resource.data.get("isArchived", false) is bool &&
+          request.resource.data.get("isActive", true) is bool) ||
         (isLive() && request.auth.uid == userId &&
           resource.data.get("mustChangePassword", false) == true &&
           request.resource.data.mustChangePassword == false &&
@@ -200,7 +211,7 @@ service cloud.firestore {
           resource.data.role == "student" &&
           request.resource.data.role == "student" &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "supervisorUid", "supervisorName", "updatedAt"
+            "supervisorUid", "supervisorName", "supervisorSchoolYear", "updatedAt"
           ])) ||
         (isOwnStudent(userId) &&
           request.resource.data.role == "student" &&
@@ -238,7 +249,8 @@ service cloud.firestore {
         (coordinatorOwns(resource.data) &&
           request.resource.data.coordinatorUid == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "supervisorUid", "supervisorName", "partnerCompanyId", "company", "updatedAt"
+            "supervisorUid", "supervisorName", "supervisorSchoolYear",
+            "partnerCompanyId", "company", "updatedAt"
           ]) &&
           validSupervisorAssignment(request.resource.data)) ||
         (isStudent() && (resource.data.studentUid == request.auth.uid ||
@@ -386,7 +398,7 @@ service cloud.firestore {
     }
 
     match /schoolYears/{schoolYearId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isCoordinator();
       allow create: if isAdmin() &&
         request.resource.data.keys().hasOnly([
           "name", "active", "createdAt", "updatedAt"
@@ -407,6 +419,30 @@ service cloud.firestore {
         request.resource.data.active is bool &&
         request.resource.data.updatedAt == request.time;
       allow delete: if false;
+    }
+
+    match /users/{supervisorId}/supervisorAssignmentHistory/{historyId} {
+      allow read: if coordinatorOwnsSupervisorRecord(supervisorId);
+      allow create: if coordinatorOwnsSupervisorRecord(supervisorId) &&
+        request.resource.data.keys().hasOnly([
+          "supervisorUid", "supervisorName", "studentRecordId", "studentId",
+          "studentName", "schoolYear", "company", "coordinatorUid",
+          "reason", "previousSupervisorUid", "previousSupervisorName",
+          "recordedAt"
+        ]) &&
+        request.resource.data.keys().hasAll([
+          "supervisorUid", "supervisorName", "studentRecordId", "studentId",
+          "studentName", "schoolYear", "coordinatorUid", "reason", "recordedAt"
+        ]) &&
+        request.resource.data.supervisorUid == supervisorId &&
+        request.resource.data.studentRecordId is string &&
+        coordinatorOwnsRosterRecord(request.resource.data.studentRecordId) &&
+        request.resource.data.coordinatorUid == request.auth.uid &&
+        request.resource.data.reason in [
+          "assigned", "reassigned", "unassigned", "school-year-archived"
+        ] &&
+        request.resource.data.recordedAt == request.time;
+      allow update, delete: if false;
     }
 
     match /auditLogs/{logId} {

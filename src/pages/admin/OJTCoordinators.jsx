@@ -13,7 +13,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -27,8 +26,6 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { createManagedUser } from "../../services/userManagementSevice";
-import { isAccountManagementAvailable } from "../../services/accountManagementService";
-import AccountActionDialog from "../../components/AccountActionDialog";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "./OJTCoordinators.css";
 
@@ -69,16 +66,6 @@ function OJTCoordinators() {
   const [addingCoordinator, setAddingCoordinator] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [accountAction, setAccountAction] = useState(null);
-  const [accountManagementAvailable, setAccountManagementAvailable] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    isAccountManagementAvailable()
-      .then((isAvailable) => active && setAccountManagementAvailable(isAvailable))
-      .catch(() => active && setAccountManagementAvailable(false));
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     return onSnapshot(
@@ -161,26 +148,6 @@ function OJTCoordinators() {
       department: departmentLabel(coordinator.department) || "",
     });
     setError("");
-  };
-
-  const openDeleteCoordinator = (coordinator) => {
-    setSelectedCoordinator(null);
-    setAccountAction({
-      action: "delete",
-      target: {
-        type: "user",
-        id: coordinator.id,
-        name: coordinatorName(coordinator),
-        email: coordinator.email || "",
-        role: "coordinator",
-      },
-    });
-  };
-
-  const finishAccountAction = (message, warnings) => {
-    setAccountAction(null);
-    setNotice([message, ...warnings].join(" "));
-    window.setTimeout(() => setNotice(""), 5000);
   };
 
   const saveCoordinator = async (event) => {
@@ -283,13 +250,6 @@ function OJTCoordinators() {
           <Plus size={17} /> Add Coordinator
         </button>
       </header>
-
-      {!accountManagementAvailable && (
-        <div className="coordinators-alert" role="alert">
-          <AlertCircle size={17} />
-          <span>Account management is unavailable. Deploy the manageAccount function or enable the local account server before managing coordinator access.</span>
-        </div>
-      )}
 
       {(loadError || error) && (
         <div className="coordinators-alert" role="alert">
@@ -401,16 +361,6 @@ function OJTCoordinators() {
                         onClick={() => openEditCoordinator(coordinator)}
                       >
                         <Pencil size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className="coordinators-icon-button"
-                        title="Permanently delete coordinator"
-                        aria-label={`Permanently delete ${coordinatorName(coordinator)}`}
-                        disabled={!accountManagementAvailable}
-                        onClick={() => openDeleteCoordinator(coordinator)}
-                      >
-                        <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>
@@ -551,13 +501,6 @@ function OJTCoordinators() {
             </dl>
           </section>
         </div>
-      )}
-      {accountAction && (
-        <AccountActionDialog
-          {...accountAction}
-          onClose={() => setAccountAction(null)}
-          onDone={finishAccountAction}
-        />
       )}
     </main>
   );
