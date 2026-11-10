@@ -16,6 +16,7 @@ import {
 import {
   Eye,
   KeyRound,
+  Mail,
   Pencil,
   Plus,
   Search,
@@ -31,7 +32,10 @@ import {
 } from "../../constants/departments";
 import { db } from "../../services/firebase";
 import { studentAccountRef } from "../../services/studentAccountService";
-import { createManagedUser } from "../../services/userManagementSevice";
+import {
+  createManagedUser,
+  resendStudentAccountNotification,
+} from "../../services/userManagementSevice";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
@@ -689,36 +693,38 @@ function Students() {
         coordinatorName: coordName,
       });
 
-      await updateDoc(doc(db, "students", accountStudent.id), {
-        studentUid: managedUser.uid,
-        accountEmail: accountForm.email.trim(),
-        ...studentDepartmentFields(accountStudent.course),
-        ...(coordUid && !accountStudent.coordinatorUid
-          ? { coordinatorUid: coordUid }
-          : {}),
-        ...(coordName && !accountStudent.coordinatorName
-          ? { coordinatorName: coordName }
-          : {}),
-        updatedAt: serverTimestamp(),
-      });
-
-      setNotice(`Login account created for ${accountStudent.name}.`);
-      window.alert(
-        `Account created for ${accountStudent.name}.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
+      setNotice(
+        managedUser.emailStatus === "Sent"
+          ? `Login account created for ${accountStudent.name}. The account notification was sent.`
+          : `Login account created for ${accountStudent.name}, but the email notification failed. Use Resend notification after checking the mail service.`,
       );
       setAccountStudent(null);
     } catch (saveError) {
       console.error("Unable to create or link student account:", saveError);
       setError(
         managedUser
-          ? `The login was created, but its student record could not be fully linked. Give the student their temporary password and retry linking after checking Firestore. ${saveError.message}`
+          ? `The login account was created, but the notification could not be completed. ${saveError.message}`
           : saveError.message || "Unable to create the student account.",
       );
-      if (managedUser) {
-        window.alert(
-          `The login account was created for ${accountStudent.name}, but the student record could not be fully linked.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}\n\n${saveError.message}`,
-        );
-      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resendStudentNotification = async (student) => {
+    setSaving(true);
+    setError("");
+    try {
+      const result = await resendStudentAccountNotification(student.id);
+      setNotice(
+        result.emailStatus === "Sent"
+          ? `Account notification sent to ${result.email}.`
+          : `The account notification could not be delivered to ${result.email}. Check the mail service and try again.`,
+      );
+      window.setTimeout(() => setNotice(""), 6000);
+    } catch (resendError) {
+      console.error("Unable to resend the student account notification:", resendError);
+      setError(resendError.message || "Unable to resend the account notification.");
     } finally {
       setSaving(false);
     }
@@ -826,22 +832,17 @@ function Students() {
         "Creating the login account",
       );
 
-      await updateDoc(doc(db, "students", studentReference.id), {
-        studentUid: managedUser.uid,
-        accountEmail: email,
-        updatedAt: serverTimestamp(),
-      });
-
-      setNotice(`Student and login account created for ${name}.`);
-      window.alert(
-        `Student and account created.\n\nName: ${name}\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
+      setNotice(
+        managedUser.emailStatus === "Sent"
+          ? `Student and login account created for ${name}. The account notification was sent.`
+          : `Student and login account created for ${name}, but the email notification failed. Use Resend notification after checking the mail service.`,
       );
       setAddingStudent(false);
       setNewStudent(emptyNewStudent);
     } catch (saveError) {
       console.error("Unable to create student and login account:", saveError);
       const partialMessage = managedUser
-        ? `The account was created but the student record could not be fully linked. Email: ${managedUser.email}. Temporary password: ${managedUser.temporaryPassword}.`
+        ? `The account was created but its notification could not be completed. The account is linked to ${managedUser.email}.`
         : studentReference
           ? "The student roster record was saved, but the login account could not be created. You can create the account from this student's row."
           : "";
@@ -850,11 +851,6 @@ function Students() {
           .filter(Boolean)
           .join(" "),
       );
-      if (managedUser) {
-        window.alert(
-          `The account was created but linking did not complete.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}\n\n${saveError.message}`,
-        );
-      }
     } finally {
       setSaving(false);
     }
@@ -1156,6 +1152,13 @@ function Students() {
                               student.accountEmail ||
                               "Email not provided"}
                           </span>
+                          {account?.accountNotificationStatus && (
+                            <small
+                              className={`account-notification-status ${account.accountNotificationStatus.toLowerCase()}`}
+                            >
+                              Email notification: {account.accountNotificationStatus}
+                            </small>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -1201,6 +1204,18 @@ function Students() {
                             onClick={() => openAccountForm(student)}
                           >
                             <KeyRound size={15} />
+                          </button>
+                        )}
+                        {account?.accountNotificationStatus === "Failed" && (
+                          <button
+                            type="button"
+                            className="student-action"
+                            title="Resend account notification"
+                            aria-label={`Resend account notification to ${student.name}`}
+                            disabled={saving}
+                            onClick={() => resendStudentNotification(student)}
+                          >
+                            <Mail size={15} />
                           </button>
                         )}
                       </div>

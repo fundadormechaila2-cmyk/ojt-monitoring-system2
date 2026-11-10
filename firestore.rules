@@ -144,12 +144,7 @@ service cloud.firestore {
           request.resource.data.role == "supervisor" &&
           request.resource.data.department == profile().department &&
           (request.resource.data.createdBy == request.auth.uid ||
-            !("createdBy" in request.resource.data))) ||
-        (isCoordinator() &&
-          request.resource.data.role == "student" &&
-          request.resource.data.coordinatorUid == request.auth.uid &&
-          request.resource.data.createdBy == request.auth.uid &&
-          coordinatorOwnsRosterRecord(request.resource.data.studentRecordId));
+            !("createdBy" in request.resource.data)));
       allow update: if (isAdmin() &&
           (request.auth.uid != userId ||
             !request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -179,13 +174,14 @@ service cloud.firestore {
           resource.data.get("mustChangePassword", false) == true &&
           request.resource.data.mustChangePassword == false &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "mustChangePassword", "temporaryPassword", "updatedAt"
+            "mustChangePassword", "updatedAt"
           ])) ||
         (isLive() && request.auth.uid == userId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "role", "department", "departmentId", "major", "coordinatorUid", "supervisorUid",
             "studentRecordId", "studentId", "status", "createdBy",
-            "createdAt", "mustChangePassword", "temporaryPassword"
+            "createdAt", "mustChangePassword", "accountNotificationStatus",
+            "accountNotificationUpdatedAt"
           ].concat(lifecycleKeys())));
       // Accounts are removed only by the manageAccount Cloud Function.
       allow delete: if false;
@@ -199,13 +195,7 @@ service cloud.firestore {
           resource.data.coordinatorUid == request.auth.uid) ||
         coordinatorOwnsStudent(userId) ||
         supervisorOwnsStudent(userId);
-      allow create: if isAdmin() ||
-        (isCoordinator() &&
-          request.resource.data.role == "student" &&
-          request.resource.data.coordinatorUid == request.auth.uid &&
-          request.resource.data.createdBy == request.auth.uid &&
-          coordinatorOwnsRosterRecord(request.resource.data.studentRecordId)) ||
-        (isOwnStudent(userId) && request.resource.data.role == "student");
+      allow create: if isAdmin();
       allow update: if isAdmin() ||
         (coordinatorOwnsStudent(userId) &&
           resource.data.role == "student" &&
@@ -217,7 +207,7 @@ service cloud.firestore {
           request.resource.data.role == "student" &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "email", "phone", "contactNumber", "address",
-            "mustChangePassword", "temporaryPassword", "updatedAt"
+            "mustChangePassword", "updatedAt"
           ]));
       allow delete: if false;
     }
@@ -234,18 +224,6 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow delete: if false;
       allow update: if isAdmin() ||
-        (isCoordinator() &&
-          coordinatorOwns(resource.data) &&
-          resource.data.get("studentUid", null) == null &&
-          request.resource.data.coordinatorUid == request.auth.uid &&
-          request.resource.data.studentUid is string &&
-          exists(userPath(request.resource.data.studentUid)) &&
-          get(userPath(request.resource.data.studentUid)).data.role == "student" &&
-          get(userPath(request.resource.data.studentUid)).data.coordinatorUid == request.auth.uid &&
-          get(userPath(request.resource.data.studentUid)).data.studentRecordId == studentId &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "studentUid", "accountEmail", "updatedAt"
-          ])) ||
         (coordinatorOwns(resource.data) &&
           request.resource.data.coordinatorUid == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -257,7 +235,8 @@ service cloud.firestore {
           studentId == request.auth.uid) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "role", "coordinatorUid", "supervisorUid", "studentUid", "requiredHours", "status", "ojtStatus",
-            "department", "departmentId", "major", "course"
+            "department", "departmentId", "major", "course",
+            "accountNotificationStatus", "accountNotificationUpdatedAt"
           ].concat(lifecycleKeys())));
     }
 

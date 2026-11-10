@@ -247,6 +247,15 @@
   font-size: 11px;
 }
 
+.student-profile .account-notification-status {
+  color: #16866f;
+  font-size: 10px;
+}
+
+.student-profile .account-notification-status.failed {
+  color: #b54747;
+}
+
 .student-id {
   font-weight: 700;
   white-space: nowrap;

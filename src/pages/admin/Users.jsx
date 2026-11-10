@@ -16,7 +16,7 @@ import "../../styles/users-management.css";
 
 const roles = ["admin", "coordinator", "supervisor", "student"];
 const statuses = ["ACTIVE", "INACTIVE"];
-const emptyForm = { firstName: "", lastName: "", email: "", role: "student", status: "ACTIVE", studentId: "", course: "", company: "", coordinatorId: "", phone: "", department: "" };
+const emptyForm = { firstName: "", lastName: "", email: "", role: "supervisor", status: "ACTIVE", studentId: "", course: "", company: "", coordinatorId: "", phone: "", department: "" };
 
 function normalizeUser(record) {
   const rawStatus = String(record.status || "ACTIVE").toUpperCase();
@@ -104,6 +104,13 @@ function Users() {
   const saveUser = async (event) => {
     event.preventDefault();
     if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) { setError("First name, last name, and email are required."); return; }
+    if (
+      form.role === "student" &&
+      (modal === "add" || modal?.item.role !== "student")
+    ) {
+      setError("Create student accounts from the Students dashboard so each login is linked to its roster record.");
+      return;
+    }
     if (modal?.type === "edit" && modal.item.role === "coordinator") {
       const departmentId = departmentIdFor(form.department);
       if (!departmentId) { setError("Select a department."); return; }
@@ -313,7 +320,12 @@ function Users() {
                         value={form.role}
                         onChange={(event) => setForm({ ...form, role: event.target.value })}
                       >
-                        {roles.map((item) => <option key={item}>{item}</option>)}
+                        {roles
+                          .filter((item) =>
+                            item !== "student" ||
+                            (modal?.type === "edit" && modal.item.role === "student"),
+                          )
+                          .map((item) => <option key={item}>{item}</option>)}
                       </select>
                     </label>
                     <label>

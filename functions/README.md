@@ -22,8 +22,43 @@ locked, retry deletion from the student list to finish the recorded operation.
 Student login profiles are also written to `studentAccounts/{uid}` so student
 accounts have a dedicated Firestore collection. The `users/{uid}` profile
 remains in place for role checks and backwards compatibility with existing
-screens. Coordinator-created accounts are only allowed when their assigned
-student roster record belongs to that coordinator.
+screens. Only active administrators can create student accounts. Coordinators
+can manage their assigned OJT records but cannot create student logins.
+
+## Student account registration and email
+
+The Admin Dashboard creates student Authentication accounts through the
+`createStudentAccount` callable. The function links the account to the roster
+record and writes both student profile documents before attempting email
+delivery. A registration retry for an already-linked student does not send a
+second email. The dashboard displays `Sent` or `Failed`; an administrator can
+use **Resend account notification** to generate a fresh temporary password and
+send a new notification. Every newly sent temporary password requires a
+password change at first login. Plain-text passwords are only held in function
+memory while the notification is being sent and are never written to
+Firestore.
+
+Configure an SMTP mailbox using Firebase Functions secrets before deploying:
+
+```powershell
+firebase functions:secrets:set SMTP_HOST
+firebase functions:secrets:set SMTP_PORT
+firebase functions:secrets:set SMTP_USER
+firebase functions:secrets:set SMTP_PASSWORD
+firebase functions:secrets:set SMTP_FROM
+```
+
+Use your provider's SMTP hostname and port, the mailbox credentials, and a
+verified sender address for `SMTP_FROM`. These values are only read by the
+trusted Functions runtime, never by the frontend. The login URL defaults to
+the Firebase Hosting URL for the active project; override it by setting
+`APP_LOGIN_URL` in the Functions environment when using a custom domain.
+
+Deploy Firestore rules and Functions after configuration:
+
+```powershell
+firebase deploy --only firestore:rules,functions --project ojt-monitoringsystem2
+```
 
 To copy existing student profiles into the new collection without overwriting
 documents already there, configure Firebase Admin credentials and run:

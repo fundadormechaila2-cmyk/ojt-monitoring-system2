@@ -11,6 +11,12 @@ const { isAccountLive, isRecordArchived } = require("./accountState");
 const { recordDepartmentId, sameDepartment } = require("./departments");
 const { handleManageAccount, manageAccount } = require("./accountManagement");
 exports.manageAccount = manageAccount;
+const {
+  createStudentAccount,
+  resendStudentAccountNotification,
+} = require("./studentRegistration");
+exports.createStudentAccount = createStudentAccount;
+exports.resendStudentAccountNotification = resendStudentAccountNotification;
 
 const accountManagementOrigins = [
   "http://localhost:5173",

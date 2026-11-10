@@ -4,7 +4,6 @@ import { Eye, Search } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { syncStudentAccount } from "../../services/studentAccountService";
-import { createManagedUser } from "../../services/userManagementSevice";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
 import { MAJORS, recordDepartmentId } from "../../constants/departments";
@@ -27,11 +26,6 @@ function Students() {
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState("");
-  const [accountFormOpen, setAccountFormOpen] = useState(false);
-  const [accountForm, setAccountForm] = useState({ firstName: "", lastName: "", email: "" });
-  const [accountSaving, setAccountSaving] = useState(false);
-  const [accountError, setAccountError] = useState("");
-  const [accountNotice, setAccountNotice] = useState("");
   const records = normalizedStudents(data.students, data.attendance);
   const schoolYears = [
     ...new Set(records.map((record) => record.schoolYear).filter(Boolean)),
@@ -61,15 +55,6 @@ function Students() {
     setSupervisorUid(student.supervisorUid || "");
     setAssignmentError("");
     setAssignmentNotice("");
-    const nameParts = String(student.name || "").trim().split(/\s+/);
-    setAccountForm({
-      firstName: student.firstName || nameParts.shift() || "",
-      lastName: student.lastName || nameParts.join(" "),
-      email: student.email || student.accountEmail || "",
-    });
-    setAccountFormOpen(false);
-    setAccountError("");
-    setAccountNotice("");
   };
 
   const linkedStudentAccount = selected
@@ -80,62 +65,6 @@ function Students() {
         account.studentId === selected.studentId,
       )
     : null;
-
-  const createStudentLogin = async (event) => {
-    event.preventDefault();
-    if (!selected || !user?.uid) return;
-    if (linkedStudentAccount || selected.studentUid) {
-      setAccountError("This student already has a linked login account.");
-      return;
-    }
-
-    setAccountSaving(true);
-    setAccountError("");
-    setAccountNotice("");
-    let managedUser;
-    try {
-      const coordinatorName =
-        `${user.firstName || ""} ${user.lastName || ""}`.trim();
-      managedUser = await createManagedUser({
-        ...accountForm,
-        phone: selected.phone || "",
-        role: "student",
-        createdBy: user.uid,
-        studentId: selected.studentId || "",
-        studentRecordId: selected.id,
-        course: selected.course || "",
-        schoolYear: selected.schoolYear || "",
-        company: selected.company || "",
-        coordinatorUid: user.uid,
-        coordinatorName,
-      });
-
-      await updateDoc(doc(db, "students", selected.id), {
-        studentUid: managedUser.uid,
-        accountEmail: managedUser.email,
-        updatedAt: serverTimestamp(),
-      });
-      setSelected((current) =>
-        current
-          ? { ...current, studentUid: managedUser.uid, accountEmail: managedUser.email }
-          : current,
-      );
-      setAccountFormOpen(false);
-      setAccountNotice("Student login created and saved to the student accounts collection.");
-      window.alert(
-        `Student account created.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
-      );
-    } catch (saveError) {
-      console.error("Unable to create student login:", saveError);
-      setAccountError(
-        managedUser
-          ? `The login was created, but the roster link could not be saved. Email: ${managedUser.email}. Temporary password: ${managedUser.temporaryPassword}. ${saveError.message}`
-          : saveError.message || "Unable to create the student account.",
-      );
-    } finally {
-      setAccountSaving(false);
-    }
-  };
 
   const saveSupervisorAssignment = async () => {
     if (!selected || !user?.uid) return;
@@ -210,7 +139,7 @@ function Students() {
             role="presentation"
             onClick={(event) =>
               event.target === event.currentTarget &&
-              !accountSaving &&
+              !assignmentSaving &&
               setSelected(null)
             }
           >
@@ -219,7 +148,7 @@ function Students() {
                 <h2>{selected.name}</h2>
                 <button
                   type="button"
-                  disabled={accountSaving}
+                  disabled={assignmentSaving}
                   onClick={() => setSelected(null)}
                   aria-label="Close"
                 >
@@ -255,61 +184,13 @@ function Students() {
                 {assignmentNotice && <p role="status">{assignmentNotice}</p>}
               </div>
               <div className="coordinator-assignment-control">
-                {linkedStudentAccount || selected.studentUid ? (
-                  <>
-                    <label>Student account</label>
-                    <span>{linkedStudentAccount?.email || selected.accountEmail || "Login linked"}</span>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={accountSaving}
-                    onClick={() => {
-                      setAccountFormOpen((open) => !open);
-                      setAccountError("");
-                    }}
-                  >
-                    {accountFormOpen ? "Cancel account setup" : "Create student account"}
-                  </button>
-                )}
-                {accountNotice && <p role="status">{accountNotice}</p>}
-                {accountError && <p role="alert">{accountError}</p>}
+                <label>Student account</label>
+                <span>
+                  {linkedStudentAccount?.email ||
+                    selected.accountEmail ||
+                    "Account registration is managed by an administrator."}
+                </span>
               </div>
-              {accountFormOpen && !linkedStudentAccount && !selected.studentUid && (
-                <form onSubmit={createStudentLogin}>
-                  <label>
-                    First name
-                    <input
-                      required
-                      value={accountForm.firstName}
-                      disabled={accountSaving}
-                      onChange={(event) => setAccountForm((form) => ({ ...form, firstName: event.target.value }))}
-                    />
-                  </label>
-                  <label>
-                    Last name
-                    <input
-                      required
-                      value={accountForm.lastName}
-                      disabled={accountSaving}
-                      onChange={(event) => setAccountForm((form) => ({ ...form, lastName: event.target.value }))}
-                    />
-                  </label>
-                  <label>
-                    Student email
-                    <input
-                      type="email"
-                      required
-                      value={accountForm.email}
-                      disabled={accountSaving}
-                      onChange={(event) => setAccountForm((form) => ({ ...form, email: event.target.value }))}
-                    />
-                  </label>
-                  <button type="submit" disabled={accountSaving}>
-                    {accountSaving ? "Creating account..." : "Create account"}
-                  </button>
-                </form>
-              )}
             </section>
           </div>
         )}

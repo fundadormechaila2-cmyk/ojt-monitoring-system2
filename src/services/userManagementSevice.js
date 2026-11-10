@@ -4,11 +4,12 @@ import {
   updateProfile,
   signOut,
 } from "firebase/auth";
+import { httpsCallable } from "firebase/functions";
 
 import { doc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 
 import { secondaryAuth } from "./secondatyAuth";
-import { db } from "./firebase";
+import { db, functions } from "./firebase";
 import { studentAccountRef, syncStudentAccount } from "./studentAccountService";
 import { departmentFields, studentDepartmentFields } from "../constants/departments";
 
@@ -76,6 +77,41 @@ export const createManagedUser = async ({
   if (!["admin", "coordinator", "supervisor", "student"].includes(role)) {
     throw new Error("Invalid user role.");
   }
+
+  if (role === "student") {
+    try {
+      const createAccount = httpsCallable(functions, "createStudentAccount");
+      const { data } = await createAccount({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone: phone?.trim() || "",
+        studentId: studentId || "",
+        studentRecordId: studentRecordId || "",
+        course: course || "",
+        schoolYear: schoolYear || "",
+        company: company || "",
+        coordinatorUid: coordinatorUid || "",
+        coordinatorName: coordinatorName || "",
+      });
+      return { ...data, role };
+    } catch (error) {
+      if (error.code === "functions/permission-denied") {
+        throw new Error("Only an administrator can create student accounts.", {
+          cause: error,
+        });
+      }
+      if (error.code === "functions/already-exists") {
+        throw new Error("This email address or student record already has an account.", {
+          cause: error,
+        });
+      }
+      throw new Error(error.message || "Failed to create the student account.", {
+        cause: error,
+      });
+    }
+  }
+
  // GENERATE TEMPORARY PASSWORD
   const temporaryPassword = generateTemporaryPassword(12);
   let firebaseUser;
@@ -264,6 +300,22 @@ export const createManagedUser = async ({
   }
 };
 
+export const resendStudentAccountNotification = async (studentRecordId) => {
+  if (!studentRecordId) {
+    throw new Error("A student record is required.");
+  }
+  try {
+    const resend = httpsCallable(functions, "resendStudentAccountNotification");
+    const { data } = await resend({ studentRecordId });
+    return data;
+  } catch (error) {
+    throw new Error(
+      error.message || "Unable to resend the student account notification.",
+      { cause: error },
+    );
+  }
+};
+
 //COMPLETE FIRST-TIME PASSWORD CHANGE
 
 export const completePasswordChange = async (user, newPassword) => {
@@ -289,7 +341,6 @@ export const completePasswordChange = async (user, newPassword) => {
   
     const changes = {
       mustChangePassword: false,
-      temporaryPassword: null,
       updatedAt: serverTimestamp(),
     };
     const userRef = doc(db, "users", user.uid);
