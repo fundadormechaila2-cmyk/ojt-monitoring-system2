@@ -32,6 +32,7 @@ import {
   studentDepartmentFields,
 } from "../../constants/departments";
 import { db } from "../../services/firebase";
+import { studentAccountRef } from "../../services/studentAccountService";
 import { createManagedUser } from "../../services/userManagementSevice";
 import { isAccountManagementAvailable } from "../../services/accountManagementService";
 import AccountActionDialog from "../../components/AccountActionDialog";
@@ -478,7 +479,7 @@ function Students() {
       const batch = writeBatch(db);
       batch.update(doc(db, "students", editingStudent.id), studentUpdate);
       if (account) {
-        batch.update(doc(db, "users", account.id), {
+        const accountChanges = {
           firstName: editForm.firstName.trim(),
           lastName: editForm.lastName.trim(),
           studentId,
@@ -488,7 +489,16 @@ function Students() {
           phone: editForm.phone.trim(),
           ...coordinatorFields,
           updatedAt: serverTimestamp(),
-        });
+        };
+        const accountProfile = Object.fromEntries(
+          Object.entries(account).filter(([key]) => key !== "id"),
+        );
+        batch.update(doc(db, "users", account.id), accountChanges);
+        batch.set(
+          studentAccountRef(account.id),
+          { ...accountProfile, ...accountChanges, uid: account.id },
+          { merge: true },
+        );
       }
       await batch.commit();
 
@@ -1059,6 +1069,7 @@ function Students() {
                           className="student-action"
                           title="Delete permanently"
                           aria-label={`Delete ${student.name}`}
+                          disabled={!accountManagementAvailable || Boolean(sourceErrors.students || sourceErrors.users)}
                           onClick={() =>
                             openAccountAction("delete", student, account)
                           }

@@ -184,7 +184,7 @@ async function callCloudFunction(payload) {
       }
     }
 
-    if (error.code === "functions/not-found") {
+    if (error.code === "functions/not-found" || error.code === "functions/unavailable") {
       return callLegacyCloudFunction(payload);
     }
     throw error;
@@ -208,10 +208,9 @@ async function callServer(payload) {
       return await callLocalServer(payload);
     } catch (fallbackError) {
       throw Object.assign(new Error(
-        fallbackError?.message ||
-          "Account management is unavailable. Deploy the manageAccount function or start the local account server.",
+        "Account management is unavailable. Deploy the manageAccount Cloud Functions or start the local account server.",
       ), {
-        code: fallbackError?.code || "functions/unavailable",
+        code: "functions/unavailable",
         cause: { primary: error, fallback: fallbackError },
       });
     }
@@ -270,10 +269,13 @@ export async function isAccountManagementAvailable() {
 
 export function describeRelatedRecords(related) {
   const labels = {
-    attendance: "attendance records",
+    attendance: "attendance and OJT log records",
     evaluations: "evaluations",
     applications: "applications",
+    journals: "journal entries",
+    qrScans: "QR scan records",
     loginActivity: "login activity entries",
+    studentRecords: "student roster records",
     assignedStudents: "assigned students",
     createdSupervisors: "supervisor accounts created",
   };

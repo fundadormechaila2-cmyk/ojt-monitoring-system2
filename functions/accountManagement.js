@@ -4,6 +4,7 @@ const { HttpsError, onCall } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const { isAccountLive } = require("./accountState");
 const { recordDepartmentId, sameDepartment } = require("./departments");
+const { deleteStudentRelatedRecords } = require("./studentDeletion");
 
 const ACTIONS = ["preview", "deactivate", "reactivate", "archive", "restore", "delete"];
 const TARGET_TYPES = ["user", "student"];
@@ -69,41 +70,75 @@ async function unassignCoordinatorStudents(db, coordinatorUid) {
 async function findRosterRefs(db, uid, user) {
   const refs = new Map();
   const add = (snapshot) => {
-    if (snapshot.exists) refs.set(snapshot.ref.path, snapshot.ref);
+    if (!snapshot.exists) return;
+    const roster = snapshot.data();
+    const linkedUid = roster.studentUid || roster.userUid || roster.accountUid;
+    if (linkedUid && linkedUid !== uid) return;
+    if (
+      !linkedUid &&
+      user.studentId &&
+      roster.studentId &&
+      String(user.studentId).trim() !== String(roster.studentId).trim()
+    ) return;
+    refs.set(snapshot.ref.path, snapshot.ref);
   };
   if (user?.studentRecordId) add(await db.collection("students").doc(String(user.studentRecordId)).get());
   if (uid) {
-    const linked = await db.collection("students").where("studentUid", "==", uid).limit(10).get();
-    linked.docs.forEach(add);
+    const linkedSnapshots = await Promise.all(
+      ["studentUid", "userUid", "accountUid"].map((field) =>
+        db.collection("students").where(field, "==", uid).limit(10).get(),
+      ),
+    );
+    linkedSnapshots.forEach((snapshot) => snapshot.docs.forEach(add));
     add(await db.collection("students").doc(uid).get());
+  }
+  if (user?.studentId) {
+    const linked = await db.collection("students")
+      .where("studentId", "==", String(user.studentId).trim())
+      .limit(10)
+      .get();
+    linked.docs.forEach(add);
   }
   return [...refs.values()];
 }
 
 async function findStudentUser(db, roster, studentId) {
   const candidates = new Map();
+  const rosterUids = new Set(
+    [roster.studentUid, roster.userUid, roster.accountUid]
+      .filter((uid) => typeof uid === "string" && uid),
+  );
+  if (rosterUids.size > 1) {
+    throw new HttpsError(
+      "failed-precondition",
+      "The student record has conflicting account IDs. Correct the account link before deleting.",
+    );
+  }
   const addUser = async (uid) => {
     if (typeof uid !== "string" || !uid || candidates.has(uid)) return;
     const snapshot = await db.collection("users").doc(uid).get();
-    if (snapshot.exists && snapshot.data().role === "student") {
-      candidates.set(uid, { ref: snapshot.ref, user: snapshot.data() });
+    if (!snapshot.exists) return;
+    if (snapshot.data().role !== "student") {
+      throw new HttpsError(
+        "failed-precondition",
+        "The student record points to a non-student account. Correct the account link before deleting.",
+      );
     }
+    candidates.set(uid, { ref: snapshot.ref, user: snapshot.data() });
   };
 
   for (const uid of [roster.studentUid, roster.userUid, roster.accountUid]) {
     await addUser(uid);
   }
 
-  if (candidates.size === 0) {
-    const linked = await db.collection("users")
-      .where("studentRecordId", "==", studentId)
-      .get();
-    linked.docs
-      .filter((doc) => doc.data().role === "student")
-      .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
-  }
+  const linkedByRecord = await db.collection("users")
+    .where("studentRecordId", "==", studentId)
+    .get();
+  linkedByRecord.docs
+    .filter((doc) => doc.data().role === "student")
+    .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
 
-  if (candidates.size === 0 && roster.studentId) {
+  if (roster.studentId) {
     const byStudentId = await db.collection("users")
       .where("studentId", "==", roster.studentId)
       .get();
@@ -112,13 +147,16 @@ async function findStudentUser(db, roster, studentId) {
       .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
   }
 
-  const rosterEmail = String(roster.email || roster.accountEmail || "").trim();
-  if (candidates.size === 0 && rosterEmail) {
+  const rosterEmail = String(roster.email || roster.accountEmail || "").trim().toLowerCase();
+  if (rosterEmail) {
     const byEmail = await db.collection("users")
-      .where("email", "==", rosterEmail)
+      .where("email", "==", String(roster.email || roster.accountEmail || "").trim())
       .get();
     byEmail.docs
-      .filter((doc) => doc.data().role === "student")
+      .filter((doc) =>
+        doc.data().role === "student" &&
+        String(doc.data().email || "").trim().toLowerCase() === rosterEmail,
+      )
       .forEach((doc) => candidates.set(doc.id, { ref: doc.ref, user: doc.data() }));
   }
 
@@ -126,6 +164,16 @@ async function findStudentUser(db, roster, studentId) {
     throw new HttpsError(
       "failed-precondition",
       "More than one student login matches this student record. Resolve the duplicate account links before deleting.",
+    );
+  }
+  if (
+    rosterUids.size === 1 &&
+    candidates.size === 1 &&
+    !candidates.has(rosterUids.values().next().value)
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "The student record and login account have conflicting IDs. Correct the account link before deleting.",
     );
   }
   return candidates.entries().next().value || [null, null];
@@ -146,11 +194,23 @@ async function resolveTarget(db, data) {
   if (targetType === "user") {
     const snapshot = await db.collection("users").doc(targetId).get();
     const user = snapshot.exists ? snapshot.data() : null;
+    const rosterRefs = user?.role === "student"
+      ? await findRosterRefs(db, targetId, user)
+      : [];
+    if (actionIsDelete(data) && user?.role === "student" && rosterRefs.length > 1) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This student account is linked to multiple student records. Resolve the duplicate links before deleting.",
+      );
+    }
     return {
       uid: targetId,
       userRef: snapshot.ref,
+      studentAccountRef: user?.role === "student"
+        ? db.collection("studentAccounts").doc(targetId)
+        : null,
       user,
-      rosterRefs: user?.role === "student" ? await findRosterRefs(db, targetId, user) : [],
+      rosterRefs,
     };
   }
 
@@ -164,10 +224,17 @@ async function resolveTarget(db, data) {
   return {
     uid,
     userRef: linkedUser ? db.collection("users").doc(linkedUid) : null,
+    studentAccountRef: linkedUser
+      ? db.collection("studentAccounts").doc(linkedUid)
+      : null,
     user: linkedUser,
     roster,
     rosterRefs: [rosterSnapshot.ref],
   };
+}
+
+function actionIsDelete(data) {
+  return data?.action === "delete";
 }
 
 function targetName(target) {
@@ -186,13 +253,15 @@ async function relatedSummary(db, target) {
 
   if (role === "student") {
     if (uid) {
-      const [attendance, evaluations, applications, loginActivity] = await Promise.all([
+      const [attendance, evaluations, applications, journals, qrScans, loginActivity] = await Promise.all([
         count(db.collection("attendance").where("studentUid", "==", uid)),
         count(db.collection("evaluations").where("studentUid", "==", uid)),
         count(db.collection("applications").where("studentUid", "==", uid)),
+        count(db.collection("journals").where("studentUid", "==", uid)),
+        count(db.collection("attendanceQrScans").where("studentUid", "==", uid)),
         count(db.collection("studentLoginActivity").where("userId", "==", uid)),
       ]);
-      Object.assign(counts, { attendance, evaluations, applications, loginActivity });
+      Object.assign(counts, { attendance, evaluations, applications, journals, qrScans, loginActivity });
     }
     counts.studentRecords = target.rosterRefs.length;
   } else if (role === "supervisor") {
@@ -289,6 +358,13 @@ async function applyLifecycle(db, target, kind, adminUid, warnings, extraUserFie
   if (target.userRef && target.user) {
     batch.update(target.userRef, { ...stateFields(kind, adminUid), ...extraUserFields });
   }
+  if (target.studentAccountRef && target.user?.role === "student") {
+    batch.set(
+      target.studentAccountRef,
+      { ...stateFields(kind, adminUid), ...extraUserFields },
+      { merge: true },
+    );
+  }
   target.rosterRefs.forEach((ref) => batch.update(ref, rosterFields(kind, adminUid)));
 
   const disabling = kind === "deactivate" || kind === "archive";
@@ -316,6 +392,152 @@ const messages = {
   restore: "Record restored.",
   delete: "Account permanently deleted.",
 };
+
+async function assertUniqueStudentIdentity(db, target) {
+  const rosterIds = new Set(target.rosterRefs.map((ref) => ref.id));
+  if (target.uid) {
+    const linkedRosters = await Promise.all(
+      ["studentUid", "userUid", "accountUid"].map((field) =>
+        db.collection("students").where(field, "==", target.uid).get(),
+      ),
+    );
+    if (linkedRosters.some((snapshot) =>
+      snapshot.docs.some((document) => !rosterIds.has(document.id)),
+    )) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This student account is linked to another roster record. Resolve the duplicate account links before deleting.",
+      );
+    }
+  }
+  if (
+    target.roster &&
+    target.user?.studentRecordId &&
+    String(target.user.studentRecordId) !== target.rosterRefs[0]?.id
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "The student account points to a different roster record. Correct the account link before deleting.",
+    );
+  }
+  if (
+    target.roster &&
+    target.user?.studentId &&
+    target.roster.studentId &&
+    String(target.user.studentId).trim() !== String(target.roster.studentId).trim()
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "The student account and roster have different student IDs. Correct the account link before deleting.",
+    );
+  }
+  const studentIds = new Set(
+    [target.user?.studentId, target.roster?.studentId]
+      .filter((value) => typeof value === "string" && value.trim())
+      .map((value) => value.trim()),
+  );
+
+  for (const studentId of studentIds) {
+    const [rosters, profiles] = await Promise.all([
+      db.collection("students").where("studentId", "==", studentId).get(),
+      db.collection("users").where("studentId", "==", studentId).get(),
+    ]);
+    if (rosters.docs.some((document) => !rosterIds.has(document.id))) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This student ID is linked to another student record. Resolve the duplicate ID before deleting.",
+      );
+    }
+    if (profiles.docs.some((document) =>
+      document.id !== target.uid && document.data().role === "student",
+    )) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This student ID is linked to another student account. Resolve the duplicate ID before deleting.",
+      );
+    }
+  }
+}
+
+async function permanentlyDeleteStudent(db, target, adminUid, auditBase, base, warnings) {
+  await assertUniqueStudentIdentity(db, target);
+  const auditRef = await writeAudit(db, { ...auditBase, outcome: "started" });
+  let phase = "lock-account";
+
+  try {
+    await applyLifecycle(db, target, "archive", adminUid, warnings, { deletionPending: true });
+
+    phase = "related-records";
+    const deletedRelatedRecords = await deleteStudentRelatedRecords(db, target);
+
+    phase = "authentication";
+    if (target.uid) {
+      try {
+        await getAuth().deleteUser(target.uid);
+      } catch (error) {
+        if (error.code !== "auth/user-not-found") throw error;
+      }
+    }
+
+    phase = "student-account-profile";
+    if (target.uid) {
+      await db.recursiveDelete(db.collection("studentAccounts").doc(target.uid));
+    }
+
+    phase = "user-profile";
+    if (target.uid) {
+      await db.recursiveDelete(db.collection("users").doc(target.uid));
+    }
+
+    phase = "student-roster";
+    for (const rosterRef of target.rosterRefs) {
+      await db.recursiveDelete(rosterRef);
+    }
+
+    try {
+      await auditRef.update({ outcome: "completed", deletedRelatedRecords });
+    } catch (auditError) {
+      logger.error("Student deletion completed, but its audit record could not be updated", {
+        targetUid: target.uid,
+        error: String(auditError),
+      });
+      warnings.push("The account was deleted, but the audit log could not be updated.");
+    }
+
+    return {
+      ok: true,
+      action: "delete",
+      message: "Student account and all related data permanently deleted.",
+      warnings,
+      deletedRelatedRecords,
+      ...base,
+    };
+  } catch (error) {
+    try {
+      await auditRef.update({
+        outcome: "failed",
+        failedAt: phase,
+        error: String(error.message || error),
+      });
+    } catch (auditError) {
+      logger.error("Unable to update failed student deletion audit record", {
+        targetUid: target.uid,
+        error: String(auditError),
+      });
+    }
+
+    logger.error("Student deletion did not complete", {
+      targetUid: target.uid,
+      phase,
+      error: String(error.message || error),
+    });
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError(
+      "internal",
+      "Student deletion did not finish. The account is disabled where possible; retry deletion from the student list to complete cleanup.",
+    );
+  }
+}
 
 async function handleManageAccount(request) {
   const db = getFirestore();
@@ -386,6 +608,10 @@ async function handleManageAccount(request) {
         throw new HttpsError("failed-precondition", related.blockers[0]);
       }
 
+      if (role === "student") {
+        return permanentlyDeleteStudent(db, target, adminUid, auditBase, base, warnings);
+      }
+
       const auditRef = await writeAudit(db, { ...auditBase, outcome: "started" });
       // Step 1: lock the account and retain any student roster and academic history.
       await applyLifecycle(db, target, "archive", adminUid, warnings, { deletionPending: true });
@@ -446,4 +672,7 @@ async function handleManageAccount(request) {
 }
 
 exports.handleManageAccount = handleManageAccount;
-exports.manageAccount = onCall(handleManageAccount);
+exports.manageAccount = onCall(
+  { timeoutSeconds: 540, memory: "1GiB" },
+  handleManageAccount,
+);

@@ -66,9 +66,13 @@ function AccountActionDialog({ action, target, onClose, onDone }) {
   const related = describeRelatedRecords(preview?.related);
   const blocker = action === "delete" ? preview?.related?.blockers?.[0] : "";
   const isSelf = preview?.isSelf && action !== "reactivate" && action !== "restore";
+  const isStudentDelete =
+    action === "delete" && (preview?.target?.role || target.role) === "student";
   const needsTyping = action === "delete";
   const description =
-    action === "delete" && (preview?.target?.role || target.role) === "coordinator"
+    isStudentDelete
+      ? "Are you sure you want to permanently delete this student account? This permanently removes the Firebase sign-in account, student profile, roster record, QR scan data, attendance and OJT logs, journals, evaluations, applications, and other linked student records."
+      : action === "delete" && (preview?.target?.role || target.role) === "coordinator"
       ? "This permanently removes the coordinator's Firebase sign-in account and profile. Assigned students will remain in the system with their academic records and will be unassigned from this coordinator."
       : config.text;
   const canSubmit =

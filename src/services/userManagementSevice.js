@@ -5,10 +5,11 @@ import {
   signOut,
 } from "firebase/auth";
 
-import { doc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 
 import { secondaryAuth } from "./secondatyAuth";
 import { db } from "./firebase";
+import { studentAccountRef, syncStudentAccount } from "./studentAccountService";
 import { departmentFields, studentDepartmentFields } from "../constants/departments";
 
 // GENERATE TEMPORARY PASSWORD
@@ -164,15 +165,27 @@ export const createManagedUser = async ({
 
       await Promise.all(
         studentUserUids.filter(Boolean).map((studentUserUid) =>
-          updateDoc(doc(db, "users", studentUserUid), {
-            supervisorUid: firebaseUser.uid,
-            supervisorName,
-            updatedAt: serverTimestamp(),
-          }).catch((syncError) => {
-            console.warn("Unable to sync supervisor assignment to student user account:", syncError);
+          Promise.all([
+            updateDoc(doc(db, "users", studentUserUid), {
+              supervisorUid: firebaseUser.uid,
+              supervisorName,
+              updatedAt: serverTimestamp(),
+            }),
+            syncStudentAccount(studentUserUid, {
+              supervisorUid: firebaseUser.uid,
+              supervisorName,
+              updatedAt: serverTimestamp(),
+            }),
+          ]).catch((syncError) => {
+            console.warn("Unable to sync supervisor assignment to student account:", syncError);
           }),
         ),
       );
+    } else if (role === "student") {
+      const batch = writeBatch(db);
+      batch.set(userRef, profile);
+      batch.set(studentAccountRef(firebaseUser.uid), profile);
+      await batch.commit();
     } else {
       await setDoc(userRef, profile);
     }
@@ -264,18 +277,25 @@ export const completePasswordChange = async (user, newPassword) => {
 
     //UPDATE FIRESTORE
   
+    const changes = {
+      mustChangePassword: false,
+      temporaryPassword: null,
+      updatedAt: serverTimestamp(),
+    };
     const userRef = doc(db, "users", user.uid);
-    await setDoc(
-      userRef,
-      {
-        mustChangePassword: false,
-        temporaryPassword: null,
-        updatedAt: serverTimestamp(),
-      },
-      {
-        merge: true,
-      },
-    );
+    const userSnapshot = await getDoc(userRef);
+    if (userSnapshot.exists() && userSnapshot.data().role === "student") {
+      const batch = writeBatch(db);
+      batch.set(userRef, changes, { merge: true });
+      batch.set(
+        studentAccountRef(user.uid),
+        { ...userSnapshot.data(), ...changes, uid: user.uid },
+        { merge: true },
+      );
+      await batch.commit();
+    } else {
+      await setDoc(userRef, changes, { merge: true });
+    }
 
     return true;
   } catch (error) {

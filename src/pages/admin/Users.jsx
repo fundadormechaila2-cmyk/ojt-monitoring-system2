@@ -6,6 +6,7 @@ import { useAuth } from "../../context/useAuth";
 import { COURSES, isApprovedCourse } from "../../constants/courses";
 import { DEPARTMENTS, departmentFields, departmentIdFor, departmentLabel, recordDepartmentId } from "../../constants/departments";
 import { createManagedUser } from "../../services/userManagementSevice";
+import { syncStudentAccount } from "../../services/studentAccountService";
 import {
   isAccountManagementAvailable,
 } from "../../services/accountManagementService";
@@ -130,12 +131,14 @@ function Users() {
           role: data.role,
           createdBy: user?.uid || null,
         });
-        await updateDoc(doc(db, "users", managedUser.uid), {
+        const accountDetails = {
           studentId: data.studentId,
           course: data.course,
           company: data.company,
           updatedAt: new Date().toISOString(),
-        });
+        };
+        await updateDoc(doc(db, "users", managedUser.uid), accountDetails);
+        await syncStudentAccount(managedUser.uid, accountDetails);
         alert(`User created. Temporary password: ${managedUser.temporaryPassword}`);
       } else if (modal.item.role === "coordinator") {
         await updateDoc(doc(db, "users", modal.item.id), {
@@ -152,6 +155,9 @@ function Users() {
         // Status changes go through manageAccount; role is only written when it actually changed.
         const { role: nextRole, ...profileChanges } = data;
         await updateDoc(doc(db, "users", modal.item.id), nextRole === modal.item.role ? profileChanges : data);
+        if (nextRole === "student") {
+          await syncStudentAccount(modal.item.id, data);
+        }
         showNotice("User profile updated successfully.");
       }
       setModal(null);

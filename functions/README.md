@@ -10,10 +10,27 @@ Admin SDK uses the function's service identity. For local
 development, the root `npm run account-server` script starts
 `localAccountServer.js`; set `GOOGLE_APPLICATION_CREDENTIALS` to a Firebase
 Admin service-account key stored outside the repository and set
-`GCLOUD_PROJECT=ojt-monitoringsystem2`. The server verifies Firebase ID tokens
-and checks the caller's active Firestore profile before acting. Permanent
-deletion is restricted to administrators and retains student roster and
-academic records.
+`GCLOUD_PROJECT=ojt-monitoringsystem2`. The server verifies Firebase ID tokens and checks the caller's active Firestore
+profile before acting. Permanent deletion is restricted to administrators.
+Deleting a student removes that student's Authentication account, profile,
+roster record, attendance, QR scan records, journals, evaluations,
+applications, login activity, and nested documents linked to the student.
+Related student records are removed only when their UID, roster ID, or unique
+student ID matches the selected student. If cleanup fails after the account is
+locked, retry deletion from the student list to finish the recorded operation.
+
+Student login profiles are also written to `studentAccounts/{uid}` so student
+accounts have a dedicated Firestore collection. The `users/{uid}` profile
+remains in place for role checks and backwards compatibility with existing
+screens. Coordinator-created accounts are only allowed when their assigned
+student roster record belongs to that coordinator.
+
+To copy existing student profiles into the new collection without overwriting
+documents already there, configure Firebase Admin credentials and run:
+
+```powershell
+node functions/scripts/syncStudentAccounts.js
+```
 
 Deploy both Cloud Functions with the command in the root README. See that
 README for the exact PowerShell commands to start the local backend and
@@ -37,7 +54,8 @@ Firestore directly and does not require Cloud Functions or billing.
 firebase deploy --only firestore:rules --project ojt-monitoringsystem2
 ```
 
-Deploy Cloud Functions separately only if using QR attendance:
+Deploy Cloud Functions when enabling student account creation/deletion or QR
+attendance:
 
 ```powershell
 firebase deploy --only functions --project ojt-monitoringsystem2

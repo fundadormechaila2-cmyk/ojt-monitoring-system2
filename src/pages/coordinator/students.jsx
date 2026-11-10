@@ -3,6 +3,8 @@ import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, updat
 import { Eye, Search } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { syncStudentAccount } from "../../services/studentAccountService";
+import { createManagedUser } from "../../services/userManagementSevice";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
 import { MAJORS, recordDepartmentId } from "../../constants/departments";
@@ -10,7 +12,7 @@ import DepartmentBadge from "../../components/DepartmentBadge";
 import { CoordinatorState, normalizedStudents, useCoordinatorData, useFilteredStudents } from "./coordinatorData.jsx";
 import "../../styles/students-data.css";
 
-const studentSources = ["students", "attendance"];
+const studentSources = ["students", "attendance", "studentAccounts"];
 
 function Students() {
   const { user } = useAuth();
@@ -24,6 +26,11 @@ function Students() {
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState("");
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [accountForm, setAccountForm] = useState({ firstName: "", lastName: "", email: "" });
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountError, setAccountError] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
   const records = normalizedStudents(data.students, data.attendance);
   const showMajorFilter =
     recordDepartmentId(user) === "BSBA" || records.some((record) => record.major);
@@ -50,6 +57,79 @@ function Students() {
     setSupervisorUid(student.supervisorUid || "");
     setAssignmentError("");
     setAssignmentNotice("");
+    const nameParts = String(student.name || "").trim().split(/\s+/);
+    setAccountForm({
+      firstName: student.firstName || nameParts.shift() || "",
+      lastName: student.lastName || nameParts.join(" "),
+      email: student.email || student.accountEmail || "",
+    });
+    setAccountFormOpen(false);
+    setAccountError("");
+    setAccountNotice("");
+  };
+
+  const linkedStudentAccount = selected
+    ? data.studentAccounts.find((account) =>
+        account.id === selected.studentUid ||
+        account.uid === selected.studentUid ||
+        account.studentRecordId === selected.id ||
+        account.studentId === selected.studentId,
+      )
+    : null;
+
+  const createStudentLogin = async (event) => {
+    event.preventDefault();
+    if (!selected || !user?.uid) return;
+    if (linkedStudentAccount || selected.studentUid) {
+      setAccountError("This student already has a linked login account.");
+      return;
+    }
+
+    setAccountSaving(true);
+    setAccountError("");
+    setAccountNotice("");
+    let managedUser;
+    try {
+      const coordinatorName =
+        `${user.firstName || ""} ${user.lastName || ""}`.trim();
+      managedUser = await createManagedUser({
+        ...accountForm,
+        phone: selected.phone || "",
+        role: "student",
+        createdBy: user.uid,
+        studentId: selected.studentId || "",
+        studentRecordId: selected.id,
+        course: selected.course || "",
+        company: selected.company || "",
+        coordinatorUid: user.uid,
+        coordinatorName,
+      });
+
+      await updateDoc(doc(db, "students", selected.id), {
+        studentUid: managedUser.uid,
+        accountEmail: managedUser.email,
+        updatedAt: serverTimestamp(),
+      });
+      setSelected((current) =>
+        current
+          ? { ...current, studentUid: managedUser.uid, accountEmail: managedUser.email }
+          : current,
+      );
+      setAccountFormOpen(false);
+      setAccountNotice("Student login created and saved to the student accounts collection.");
+      window.alert(
+        `Student account created.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
+      );
+    } catch (saveError) {
+      console.error("Unable to create student login:", saveError);
+      setAccountError(
+        managedUser
+          ? `The login was created, but the roster link could not be saved. Email: ${managedUser.email}. Temporary password: ${managedUser.temporaryPassword}. ${saveError.message}`
+          : saveError.message || "Unable to create the student account.",
+      );
+    } finally {
+      setAccountSaving(false);
+    }
   };
 
   const saveSupervisorAssignment = async () => {
@@ -84,6 +164,7 @@ function Students() {
       if (selected.studentUid) {
         try {
           await updateDoc(doc(db, "users", selected.studentUid), changes);
+          await syncStudentAccount(selected.studentUid, changes);
         } catch (syncError) {
           console.warn("Unable to sync supervisor assignment to student user account:", syncError);
         }
@@ -117,7 +198,114 @@ function Students() {
           </div>
           {visible.length === 0 ? <div className="coordinator-data-empty">No students match the selected filters.</div> : <div className="coordinator-data-table-wrap"><table className="coordinator-data-table"><thead><tr><th>Student</th><th>ID</th><th>Program</th><th>Company</th><th>Hours</th><th>Status</th><th /></tr></thead><tbody>{visible.map((student) => <tr key={student.id}><td><strong>{student.name}</strong></td><td>{student.studentId || "-"}</td><td><DepartmentBadge value={student.course || student.department} /></td><td>{student.company}</td><td>{formatHoursMinutes(student.completed)} / {formatHoursMinutes(student.required)}</td><td><span className={`coordinator-badge ${student.status.toLowerCase()}`}>{student.status}</span></td><td><button type="button" className="coordinator-icon-button" title="View student details" aria-label={`View ${student.name}`} onClick={() => openStudent(student)}><Eye size={16} /></button></td></tr>)}</tbody></table></div>}
         </section>
-        {selected && <div className="coordinator-modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setSelected(null)}><section className="coordinator-modal" role="dialog" aria-modal="true"><header><h2>{selected.name}</h2><button type="button" onClick={() => setSelected(null)} aria-label="Close">×</button></header><dl><div><dt>Student ID</dt><dd>{selected.studentId || "-"}</dd></div><div><dt>Program</dt><dd><DepartmentBadge value={selected.course || selected.department} /></dd></div><div><dt>Company</dt><dd>{selected.company}</dd></div><div><dt>OJT progress</dt><dd>{formatHoursMinutes(selected.completed)} of {formatHoursMinutes(selected.required)} ({Math.round((selected.completed / selected.required) * 100)}%)</dd></div></dl><div className="coordinator-assignment-control"><label htmlFor="student-supervisor-assignment">Assigned supervisor</label><select id="student-supervisor-assignment" value={supervisorUid} disabled={assignmentSaving} onChange={(event) => setSupervisorUid(event.target.value)}><option value="">Unassigned</option>{supervisors.map((supervisor) => <option key={supervisor.id} value={supervisor.id}>{`${supervisor.firstName || ""} ${supervisor.lastName || ""}`.trim() || supervisor.email || supervisor.id}</option>)}</select><button type="button" disabled={assignmentSaving} onClick={saveSupervisorAssignment}>{assignmentSaving ? "Saving..." : "Save supervisor"}</button>{assignmentError && <p role="alert">{assignmentError}</p>}{assignmentNotice && <p role="status">{assignmentNotice}</p>}</div></section></div>}
+        {selected && (
+          <div
+            className="coordinator-modal-backdrop"
+            role="presentation"
+            onClick={(event) =>
+              event.target === event.currentTarget &&
+              !accountSaving &&
+              setSelected(null)
+            }
+          >
+            <section className="coordinator-modal" role="dialog" aria-modal="true">
+              <header>
+                <h2>{selected.name}</h2>
+                <button
+                  type="button"
+                  disabled={accountSaving}
+                  onClick={() => setSelected(null)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </header>
+              <dl>
+                <div><dt>Student ID</dt><dd>{selected.studentId || "-"}</dd></div>
+                <div><dt>Program</dt><dd><DepartmentBadge value={selected.course || selected.department} /></dd></div>
+                <div><dt>Company</dt><dd>{selected.company}</dd></div>
+                <div><dt>OJT progress</dt><dd>{formatHoursMinutes(selected.completed)} of {formatHoursMinutes(selected.required)} ({Math.round((selected.completed / selected.required) * 100)}%)</dd></div>
+              </dl>
+              <div className="coordinator-assignment-control">
+                <label htmlFor="student-supervisor-assignment">Assigned supervisor</label>
+                <select
+                  id="student-supervisor-assignment"
+                  value={supervisorUid}
+                  disabled={assignmentSaving}
+                  onChange={(event) => setSupervisorUid(event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {supervisors.map((supervisor) => (
+                    <option key={supervisor.id} value={supervisor.id}>
+                      {`${supervisor.firstName || ""} ${supervisor.lastName || ""}`.trim() || supervisor.email || supervisor.id}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" disabled={assignmentSaving} onClick={saveSupervisorAssignment}>
+                  {assignmentSaving ? "Saving..." : "Save supervisor"}
+                </button>
+                {assignmentError && <p role="alert">{assignmentError}</p>}
+                {assignmentNotice && <p role="status">{assignmentNotice}</p>}
+              </div>
+              <div className="coordinator-assignment-control">
+                {linkedStudentAccount || selected.studentUid ? (
+                  <>
+                    <label>Student account</label>
+                    <span>{linkedStudentAccount?.email || selected.accountEmail || "Login linked"}</span>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={accountSaving}
+                    onClick={() => {
+                      setAccountFormOpen((open) => !open);
+                      setAccountError("");
+                    }}
+                  >
+                    {accountFormOpen ? "Cancel account setup" : "Create student account"}
+                  </button>
+                )}
+                {accountNotice && <p role="status">{accountNotice}</p>}
+                {accountError && <p role="alert">{accountError}</p>}
+              </div>
+              {accountFormOpen && !linkedStudentAccount && !selected.studentUid && (
+                <form onSubmit={createStudentLogin}>
+                  <label>
+                    First name
+                    <input
+                      required
+                      value={accountForm.firstName}
+                      disabled={accountSaving}
+                      onChange={(event) => setAccountForm((form) => ({ ...form, firstName: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Last name
+                    <input
+                      required
+                      value={accountForm.lastName}
+                      disabled={accountSaving}
+                      onChange={(event) => setAccountForm((form) => ({ ...form, lastName: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Student email
+                    <input
+                      type="email"
+                      required
+                      value={accountForm.email}
+                      disabled={accountSaving}
+                      onChange={(event) => setAccountForm((form) => ({ ...form, email: event.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" disabled={accountSaving}>
+                    {accountSaving ? "Creating account..." : "Create account"}
+                  </button>
+                </form>
+              )}
+            </section>
+          </div>
+        )}
       </main>
     </CoordinatorState>
   );

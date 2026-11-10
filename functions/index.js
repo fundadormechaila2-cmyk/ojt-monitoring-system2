@@ -22,7 +22,7 @@ const accountManagementOrigins = [
 ];
 
 exports.manageAccountApi = onRequest(
-  { cors: accountManagementOrigins },
+  { cors: accountManagementOrigins, timeoutSeconds: 540, memory: "1GiB" },
   async (req, res) => {
     if (req.method !== "POST") {
       res.set("Allow", "POST").status(405).json({

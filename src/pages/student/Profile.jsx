@@ -13,6 +13,7 @@ import { ChevronRight, ShieldCheck, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { auth, db } from "../../services/firebase";
+import { studentAccountRef } from "../../services/studentAccountService";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/student-portal.css";
 
@@ -115,6 +116,11 @@ function Profile() {
       };
       const batch = writeBatch(db);
       batch.update(doc(db, "users", user.uid), updates);
+      batch.set(
+        studentAccountRef(user.uid),
+        { ...user, ...updates, uid: user.uid },
+        { merge: true },
+      );
       if (studentRecord?.id) {
         batch.update(doc(db, "students", studentRecord.id), updates);
       }

@@ -6,6 +6,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { syncStudentAccount as syncStudentAccountProfile } from "./studentAccountService";
 import { recordDepartmentId, sameDepartment } from "../constants/departments";
 
 function personName(person) {
@@ -22,6 +23,7 @@ async function syncStudentAccount(studentUid, changes) {
   if (!studentUid) return;
   try {
     await updateDoc(doc(db, "users", studentUid), changes);
+    await syncStudentAccountProfile(studentUid, changes);
   } catch (error) {
     console.warn("Unable to sync supervisor assignment to the student account:", error);
   }

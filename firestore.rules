@@ -108,6 +108,13 @@ service cloud.firestore {
             get(/databases/$(database)/documents/students/$(get(userPath(studentUid)).data.studentRecordId)).data.coordinatorUid == request.auth.uid));
     }
 
+    function coordinatorOwnsRosterRecord(recordId) {
+      return isCoordinator() &&
+        recordId is string &&
+        exists(/databases/$(database)/documents/students/$(recordId)) &&
+        get(/databases/$(database)/documents/students/$(recordId)).data.coordinatorUid == request.auth.uid;
+    }
+
     function isOwnStudent(studentUid) {
       return isStudent() && studentUid == request.auth.uid;
     }
@@ -130,7 +137,12 @@ service cloud.firestore {
           request.resource.data.role == "supervisor" &&
           request.resource.data.department == profile().department &&
           (request.resource.data.createdBy == request.auth.uid ||
-            !("createdBy" in request.resource.data)));
+            !("createdBy" in request.resource.data))) ||
+        (isCoordinator() &&
+          request.resource.data.role == "student" &&
+          request.resource.data.coordinatorUid == request.auth.uid &&
+          request.resource.data.createdBy == request.auth.uid &&
+          coordinatorOwnsRosterRecord(request.resource.data.studentRecordId));
       allow update: if (isAdmin() &&
           (request.auth.uid != userId ||
             !request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -168,6 +180,37 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /studentAccounts/{userId} {
+      allow read: if isAdmin() ||
+        isOwnStudent(userId) ||
+        (isCoordinator() &&
+          resource.data.role == "student" &&
+          resource.data.coordinatorUid == request.auth.uid) ||
+        coordinatorOwnsStudent(userId) ||
+        supervisorOwnsStudent(userId);
+      allow create: if isAdmin() ||
+        (isCoordinator() &&
+          request.resource.data.role == "student" &&
+          request.resource.data.coordinatorUid == request.auth.uid &&
+          request.resource.data.createdBy == request.auth.uid &&
+          coordinatorOwnsRosterRecord(request.resource.data.studentRecordId)) ||
+        (isOwnStudent(userId) && request.resource.data.role == "student");
+      allow update: if isAdmin() ||
+        (coordinatorOwnsStudent(userId) &&
+          resource.data.role == "student" &&
+          request.resource.data.role == "student" &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "supervisorUid", "supervisorName", "updatedAt"
+          ])) ||
+        (isOwnStudent(userId) &&
+          request.resource.data.role == "student" &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "email", "phone", "contactNumber", "address",
+            "mustChangePassword", "temporaryPassword", "updatedAt"
+          ]));
+      allow delete: if false;
+    }
+
     match /students/{studentId} {
       allow read: if isAdmin() ||
         coordinatorOwns(resource.data) ||
@@ -180,6 +223,18 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow delete: if false;
       allow update: if isAdmin() ||
+        (isCoordinator() &&
+          coordinatorOwns(resource.data) &&
+          resource.data.get("studentUid", null) == null &&
+          request.resource.data.coordinatorUid == request.auth.uid &&
+          request.resource.data.studentUid is string &&
+          exists(userPath(request.resource.data.studentUid)) &&
+          get(userPath(request.resource.data.studentUid)).data.role == "student" &&
+          get(userPath(request.resource.data.studentUid)).data.coordinatorUid == request.auth.uid &&
+          get(userPath(request.resource.data.studentUid)).data.studentRecordId == studentId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "studentUid", "accountEmail", "updatedAt"
+          ])) ||
         (coordinatorOwns(resource.data) &&
           request.resource.data.coordinatorUid == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([

@@ -19,6 +19,7 @@ const departmentScopedSources = [
   "applications",
   "attendance",
   "evaluations",
+  "studentAccounts",
 ];
 
 export function useCoordinatorData(sources = coordinatorSources) {
@@ -37,6 +38,9 @@ export function useCoordinatorData(sources = coordinatorSources) {
           departmentScopedSources.includes(source)
           ? query(
               collection(db, source),
+              ...(source === "studentAccounts"
+                ? [where("role", "==", "student")]
+                : []),
               where("coordinatorUid", "==", user.uid),
             )
           : collection(db, source),
