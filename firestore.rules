@@ -385,6 +385,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /schoolYears/{schoolYearId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.keys().hasOnly([
+          "name", "active", "createdAt", "updatedAt"
+        ]) &&
+        request.resource.data.keys().hasAll([
+          "name", "active", "createdAt", "updatedAt"
+        ]) &&
+        request.resource.data.name == schoolYearId &&
+        request.resource.data.name.matches("^[0-9]{4}-[0-9]{4}$") &&
+        request.resource.data.active == true &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "active", "updatedAt"
+        ]) &&
+        request.resource.data.name == resource.data.name &&
+        request.resource.data.active is bool &&
+        request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
     match /auditLogs/{logId} {
       allow read: if isAdmin();
       allow write: if false;

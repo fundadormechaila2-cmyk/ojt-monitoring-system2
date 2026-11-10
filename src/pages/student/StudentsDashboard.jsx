@@ -194,7 +194,7 @@ function StudentsDashboard() {
             </div>
             <h2>{name}</h2>
             <p>{studentProfile.studentId || "Student ID unavailable"} • <DepartmentBadge value={studentProfile.course || studentProfile.program || studentProfile.department || "Program unavailable"} /></p>
-            <p>{studentProfile.yearLevel || ""}</p>
+            <p>School Year: {studentProfile.schoolYear || "Not assigned"}</p>
           </div>
         </div>
 

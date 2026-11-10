@@ -7,20 +7,18 @@ import {
   getDocs,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import {
-  Archive,
-  ArchiveRestore,
   Eye,
   KeyRound,
   Pencil,
   Plus,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
@@ -34,8 +32,6 @@ import {
 import { db } from "../../services/firebase";
 import { studentAccountRef } from "../../services/studentAccountService";
 import { createManagedUser } from "../../services/userManagementSevice";
-import { isAccountManagementAvailable } from "../../services/accountManagementService";
-import AccountActionDialog from "../../components/AccountActionDialog";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import { normalizedStudents } from "../coordinator/coordinatorData";
 import "./Students.css";
@@ -65,6 +61,7 @@ const emptyNewStudent = {
   email: "",
   phone: "",
   course: "",
+  schoolYear: "",
   company: "",
   coordinatorUid: "",
   requiredHours: "486",
@@ -138,8 +135,16 @@ function Students() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sourceErrors, setSourceErrors] = useState({});
+  const [schoolYearRecords, setSchoolYearRecords] = useState([]);
+  const [schoolYearError, setSchoolYearError] = useState("");
+  const [schoolYearManagerOpen, setSchoolYearManagerOpen] = useState(false);
+  const [schoolYearInput, setSchoolYearInput] = useState("");
+  const [schoolYearSaving, setSchoolYearSaving] = useState(false);
+  const [schoolYearUpdatingId, setSchoolYearUpdatingId] = useState("");
+  const [schoolYearManagerError, setSchoolYearManagerError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [courseFilter, setCourseFilter] = useState("All courses");
+  const [schoolYearFilter, setSchoolYearFilter] = useState("All school years");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
@@ -153,20 +158,10 @@ function Students() {
     email: "",
   });
   const [saving, setSaving] = useState(false);
-  const [accountAction, setAccountAction] = useState(null);
-  const [accountManagementAvailable, setAccountManagementAvailable] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
-
-  useEffect(() => {
-    let active = true;
-    isAccountManagementAvailable()
-      .then((isAvailable) => active && setAccountManagementAvailable(isAvailable))
-      .catch(() => active && setAccountManagementAvailable(false));
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     const snapshots = { students: false, users: false };
@@ -229,6 +224,24 @@ function Students() {
     };
   }, []);
 
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, "schoolYears"),
+      (snapshot) => {
+        setSchoolYearRecords(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
+        setSchoolYearError("");
+      },
+      (snapshotError) => {
+        console.error("Unable to load school years:", snapshotError);
+        setSchoolYearError(
+          "School years could not be loaded. Check Firestore permissions and try again.",
+        );
+      },
+    );
+  }, []);
+
   const records = useMemo(() => normalizedStudents(students, []), [students]);
   const courses = useMemo(
     () =>
@@ -237,16 +250,43 @@ function Students() {
         .sort(),
     [records],
   );
+  const schoolYears = useMemo(() => {
+    return [
+      ...new Set([
+        ...schoolYearRecords.map((schoolYear) => schoolYear.name).filter(Boolean),
+        ...records
+          .map((student) => String(student.schoolYear || "").trim())
+          .filter(Boolean),
+      ]),
+    ].sort((first, second) => {
+      const firstYear = Number(String(first).match(/^\d{4}/)?.[0]);
+      const secondYear = Number(String(second).match(/^\d{4}/)?.[0]);
+      return secondYear - firstYear || first.localeCompare(second);
+    });
+  }, [records, schoolYearRecords]);
+  const activeSchoolYears = useMemo(
+    () =>
+      schoolYearRecords
+        .filter((schoolYear) => schoolYear.active !== false)
+        .map((schoolYear) => schoolYear.name)
+        .filter(Boolean)
+        .sort((first, second) => String(second).localeCompare(String(first))),
+    [schoolYearRecords],
+  );
   const filteredStudents = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return records.filter((student) => {
       const account = accountForStudent(student, users);
       return (
         (!query ||
-          `${student.name} ${student.studentId} ${student.course} ${student.email || ""}`
+          `${student.name} ${student.studentId} ${student.course} ${student.schoolYear || ""} ${student.email || ""}`
             .toLowerCase()
             .includes(query)) &&
         (courseFilter === "All courses" || student.course === courseFilter) &&
+        (schoolYearFilter === "All school years" ||
+          (schoolYearFilter === "Not assigned"
+            ? !student.schoolYear
+            : student.schoolYear === schoolYearFilter)) &&
         (statusFilter === "Archived"
           ? student.isArchived === true
           : student.isArchived !== true) &&
@@ -255,7 +295,7 @@ function Students() {
         (statusFilter !== "No account" || !account)
       );
     });
-  }, [courseFilter, records, searchTerm, statusFilter, users]);
+  }, [courseFilter, records, schoolYearFilter, searchTerm, statusFilter, users]);
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const visibleStudents = filteredStudents.slice(
     (page - 1) * pageSize,
@@ -381,6 +421,7 @@ function Students() {
       email: account?.email || student.email || student.accountEmail || "",
       phone: student.phone || account?.phone || "",
       course: student.course || "",
+      schoolYear: student.schoolYear || "",
       company: student.company || account?.company || "",
       coordinatorUid: student.coordinatorUid || account?.coordinatorUid || "",
       requiredHours: String(student.required || student.requiredHours || 486),
@@ -466,6 +507,7 @@ function Students() {
       accountEmail: account ? account.email : email,
       phone: editForm.phone.trim(),
       course: editForm.course,
+      schoolYear: editForm.schoolYear.trim(),
       ...departmentFields,
       company: editForm.company.trim(),
       ...coordinatorFields,
@@ -476,8 +518,9 @@ function Students() {
     setSaving(true);
     setError("");
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, "students", editingStudent.id), studentUpdate);
+      await updateDoc(doc(db, "students", editingStudent.id), studentUpdate);
+      const syncWarnings = [];
+
       if (account) {
         const accountChanges = {
           firstName: editForm.firstName.trim(),
@@ -487,83 +530,121 @@ function Students() {
           ...departmentFields,
           company: editForm.company.trim(),
           phone: editForm.phone.trim(),
-          ...coordinatorFields,
-          updatedAt: serverTimestamp(),
         };
-        const accountProfile = Object.fromEntries(
-          Object.entries(account).filter(([key]) => key !== "id"),
-        );
-        batch.update(doc(db, "users", account.id), accountChanges);
-        batch.set(
-          studentAccountRef(account.id),
-          { ...accountProfile, ...accountChanges, uid: account.id },
-          { merge: true },
-        );
+        const accountProfileChanged =
+          coordinatorChanged ||
+          Object.entries(accountChanges).some(
+            ([field, value]) => account[field] !== value,
+          );
+        if (accountProfileChanged) {
+          if (coordinatorChanged) {
+            Object.assign(accountChanges, coordinatorFields);
+          }
+          accountChanges.updatedAt = serverTimestamp();
+          const accountProfile = Object.fromEntries(
+            Object.entries(account).filter(([key]) => key !== "id"),
+          );
+          try {
+            const accountBatch = writeBatch(db);
+            accountBatch.update(doc(db, "users", account.id), accountChanges);
+            accountBatch.set(
+              studentAccountRef(account.id),
+              { ...accountProfile, ...accountChanges, uid: account.id },
+              { merge: true },
+            );
+            await accountBatch.commit();
+          } catch (syncError) {
+            console.error(
+              "Student record saved, but linked account synchronization failed:",
+              syncError,
+            );
+            syncWarnings.push(
+              `The student record was saved, but the linked account could not be synchronized: ${syncError.message || "permission denied"}`,
+            );
+          }
+        }
       }
-      await batch.commit();
 
       if (coordinatorChanged) {
-        const studentUid = editingStudent.studentUid || account?.id;
-        const attendanceQueries = await Promise.all([
-          ...(studentUid
-            ? [
-                getDocs(
-                  query(
-                    collection(db, "attendance"),
-                    where("studentUid", "==", studentUid),
+        try {
+          const studentUid = editingStudent.studentUid || account?.id;
+          const attendanceQueries = await Promise.all([
+            ...(studentUid
+              ? [
+                  getDocs(
+                    query(
+                      collection(db, "attendance"),
+                      where("studentUid", "==", studentUid),
+                    ),
                   ),
-                ),
-              ]
-            : []),
-          ...(studentId
-            ? [
-                getDocs(
-                  query(
-                    collection(db, "attendance"),
-                    where("studentId", "==", studentId),
+                ]
+              : []),
+            ...(studentId
+              ? [
+                  getDocs(
+                    query(
+                      collection(db, "attendance"),
+                      where("studentId", "==", studentId),
+                    ),
                   ),
-                ),
-              ]
-            : []),
-        ]);
-        const attendanceRecords = new Map();
-        attendanceQueries.forEach((snapshot) => {
-          snapshot.docs.forEach((record) => {
-            const recordUid = record.data().studentUid;
-            if (!studentUid || !recordUid || recordUid === studentUid) {
-              attendanceRecords.set(record.id, record);
-            }
-          });
-        });
-        const relatedRecords = [...attendanceRecords.values()];
-        if (studentUid) {
-          const loginSnapshot = await getDocs(
-            query(
-              collection(db, "studentLoginActivity"),
-              where("userId", "==", studentUid),
-            ),
-          );
-          relatedRecords.push(...loginSnapshot.docs);
-        }
-        for (let offset = 0; offset < relatedRecords.length; offset += 450) {
-          const relatedBatch = writeBatch(db);
-          relatedRecords.slice(offset, offset + 450).forEach((record) => {
-            relatedBatch.update(record.ref, {
-              ...coordinatorFields,
-              updatedAt: serverTimestamp(),
+                ]
+              : []),
+          ]);
+          const attendanceRecords = new Map();
+          attendanceQueries.forEach((snapshot) => {
+            snapshot.docs.forEach((record) => {
+              const recordUid = record.data().studentUid;
+              if (!studentUid || !recordUid || recordUid === studentUid) {
+                attendanceRecords.set(record.id, record);
+              }
             });
           });
-          await relatedBatch.commit();
+          const relatedRecords = [...attendanceRecords.values()];
+          if (studentUid) {
+            const loginSnapshot = await getDocs(
+              query(
+                collection(db, "studentLoginActivity"),
+                where("userId", "==", studentUid),
+              ),
+            );
+            relatedRecords.push(...loginSnapshot.docs);
+          }
+          for (
+            let offset = 0;
+            offset < relatedRecords.length;
+            offset += 450
+          ) {
+            const relatedBatch = writeBatch(db);
+            relatedRecords.slice(offset, offset + 450).forEach((record) => {
+              relatedBatch.update(record.ref, {
+                ...coordinatorFields,
+                updatedAt: serverTimestamp(),
+              });
+            });
+            await relatedBatch.commit();
+          }
+        } catch (syncError) {
+          console.error(
+            "Student record saved, but coordinator history synchronization failed:",
+            syncError,
+          );
+          syncWarnings.push(
+            `Coordinator history could not be fully synchronized: ${syncError.message || "permission denied"}`,
+          );
         }
       }
 
-      setNotice(`Student details updated for ${name}.`);
+      setNotice(
+        syncWarnings.length
+          ? `Student record saved for ${name}. ${syncWarnings.join(" ")}`
+          : `Student details updated for ${name}.`,
+      );
       setEditingStudent(null);
       window.setTimeout(() => setNotice(""), 5000);
     } catch (saveError) {
-      console.error("Unable to update student details:", saveError);
+      console.error("Unable to save the student record:", saveError);
       setError(
-        `Student details could not be fully saved. ${saveError.message || "Check your connection and try again."}`,
+        `Student record could not be saved. ${saveError.message || "Check your connection and Firestore permissions, then try again."}`,
       );
     } finally {
       setSaving(false);
@@ -602,6 +683,7 @@ function Students() {
         studentId: accountStudent.studentId || "",
         studentRecordId: accountStudent.id,
         course: accountStudent.course || "",
+        schoolYear: accountStudent.schoolYear || "",
         company: accountStudent.company || "",
         coordinatorUid: coordUid,
         coordinatorName: coordName,
@@ -653,7 +735,12 @@ function Students() {
 
     const studentId = newStudent.studentId.trim();
     const email = newStudent.email.trim();
+    const schoolYear = newStudent.schoolYear.trim();
     const normalizedEmail = email.toLowerCase();
+    if (!activeSchoolYears.includes(schoolYear)) {
+      setError("Choose an active School Year from the list.");
+      return;
+    }
     if (
       studentId &&
       records.some(
@@ -701,6 +788,7 @@ function Students() {
           email,
           phone: newStudent.phone.trim(),
           course: newStudent.course,
+          schoolYear,
           ...studentDepartmentFields(newStudent.course),
           company: newStudent.company.trim(),
           ...(targetCoordinatorUid
@@ -730,6 +818,7 @@ function Students() {
           studentId,
           studentRecordId: studentReference.id,
           course: newStudent.course,
+          schoolYear,
           company: newStudent.company,
           coordinatorUid: targetCoordinatorUid,
           coordinatorName: targetCoordinatorName,
@@ -771,30 +860,73 @@ function Students() {
     }
   };
 
-  const openAccountAction = (action, student, account) =>
-    setAccountAction({
-      action,
-      target: {
-        type: "student",
-        id: student.id,
-        name: student.name,
-        email: account?.email || student.email || student.accountEmail || "",
-        role: "student",
-      },
-    });
-
-  const finishAccountAction = (message, warnings) => {
-    setAccountAction(null);
-    setError("");
-    setNotice([message, ...warnings].join(" "));
-    window.setTimeout(() => setNotice(""), 5000);
-  };
-
   const clearFilters = () => {
     setSearchTerm("");
     setCourseFilter("All courses");
+    setSchoolYearFilter("All school years");
     setStatusFilter("All statuses");
     setPage(1);
+  };
+
+  const addSchoolYear = async (event) => {
+    event.preventDefault();
+    const normalizedSchoolYear = schoolYearInput
+      .trim()
+      .replace(/[–—]/g, "-")
+      .replace(/\s+/g, "");
+    const match = normalizedSchoolYear.match(/^(\d{4})-(\d{4})$/);
+    if (!match || Number(match[2]) !== Number(match[1]) + 1) {
+      setSchoolYearManagerError("Enter a school year in the format 2026-2027.");
+      return;
+    }
+
+    setSchoolYearSaving(true);
+    setSchoolYearManagerError("");
+    try {
+      const schoolYearRef = doc(db, "schoolYears", normalizedSchoolYear);
+      await runTransaction(db, async (transaction) => {
+        const existing = await transaction.get(schoolYearRef);
+        if (existing.exists()) {
+          throw new Error(
+            existing.data().active === false
+              ? "This School Year already exists. Activate it from the list."
+              : "This School Year already exists.",
+          );
+        }
+        transaction.set(schoolYearRef, {
+          name: normalizedSchoolYear,
+          active: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      setSchoolYearInput("");
+    } catch (saveError) {
+      console.error("Unable to add School Year:", saveError);
+      setSchoolYearManagerError(
+        saveError.message || "Unable to save this School Year.",
+      );
+    } finally {
+      setSchoolYearSaving(false);
+    }
+  };
+
+  const setSchoolYearActive = async (schoolYear, active) => {
+    setSchoolYearUpdatingId(schoolYear.id);
+    setSchoolYearManagerError("");
+    try {
+      await updateDoc(doc(db, "schoolYears", schoolYear.id), {
+        active,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (updateError) {
+      console.error("Unable to update School Year:", updateError);
+      setSchoolYearManagerError(
+        updateError.message || "Unable to update this School Year.",
+      );
+    } finally {
+      setSchoolYearUpdatingId("");
+    }
   };
 
   const detailAccount = selectedStudent
@@ -856,6 +988,16 @@ function Students() {
           )}
           <button
             type="button"
+            className="students-secondary"
+            onClick={() => {
+              setSchoolYearManagerError("");
+              setSchoolYearManagerOpen(true);
+            }}
+          >
+            Manage School Years
+          </button>
+          <button
+            type="button"
             className="students-primary"
             disabled={Boolean(sourceErrors.users)}
             onClick={() => {
@@ -870,15 +1012,9 @@ function Students() {
         </div>
       </header>
 
-      {!accountManagementAvailable && (
+      {(error || schoolYearError || Object.values(sourceErrors).length > 0) && (
         <div className="students-error" role="alert">
-          Account management could not be verified. Check the manageAccountApi deployment or start the local account server before managing student access.
-        </div>
-      )}
-
-      {(error || Object.values(sourceErrors).length > 0) && (
-        <div className="students-error" role="alert">
-          {error || Object.values(sourceErrors).join(" ")}
+          {error || schoolYearError || Object.values(sourceErrors).join(" ")}
         </div>
       )}
 
@@ -930,7 +1066,7 @@ function Students() {
             <Search size={17} />
             <span className="sr-only">Search enrolled students</span>
             <input
-              placeholder="Search name, student ID, email, or course"
+              placeholder="Search name, student ID, email, course, or school year"
               value={searchTerm}
               onChange={(event) =>
                 updateFilter(setSearchTerm, event.target.value)
@@ -950,6 +1086,22 @@ function Students() {
               {courses.map((course) => (
                 <option key={course}>{course}</option>
               ))}
+            </select>
+            <select
+              className="students-select"
+              aria-label="Filter by school year"
+              value={schoolYearFilter}
+              onChange={(event) =>
+                updateFilter(setSchoolYearFilter, event.target.value)
+              }
+            >
+              <option>All school years</option>
+              {schoolYears.map((schoolYear) => (
+                <option key={schoolYear}>{schoolYear}</option>
+              ))}
+              {records.some((student) => !student.schoolYear) && (
+                <option>Not assigned</option>
+              )}
             </select>
             <select
               className="students-select"
@@ -975,6 +1127,7 @@ function Students() {
               <tr>
                 <th>Student</th>
                 <th>Student ID</th>
+                <th>School Year</th>
                 <th>Course</th>
                 <th>OJT Status</th>
                 <th>Actions</th>
@@ -1011,6 +1164,7 @@ function Students() {
                         {student.studentId || "—"}
                       </span>
                     </td>
+                    <td>{student.schoolYear || "—"}</td>
                     <td><DepartmentBadge value={student.course || student.department} /></td>
                     <td>
                       <span className={`student-status ${statusClass}`}>
@@ -1036,45 +1190,6 @@ function Students() {
                           onClick={() => openStudentEdit(student)}
                         >
                           <Pencil size={15} />
-                        </button>
-                        {student.isArchived === true ? (
-                          <button
-                            type="button"
-                            className="student-action"
-                            title="Restore student"
-                            aria-label={`Restore ${student.name}`}
-                            disabled={!accountManagementAvailable}
-                            onClick={() =>
-                              openAccountAction("restore", student, account)
-                            }
-                          >
-                            <ArchiveRestore size={15} />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="student-action"
-                            title="Archive student"
-                            aria-label={`Archive ${student.name}`}
-                            disabled={!accountManagementAvailable}
-                            onClick={() =>
-                              openAccountAction("archive", student, account)
-                            }
-                          >
-                            <Archive size={15} />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="student-action"
-                          title="Delete permanently"
-                          aria-label={`Delete ${student.name}`}
-                          disabled={!accountManagementAvailable || Boolean(sourceErrors.students || sourceErrors.users)}
-                          onClick={() =>
-                            openAccountAction("delete", student, account)
-                          }
-                        >
-                          <Trash2 size={15} />
                         </button>
                         {!account && student.isArchived !== true && (
                           <button
@@ -1190,6 +1305,10 @@ function Students() {
                 <strong>{selectedStudent.email || "Not provided"}</strong>
               </div>
               <div className="student-detail">
+                <label>School Year</label>
+                <strong>{selectedStudent.schoolYear || "Not assigned"}</strong>
+              </div>
+              <div className="student-detail">
                 <label>OJT status</label>
                 <strong>{selectedStudent.status}</strong>
               </div>
@@ -1244,6 +1363,15 @@ function Students() {
                 <X size={17} />
               </button>
             </header>
+            {schoolYearError && (
+              <div
+                className="students-error"
+                role="alert"
+                style={{ margin: "16px 24px 0" }}
+              >
+                {schoolYearError}
+              </div>
+            )}
             <form
               className="students-account-form students-add-form"
               onSubmit={saveStudentEdits}
@@ -1336,6 +1464,31 @@ function Students() {
                   {editForm.course && !COURSES.includes(editForm.course) && (
                     <option value={editForm.course}>{editForm.course}</option>
                   )}
+                </select>
+              </label>
+              <label>
+                School Year
+                <select
+                  value={editForm.schoolYear}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      schoolYear: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select a School Year</option>
+                  {activeSchoolYears.map((schoolYear) => (
+                    <option key={schoolYear} value={schoolYear}>
+                      {schoolYear}
+                    </option>
+                  ))}
+                  {editForm.schoolYear &&
+                    !activeSchoolYears.includes(editForm.schoolYear) && (
+                      <option value={editForm.schoolYear}>
+                        {editForm.schoolYear} (current)
+                      </option>
+                    )}
                 </select>
               </label>
               <label>
@@ -1651,6 +1804,26 @@ function Students() {
                 </select>
               </label>
               <label>
+                School Year
+                <select
+                  required
+                  value={newStudent.schoolYear}
+                  onChange={(event) =>
+                    setNewStudent((current) => ({
+                      ...current,
+                      schoolYear: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select a School Year</option>
+                  {activeSchoolYears.map((schoolYear) => (
+                    <option key={schoolYear} value={schoolYear}>
+                      {schoolYear}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Partner company
                 <input
                   value={newStudent.company}
@@ -1757,13 +1930,107 @@ function Students() {
         </div>
       )}
 
-      {accountAction && (
-        <AccountActionDialog
-          {...accountAction}
-          onClose={() => setAccountAction(null)}
-          onDone={finishAccountAction}
-        />
+      {schoolYearManagerOpen && (
+        <div
+          className="students-modal-backdrop"
+          role="presentation"
+          onClick={(event) =>
+            event.target === event.currentTarget &&
+            !schoolYearSaving &&
+            setSchoolYearManagerOpen(false)
+          }
+        >
+          <section
+            className="students-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="school-year-manager-title"
+          >
+            <header className="students-modal-header">
+              <div>
+                <h2 id="school-year-manager-title">Manage School Years</h2>
+                <p>Active years are available when adding students.</p>
+              </div>
+              <button
+                type="button"
+                className="students-modal-close"
+                aria-label="Close School Year management"
+                disabled={schoolYearSaving}
+                onClick={() => setSchoolYearManagerOpen(false)}
+              >
+                <X size={17} />
+              </button>
+            </header>
+            <form
+              className="students-account-form school-year-form"
+              onSubmit={addSchoolYear}
+            >
+              <label>
+                New School Year
+                <input
+                  type="text"
+                  required
+                  value={schoolYearInput}
+                  placeholder="e.g. 2026-2027"
+                  onChange={(event) => setSchoolYearInput(event.target.value)}
+                />
+              </label>
+              {schoolYearManagerError && (
+                <div className="students-error" role="alert">
+                  {schoolYearManagerError}
+                </div>
+              )}
+              <button
+                type="submit"
+                className="students-primary"
+                disabled={schoolYearSaving}
+              >
+                {schoolYearSaving ? "Saving..." : "Add School Year"}
+              </button>
+            </form>
+            <div className="school-year-list" aria-live="polite">
+              {schoolYearRecords.length ? (
+                [...schoolYearRecords]
+                  .sort((first, second) =>
+                    String(second.name).localeCompare(String(first.name)),
+                  )
+                  .map((schoolYear) => (
+                    <div className="school-year-row" key={schoolYear.id}>
+                      <div>
+                        <strong>{schoolYear.name}</strong>
+                        <span>
+                          {schoolYear.active === false ? "Inactive" : "Active"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="students-secondary"
+                        disabled={schoolYearUpdatingId === schoolYear.id}
+                        onClick={() =>
+                          setSchoolYearActive(
+                            schoolYear,
+                            schoolYear.active === false,
+                          )
+                        }
+                      >
+                        {schoolYearUpdatingId === schoolYear.id
+                          ? "Saving..."
+                          : schoolYear.active === false
+                            ? "Activate"
+                            : "Deactivate"}
+                      </button>
+                    </div>
+                  ))
+              ) : (
+                <p className="school-year-empty">
+                  No School Years yet. Add one above to enable the student form.
+                </p>
+              )}
+            </div>
+          </section>
+        </div>
       )}
+
       {notice && (
         <div className="students-notice" role="status">
           {notice}

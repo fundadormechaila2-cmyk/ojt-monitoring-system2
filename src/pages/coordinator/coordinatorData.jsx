@@ -178,7 +178,7 @@ export function useFilteredStudents(records, search, filters = {}) {
         const query = search.trim().toLowerCase();
         return (
           (!query ||
-            `${record.name} ${record.studentId} ${record.course} ${record.company}`
+            `${record.name} ${record.studentId} ${record.course} ${record.schoolYear || ""} ${record.company}`
               .toLowerCase()
               .includes(query)) &&
           (!filters.status ||
@@ -187,6 +187,9 @@ export function useFilteredStudents(records, search, filters = {}) {
           (!filters.course ||
             filters.course === "All courses" ||
             record.course === filters.course) &&
+          (!filters.schoolYear ||
+            filters.schoolYear === "All school years" ||
+            record.schoolYear === filters.schoolYear) &&
           (!filters.major ||
             filters.major === "All majors" ||
             record.major === filters.major) &&
@@ -195,6 +198,14 @@ export function useFilteredStudents(records, search, filters = {}) {
             record.company === filters.company)
         );
       }),
-    [filters.company, filters.course, filters.major, filters.status, records, search],
+    [
+      filters.company,
+      filters.course,
+      filters.major,
+      filters.schoolYear,
+      filters.status,
+      records,
+      search,
+    ],
   );
 }

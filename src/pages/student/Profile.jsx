@@ -60,7 +60,7 @@ function Profile() {
       "Student",
     studentId: student.studentId || student.studentID || student.idNumber || "",
     program: student.course || student.program || student.department || "",
-    yearLevel: student.yearLevel || "4th Year",
+    schoolYear: student.schoolYear || "",
     email: auth.currentUser?.email || student.email || user?.email || "",
     phone: student.phone || student.contactNumber || "",
     address: student.address || "",
@@ -186,7 +186,7 @@ function Profile() {
           <div>
             <h2>{profile.fullName || "Loading..."}</h2>
             <p>{profile.studentId || "No student ID"} • <DepartmentBadge value={profile.program || "No program"} /></p>
-            <p>{profile.yearLevel}</p>
+            <p>School Year: {profile.schoolYear || "Not assigned"}</p>
           </div>
         </div>
 

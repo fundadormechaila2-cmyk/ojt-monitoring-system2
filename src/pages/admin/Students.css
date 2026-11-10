@@ -160,6 +160,7 @@
 
 .students-filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 9px;
 }
 
@@ -496,6 +497,53 @@
   padding: 22px 24px;
 }
 
+.school-year-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.school-year-form > .students-error {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.school-year-form > button {
+  min-height: 40px;
+}
+
+.school-year-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 24px 22px;
+}
+
+.school-year-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+}
+
+.school-year-row strong,
+.school-year-row span {
+  display: block;
+}
+
+.school-year-row strong {
+  color: #344258;
+  font-size: 13px;
+}
+
+.school-year-row span,
+.school-year-empty {
+  margin: 4px 0 0;
+  color: #8995a7;
+  font-size: 12px;
+}
+
 .students-add-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
@@ -606,6 +654,10 @@
   .students-select { max-width: none; }
   .students-footer { align-items: flex-start; flex-direction: column; }
   .students-modal-body { grid-template-columns: 1fr; padding: 18px; }
+  .school-year-form { grid-template-columns: minmax(0, 1fr); }
+  .school-year-list { padding: 0 18px 18px; }
+  .school-year-row { align-items: stretch; flex-direction: column; }
+  .school-year-row button { width: 100%; }
   .students-add-form { grid-template-columns: minmax(0, 1fr); }
   .students-add-form > p,
   .students-add-form footer { grid-column: auto; }
