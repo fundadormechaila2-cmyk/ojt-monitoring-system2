@@ -12,7 +12,6 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
-import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import {
   formatHoursMinutes,
@@ -110,13 +109,23 @@ function StudentsDashboard() {
   const name = studentProfile.name || studentProfile.fullName ||
     `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim() ||
     user?.email || "Student";
-  const requiredHours = Number(studentProfile.requiredHours || studentProfile.totalRequiredHours || 0);
-  const completedHours = attendanceRecords.reduce((total, record) => total + validHours(record), 0);
-  const deploymentStatus = getStudentDeploymentStatus(
-    studentProfile,
-    completedHours,
-    requiredHours,
+  const requiredHours = Number(
+    studentProfile.requiredHours ||
+      studentProfile.totalRequiredHours ||
+      studentProfile.ojtRequiredHours ||
+      500,
   );
+  const completedHours = attendanceRecords.reduce((total, record) => total + validHours(record), 0);
+  const hasStartedOjt = attendanceRecords.some((record) => {
+    const periods = getRecordPeriods(record);
+    return Boolean(periods.amIn || periods.pmIn || periods.overtimeIn);
+  });
+  const deploymentStatus =
+    completedHours >= requiredHours && completedHours > 0
+      ? "COMPLETED"
+      : hasStartedOjt || completedHours > 0
+        ? "ONGOING"
+        : "PENDING";
   const presentDays = attendanceRecords.filter(
     (record) => summarizeAttendance(getRecordPeriods(record)).status === "Present",
   ).length;
@@ -135,10 +144,10 @@ function StudentsDashboard() {
 
   const summaryStats = useMemo(
     () => [
-      { label: "OJT Status", value: deploymentStatus, trend: "neutral" },
-      { label: "Completed Hours", value: formatHoursMinutes(completedHours), trend: "positive" },
-      { label: "Attendance", value: `${presentDays} days`, trend: "neutral" },
-      { label: "Remaining", value: formatHoursMinutes(remainingHours), trend: "neutral" },
+      { label: "OJT Status", value: deploymentStatus },
+      { label: "Completed Hours", value: formatHoursMinutes(completedHours) },
+      { label: "Attendance", value: `${presentDays} days` },
+      { label: "Remaining", value: formatHoursMinutes(remainingHours) },
     ],
     [completedHours, deploymentStatus, presentDays, remainingHours]
   );
@@ -183,9 +192,6 @@ function StudentsDashboard() {
             <p className="student-stat-label">{item.label}</p>
             <div className="student-stat-value">
               <strong>{item.value}</strong>
-              {item.trend === "positive" && (
-                <span className="student-stat-trend positive">Good</span>
-              )}
             </div>
           </div>
         ))}
