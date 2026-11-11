@@ -5,6 +5,7 @@ import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
+import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
 import { PageHeader, SearchBox, Status } from "./SupervisorComponents";
 import DepartmentBadge from "../../components/DepartmentBadge";
 
@@ -31,13 +32,22 @@ function Trainess() {
 			},
 		);
 	}, [user?.uid]);
-	const filteredStudents = useMemo(() => students.filter((student) => {
-		const name = student.name || `${student.firstName || ""} ${student.lastName || ""}`.trim();
-		const matchesQuery = `${name} ${student.studentId || student.id} ${student.company || ""}`.toLowerCase().includes(query.toLowerCase());
-		return matchesQuery && (status === "All" || student.ojtStatus === status || student.status === status);
-	}), [query, status, students]);
+	const filteredStudents = useMemo(() => students
+		.map((student) => ({
+			...student,
+			deploymentStatus: getStudentDeploymentStatus(
+				student,
+				student.completedHours || student.ojtHours || student.hoursCompleted || 0,
+				student.requiredHours || student.totalRequiredHours || student.ojtRequiredHours || 0,
+			),
+		}))
+		.filter((student) => {
+			const name = student.name || `${student.firstName || ""} ${student.lastName || ""}`.trim();
+			const matchesQuery = `${name} ${student.studentId || student.id} ${student.company || ""}`.toLowerCase().includes(query.toLowerCase());
+			return matchesQuery && (status === "All" || student.deploymentStatus === status);
+		}), [query, status, students]);
 
-	return <div className="supervisor-page"><PageHeader title="Student Interns" description="Monitor the trainees assigned to your supervision." /><section className="supervisor-panel supervisor-table-panel"><div className="supervisor-toolbar"><SearchBox value={query} onChange={setQuery} placeholder="Search by name, ID, or company..." /><select className="supervisor-select" value={status} onChange={(event) => setStatus(event.target.value)}><option>All</option><option>On OJT</option><option>Completed</option><option>Needs attention</option></select></div>{error && <p className="supervisor-error" role="alert">{error}</p>}<div className="supervisor-table-wrap"><table className="supervisor-table"><thead><tr><th>Student Intern</th><th>Course</th><th>Company</th><th>Progress</th><th>Status</th><th>Action</th></tr></thead><tbody>{loading ? <tr><td colSpan="6">Loading assigned students...</td></tr> : filteredStudents.map((student) => { const name = student.name || `${student.firstName || ""} ${student.lastName || ""}`.trim(); const required = Number(student.requiredHours || 0); const hours = Number(student.completedHours || 0); const progress = required > 0 ? Math.min(100, Math.round((hours / required) * 100)) : 0; const studentStatus = student.ojtStatus || student.status || "PROCESSING"; return <tr key={student.id}><td><strong>{name || "Unnamed student"}</strong><br /><span>{student.studentId || student.id}</span></td><td><DepartmentBadge value={student.course || student.program || student.department} /></td><td>{student.company || "—"}</td><td><strong>{progress}%</strong><br /><span>{formatHoursMinutes(hours)}</span></td><td><Status value={studentStatus} /></td><td><button type="button" className="supervisor-action secondary" title="Student details" aria-label={`Student ${name || student.id}`}><Eye size={14} /></button></td></tr>; })}</tbody></table>{!loading && filteredStudents.length === 0 && <p className="supervisor-empty">No assigned student interns match your search.</p>}</div></section></div>;
+	return <div className="supervisor-page"><PageHeader title="Student Interns" description="Monitor the trainees assigned to your supervision." /><section className="supervisor-panel supervisor-table-panel"><div className="supervisor-toolbar"><SearchBox value={query} onChange={setQuery} placeholder="Search by name, ID, or company..." /><select className="supervisor-select" value={status} onChange={(event) => setStatus(event.target.value)}><option>All</option><option>NOT DEPLOYED</option><option>PENDING</option><option>DEPLOYED</option><option>COMPLETED</option></select></div>{error && <p className="supervisor-error" role="alert">{error}</p>}<div className="supervisor-table-wrap"><table className="supervisor-table"><thead><tr><th>Student Intern</th><th>Course</th><th>Company</th><th>Progress</th><th>Status</th><th>Action</th></tr></thead><tbody>{loading ? <tr><td colSpan="6">Loading assigned students...</td></tr> : filteredStudents.map((student) => { const name = student.name || `${student.firstName || ""} ${student.lastName || ""}`.trim(); const required = Number(student.requiredHours || student.totalRequiredHours || student.ojtRequiredHours || 0); const hours = Number(student.completedHours || student.ojtHours || student.hoursCompleted || 0); const progress = required > 0 ? Math.min(100, Math.round((hours / required) * 100)) : 0; return <tr key={student.id}><td><strong>{name || "Unnamed student"}</strong><br /><span>{student.studentId || student.id}</span></td><td><DepartmentBadge value={student.course || student.program || student.department} /></td><td>{student.company || "—"}</td><td><strong>{progress}%</strong><br /><span>{formatHoursMinutes(hours)}</span></td><td><Status value={student.deploymentStatus} /></td><td><button type="button" className="supervisor-action secondary" title="Student details" aria-label={`Student ${name || student.id}`}><Eye size={14} /></button></td></tr>; })}</tbody></table>{!loading && filteredStudents.length === 0 && <p className="supervisor-empty">No assigned student interns match your search.</p>}</div></section></div>;
 }
 
 export default Trainess;

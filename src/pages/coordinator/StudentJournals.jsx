@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
+  BookOpen,
+  Search,
+} from "lucide-react";
+import {
   collection,
   onSnapshot,
   query,
   where,
 } from "firebase/firestore";
-import { BookOpen, Search, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
@@ -63,18 +67,18 @@ function formatDate(value) {
 function StudentJournals() {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
-  const [journals, setJournals] = useState([]);
   const [studentsLoadedUid, setStudentsLoadedUid] = useState("");
   const [studentLoadError, setStudentLoadError] = useState(null);
-  const [loadedJournalKey, setLoadedJournalKey] = useState("");
+  const [journalCountData, setJournalCountData] = useState(null);
+  const [loadedCountKey, setLoadedCountKey] = useState("");
+  const [countLoadError, setCountLoadError] = useState(null);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [journalData, setJournalData] = useState(null);
   const [journalLoadError, setJournalLoadError] = useState(null);
   const [search, setSearch] = useState("");
-  const [selectedJournal, setSelectedJournal] = useState(null);
 
   useEffect(() => {
-    if (user?.role !== "coordinator" || !user.uid) {
-      return undefined;
-    }
+    if (user?.role !== "coordinator" || !user.uid) return undefined;
 
     return onSnapshot(
       query(
@@ -82,11 +86,10 @@ function StudentJournals() {
         where("coordinatorUid", "==", user.uid),
       ),
       (snapshot) => {
-        setStudents(
-          withoutArchived(
-            snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-          ),
+        const assignedStudents = withoutArchived(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
         );
+        setStudents(assignedStudents);
         setStudentsLoadedUid(user.uid);
         setStudentLoadError(null);
       },
@@ -95,34 +98,32 @@ function StudentJournals() {
         setStudentsLoadedUid(user.uid);
         setStudentLoadError({
           uid: user.uid,
-          message:
-            "Assigned students could not be loaded. Check Firestore permissions.",
+          message: "Assigned students could not be loaded. Check Firestore permissions.",
         });
       },
     );
   }, [user?.role, user?.uid]);
 
-  const studentUids = useMemo(
-    () =>
-      [...new Set(students.map((student) => student.studentUid).filter(Boolean))]
-        .sort(),
-    [students],
-  );
-  const studentUidKey = studentUids.join("|");
   const studentsLoading =
     Boolean(user?.uid) &&
     studentsLoadedUid !== user.uid &&
     studentLoadError?.uid !== user.uid;
   const studentsError =
-    studentLoadError?.uid === user?.uid
+    studentLoadError && studentLoadError.uid === user?.uid
       ? studentLoadError.message
       : user?.role !== "coordinator"
         ? "A coordinator account is required to view student journals."
         : "";
 
+  const studentUids = useMemo(
+    () => [...new Set(students.map((student) => student.studentUid).filter(Boolean))].sort(),
+    [students],
+  );
+  const studentUidKey = studentUids.join("|");
+  const studentQueryKey = `${user?.uid || ""}:${studentUidKey}`;
+
   useEffect(() => {
-    if (studentsLoading) return undefined;
-    if (studentsError || !studentUidKey) return undefined;
+    if (studentsLoading || studentsError || !studentUidKey) return undefined;
 
     const uids = studentUidKey.split("|");
     const uidChunks = [];
@@ -132,257 +133,287 @@ function StudentJournals() {
 
     let active = true;
     const loadedChunks = new Set();
-    const snapshotsByChunk = new Map();
-    const unsubscribers = [];
-
-    uidChunks.forEach((uids, chunkIndex) => {
-      const unsubscribe = onSnapshot(
-        query(
-          collection(db, "journals"),
-          where("studentUid", "in", uids),
-        ),
+    const countsByChunk = new Map();
+    const unsubscribers = uidChunks.map((uids, chunkIndex) =>
+      onSnapshot(
+        query(collection(db, "journals"), where("studentUid", "in", uids)),
         (snapshot) => {
           if (!active) return;
-          snapshotsByChunk.set(
-            chunkIndex,
-            snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-          );
+          const counts = {};
+          snapshot.docs.forEach((entry) => {
+            const journal = entry.data();
+            if (uids.includes(journal.studentUid)) {
+              counts[journal.studentUid] = (counts[journal.studentUid] || 0) + 1;
+            }
+          });
+          countsByChunk.set(chunkIndex, counts);
           loadedChunks.add(chunkIndex);
-          setJournals(
-            [...snapshotsByChunk.values()]
-              .flat()
-              .sort((left, right) =>
-                dateValue(right.date).localeCompare(dateValue(left.date)),
-              ),
-          );
+          setJournalCountData((previous) => ({
+            key: studentQueryKey,
+            counts: Object.assign(
+              {},
+              previous?.key === studentQueryKey ? previous.counts : {},
+              ...countsByChunk.values(),
+            ),
+          }));
           if (loadedChunks.size === uidChunks.length) {
-            setLoadedJournalKey(studentUidKey);
-            setJournalLoadError(null);
+            setLoadedCountKey(studentQueryKey);
+            setCountLoadError(null);
           }
         },
         (error) => {
           if (!active) return;
-          console.error("Unable to load coordinator student journals:", error);
-          setJournalLoadError({
-            key: studentUidKey,
+          console.error("Unable to load assigned student journal counts:", error);
+          setCountLoadError({
+            key: studentQueryKey,
             message:
               error.code === "permission-denied"
-                ? "Firestore denied access to these journals. Verify the deployed coordinator journal-read rules."
-                : "Student journal entries could not be loaded. Please try again.",
+                ? "Firestore denied access to assigned student journals. Check the coordinator journal-read rules."
+                : "Journal counts could not be loaded. Please try again.",
           });
         },
-      );
-      unsubscribers.push(unsubscribe);
-    });
+      ),
+    );
 
     return () => {
       active = false;
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [studentUidKey, studentsError, studentsLoading]);
+  }, [studentQueryKey, studentUidKey, studentsError, studentsLoading]);
 
-  const journalsError =
-    journalLoadError?.key === studentUidKey
-      ? journalLoadError.message
-      : "";
-  const journalsLoading =
-    Boolean(studentUidKey) &&
-    loadedJournalKey !== studentUidKey &&
-    !journalsError &&
-    !studentsError;
-  const isLoading = studentsLoading || journalsLoading;
-
-  const studentByUid = useMemo(
-    () => new Map(students.map((student) => [student.studentUid, student])),
-    [students],
+  const selectedStudent = students.find(
+    (student) => student.id === selectedStudentId,
   );
 
-  const visibleJournals = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return journals
-      .map((journal) => ({
-        ...journal,
-        student: studentByUid.get(journal.studentUid) || {},
-      }))
-      .filter((journal) => studentByUid.has(journal.studentUid))
-      .filter((journal) => {
-        if (!term) return true;
-        const student = journal.student;
-        return [
-          studentName(student),
-          studentId(student),
-          student.course,
-          student.department,
-          journal.date,
-          journal.taskPerformed,
-          journal.skillsLearned,
-          journal.problemsEncountered,
-          journal.reflection,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(term);
-      });
-  }, [journals, search, studentByUid]);
-
   useEffect(() => {
-    if (!selectedJournal) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") setSelectedJournal(null);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [selectedJournal]);
+    const studentUid = selectedStudent?.studentUid;
+    if (!studentUid || !studentUids.includes(studentUid)) return undefined;
+
+    return onSnapshot(
+      query(
+        collection(db, "journals"),
+        where("studentUid", "==", studentUid),
+      ),
+      (snapshot) => {
+        setJournalData({
+          uid: studentUid,
+          entries: snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .filter((journal) => journal.studentUid === studentUid)
+            .sort((left, right) =>
+              dateValue(right.date).localeCompare(dateValue(left.date)),
+            ),
+        });
+        setJournalLoadError(null);
+      },
+      (error) => {
+        console.error("Unable to load selected student journals:", error);
+        setJournalLoadError({
+          uid: studentUid,
+          message:
+            error.code === "permission-denied"
+              ? "Firestore denied access to this student's journals. Check the coordinator journal-read rules."
+              : "This student's journal entries could not be loaded. Please try again.",
+        });
+      },
+    );
+  }, [selectedStudent?.studentUid, studentUids]);
+
+  const visibleStudents = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return students
+      .filter((student) =>
+        !term ||
+        `${studentName(student)} ${studentId(student)}`
+          .toLowerCase()
+          .includes(term),
+      )
+      .sort((left, right) => studentName(left).localeCompare(studentName(right)));
+  }, [search, students]);
+
+  const isLoadingStudents = studentsLoading || (
+    Boolean(studentUidKey) && loadedCountKey !== studentQueryKey &&
+    countLoadError?.key !== studentQueryKey
+  );
+  const selectedJournals =
+    journalData && journalData.uid === selectedStudent?.studentUid
+      ? journalData.entries
+      : [];
+  const journalsLoading =
+    Boolean(selectedStudent?.studentUid) &&
+    journalData?.uid !== selectedStudent.studentUid &&
+    journalLoadError?.uid !== selectedStudent.studentUid;
+  const selectedJournalError =
+    journalLoadError && journalLoadError.uid === selectedStudent?.studentUid
+      ? journalLoadError.message
+      : "";
+  const countError =
+    countLoadError?.key === studentQueryKey ? countLoadError.message : "";
+  const journalCounts =
+    journalCountData?.key === studentQueryKey ? journalCountData.counts : {};
 
   return (
     <main className="supervisor-page space-y-6 coordinator-journals-page">
       <PageHeader
         eyebrow="Coordinator workspace · Student journals"
-        title="Student Journals"
-        description="Review journal entries submitted by students assigned to your department."
+        title={selectedStudent ? `${studentName(selectedStudent)} · Journals` : "Student Journals"}
+        description={
+          selectedStudent
+            ? "Review this student's submitted journal entries."
+            : "Find a student assigned to you and review their submitted journals."
+        }
       />
 
       <section className="supervisor-panel supervisor-table-panel">
-        <div className="supervisor-toolbar">
-          <label className="coordinator-journals-search">
-            <Search size={16} aria-hidden="true" />
-            <span className="sr-only">Search student journals</span>
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search student, ID, or journal content"
-            />
-          </label>
-        </div>
-
-        {isLoading ? (
-          <p className="coordinator-journals-state" role="status">
-            Loading student journals…
-          </p>
-        ) : studentsError || journalsError ? (
-          <p className="coordinator-journals-error" role="alert">
-            {studentsError || journalsError}
-          </p>
-        ) : visibleJournals.length === 0 ? (
-          <div className="coordinator-journals-empty">
-            <span><BookOpen size={22} aria-hidden="true" /></span>
-            <h2>{search ? "No journal entries match your search" : "No journal entries yet"}</h2>
-            <p>
-              {search
-                ? "Try another student name, ID, or keyword."
-                : "Journal entries from your assigned students will appear here."}
-            </p>
-          </div>
-        ) : (
-          <div className="supervisor-table-wrap">
-            <table className="supervisor-table coordinator-journals-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Student</th>
-                  <th>Department / Course</th>
-                  <th>Task Performed</th>
-                  <th>Skills Learned</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleJournals.map((journal) => (
-                  <tr key={journal.id}>
-                    <td>{formatDate(journal.date)}</td>
-                    <td>
-                      <strong>{studentName(journal.student)}</strong>
-                      <small>{studentId(journal.student) || "ID not available"}</small>
-                    </td>
-                    <td>
-                      <DepartmentBadge
-                        value={journal.student.department || journal.student.course}
-                      />
-                    </td>
-                    <td className="coordinator-journals-preview">
-                      {journal.taskPerformed || "—"}
-                    </td>
-                    <td className="coordinator-journals-preview">
-                      {journal.skillsLearned || "—"}
-                    </td>
-                    <td>
-                      <button
-                        className="coordinator-journals-view"
-                        type="button"
-                        onClick={() => setSelectedJournal(journal)}
-                        aria-label={`View journal entry by ${studentName(journal.student)} from ${formatDate(journal.date)}`}
-                      >
-                        View entry
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {!isLoading && !studentsError && !journalsError && (
-          <footer className="coordinator-journals-footer">
-            Showing {visibleJournals.length} of {journals.length} journal{" "}
-            {journals.length === 1 ? "entry" : "entries"}
-          </footer>
-        )}
-      </section>
-
-      {selectedJournal && (
-        <div
-          className="coordinator-journal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedJournal(null);
-          }}
-        >
-          <section
-            className="coordinator-journal-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="coordinator-journal-title"
-          >
-            <header>
-              <div>
-                <p>Student journal · {formatDate(selectedJournal.date)}</p>
-                <h2 id="coordinator-journal-title">
-                  {studentName(selectedJournal.student)}
-                </h2>
-                <span>
-                  {studentId(selectedJournal.student) || "ID not available"}
-                  {" · "}
-                  <DepartmentBadge
-                    value={selectedJournal.student.course ||
-                      selectedJournal.student.department ||
-                      "Course not available"}
-                  />
-                </span>
-              </div>
+        {selectedStudent ? (
+          <>
+            <div className="coordinator-journals-detail-toolbar">
               <button
                 type="button"
-                onClick={() => setSelectedJournal(null)}
-                aria-label="Close journal entry"
+                className="coordinator-journals-back"
+                onClick={() => setSelectedStudentId("")}
               >
-                <X size={19} />
+                <ArrowLeft size={16} aria-hidden="true" />
+                Back to Student List
               </button>
-            </header>
-            <div className="coordinator-journal-content">
-              <JournalDetail label="Task Performed" value={selectedJournal.taskPerformed} />
-              <JournalDetail label="Skills Learned" value={selectedJournal.skillsLearned} />
-              <JournalDetail label="Problems Encountered" value={selectedJournal.problemsEncountered} />
-              <JournalDetail label="Reflection" value={selectedJournal.reflection} />
+              <div className="coordinator-journals-student-meta">
+                <span className="coordinator-journals-meta-item">
+                  <small>Student ID</small>
+                  <strong>{studentId(selectedStudent) || "Not available"}</strong>
+                </span>
+                <span className="coordinator-journals-meta-item coordinator-journals-department">
+                  <small>Department / Course</small>
+                  <DepartmentBadge
+                    value={selectedStudent.department || selectedStudent.course || "Course not available"}
+                  />
+                </span>
+                <span className="coordinator-journals-meta-item">
+                  <small>Company</small>
+                  <strong>{selectedStudent.company || selectedStudent.companyName || "Not assigned"}</strong>
+                </span>
+                <span className="coordinator-journals-entry-count">
+                  <BookOpen size={15} aria-hidden="true" />
+                  {selectedJournals.length} {selectedJournals.length === 1 ? "entry" : "entries"}
+                </span>
+              </div>
             </div>
-          </section>
-        </div>
-      )}
+
+            {studentsError || selectedJournalError ? (
+              <p className="coordinator-journals-error" role="alert">
+                {studentsError || selectedJournalError}
+              </p>
+            ) : journalsLoading ? (
+              <p className="coordinator-journals-state" role="status">
+                Loading journal entries…
+              </p>
+            ) : selectedJournals.length === 0 ? (
+              <div className="coordinator-journals-empty">
+                <span><BookOpen size={22} aria-hidden="true" /></span>
+                <h2>No journal entries yet</h2>
+                <p>Submitted journals for this student will appear here.</p>
+              </div>
+            ) : (
+              <div className="coordinator-journal-list">
+                {selectedJournals.map((journal, index) => (
+                  <article className="coordinator-journal-entry" key={journal.id}>
+                    <header>
+                      <p>Journal entry <span>{String(index + 1).padStart(2, "0")}</span></p>
+                      <time>{formatDate(journal.date)}</time>
+                    </header>
+                    <div className="coordinator-journal-details">
+                      <JournalDetail label="Task Performed" value={journal.taskPerformed} />
+                      <JournalDetail label="Skills Learned" value={journal.skillsLearned} />
+                      <JournalDetail label="Problems Encountered" value={journal.problemsEncountered} />
+                      <JournalDetail label="Reflection" value={journal.reflection} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="supervisor-toolbar">
+              <label className="coordinator-journals-search">
+                <Search size={16} aria-hidden="true" />
+                <span className="sr-only">Search students by name or student ID</span>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search by student name or ID"
+                />
+              </label>
+            </div>
+
+            {studentsLoading || isLoadingStudents ? (
+              <p className="coordinator-journals-state" role="status">
+                Loading assigned students…
+              </p>
+            ) : studentsError || countError ? (
+              <p className="coordinator-journals-error" role="alert">
+                {studentsError || countError}
+              </p>
+            ) : visibleStudents.length === 0 ? (
+              <div className="coordinator-journals-empty">
+                <span><BookOpen size={22} aria-hidden="true" /></span>
+                <h2>{search ? "No students match your search" : "No assigned students found"}</h2>
+                <p>
+                  {search
+                    ? "Try another student name or ID."
+                    : "Students assigned to you will appear here."}
+                </p>
+              </div>
+            ) : (
+              <div className="supervisor-table-wrap">
+                <table className="supervisor-table coordinator-journals-students-table">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Student ID</th>
+                      <th>Department / Course</th>
+                      <th>Company Assigned</th>
+                      <th>Journal Entries</th>
+                      <th><span className="sr-only">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleStudents.map((student) => (
+                      <tr key={student.id}>
+                        <td><strong>{studentName(student)}</strong></td>
+                        <td>{studentId(student) || "—"}</td>
+                        <td>
+                          <DepartmentBadge
+                            value={student.department || student.course || "Not specified"}
+                          />
+                        </td>
+                        <td>{student.company || student.companyName || "Not assigned"}</td>
+                        <td>{journalCounts[student.studentUid] || 0}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="coordinator-journals-view"
+                            onClick={() => setSelectedStudentId(student.id)}
+                            aria-label={`View journals for ${studentName(student)}`}
+                          >
+                            View Journals
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!studentsLoading && !isLoadingStudents && !studentsError && !countError && (
+              <footer className="coordinator-journals-footer">
+                Showing {visibleStudents.length} of {students.length} assigned students
+              </footer>
+            )}
+          </>
+        )}
+      </section>
     </main>
   );
 }

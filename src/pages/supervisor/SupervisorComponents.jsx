@@ -24,6 +24,10 @@ export function SearchBox({ value, onChange, placeholder = "Search records..." }
 
 export function Status({ value }) {
   const normalized = value.toLowerCase();
-  const tone = normalized.includes("pending") || normalized.includes("late") ? "pending" : normalized.includes("absent") || normalized.includes("attention") ? "warning" : "";
+  const tone = normalized.includes("pending") || normalized.includes("late")
+    ? "pending"
+    : normalized.includes("not deployed") || normalized.includes("absent") || normalized.includes("attention")
+      ? "warning"
+      : "";
   return <span className={`supervisor-status ${tone}`}>{value}</span>;
 }

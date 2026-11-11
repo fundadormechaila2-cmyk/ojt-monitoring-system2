@@ -11,9 +11,11 @@
 .department-badge {
   display: inline-flex;
   align-items: center;
-  max-width: 100%;
+  width: fit-content;
+  min-width: 150px;
+  max-width: 220px;
   box-sizing: border-box;
-  padding: 4px 9px;
+  padding: 6px 10px;
   border: 1px solid var(--department-border, #d8dee8);
   border-radius: 5px;
   background: var(--department-bg, #f1f3f6);
@@ -21,7 +23,8 @@
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .department-badge[data-department="BSIT"] {

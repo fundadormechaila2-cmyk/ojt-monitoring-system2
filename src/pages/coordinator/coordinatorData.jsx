@@ -3,6 +3,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
+import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
 import { useAuth } from "../../context/useAuth";
 import { majorIdFor } from "../../constants/departments";
 import "../../styles/coordinator-module.css";
@@ -121,15 +122,7 @@ export function normalizedStudents(students, attendance) {
   return students.map((student) => {
     const completed = Math.round(hoursForStudent(student, attendance) * 100) / 100;
     const required = requiredHours(student);
-    const rawStatus = String(
-      valueOf(student, ["ojtStatus", "status", "placementStatus"], ""),
-    ).toLowerCase();
-    const status =
-      rawStatus.includes("complete") || completed >= required
-        ? "COMPLETED"
-        : rawStatus.includes("pending") || rawStatus.includes("not started")
-          ? "PROCESSING"
-          : "DEPLOYED";
+    const status = getStudentDeploymentStatus(student, completed, required);
     const course = valueOf(
       student,
       ["course", "program", "courseProgram"],
@@ -143,7 +136,7 @@ export function normalizedStudents(students, attendance) {
       major: student.major || majorIdFor(course),
       company: valueOf(
         student,
-        ["company", "partnerCompany", "companyName"],
+        ["company", "partnerCompany", "companyName", "partnerCompanyName"],
         "Not assigned",
       ),
       completed,

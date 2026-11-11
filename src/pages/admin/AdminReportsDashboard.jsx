@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../../services/firebase";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
+import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/coordinatordashboard.css";
 
@@ -29,7 +30,13 @@ const sources = [
   "evaluations",
   "users",
 ];
-const statuses = ["All statuses", "Ongoing", "Completed", "Pending"];
+const statuses = [
+  "All statuses",
+  "NOT DEPLOYED",
+  "PENDING",
+  "DEPLOYED",
+  "COMPLETED",
+];
 
 function valueOf(record, keys, fallback = "") {
   return (
@@ -84,15 +91,7 @@ function normalizeStudent(record, attendance) {
       500,
     ),
   );
-  const rawStatus = String(
-    valueOf(record, ["ojtStatus", "status", "placementStatus"], ""),
-  ).toLowerCase();
-  const status =
-    rawStatus.includes("complete") || (required > 0 && hours >= required)
-      ? "Completed"
-      : rawStatus.includes("pending") || rawStatus.includes("not started")
-        ? "Pending"
-        : "Ongoing";
+  const status = getStudentDeploymentStatus(record, hours, required);
 
   return {
     id: record.id,
@@ -372,7 +371,7 @@ function AdminReportsDashboard() {
             <div>
               <strong>
                 {
-                  students.filter((student) => student.status === "Ongoing")
+                  students.filter((student) => student.status === "DEPLOYED")
                     .length
                 }
               </strong>
@@ -381,7 +380,7 @@ function AdminReportsDashboard() {
             <div>
               <strong>
                 {
-                  students.filter((student) => student.status === "Completed")
+                  students.filter((student) => student.status === "COMPLETED")
                     .length
                 }
               </strong>
@@ -505,7 +504,7 @@ function AdminReportsDashboard() {
                   <td>{student.startDate || "—"}</td>
                   <td>
                     <span
-                      className={`admin-reports-status ${student.status.toLowerCase()}`}
+                      className={`admin-reports-status ${student.status.toLowerCase().replace(/\s+/g, "-")}`}
                     >
                       {student.status}
                     </span>

@@ -21,6 +21,7 @@ import {
   summarizeAttendance,
 } from "../services/manualAttendanceService";
 import { isAccountLive } from "../services/recordState";
+import { getStudentDeploymentStatus } from "../services/studentDeploymentStatus";
 import { useAuth } from "../context/useAuth";
 import "../styles/admin-dashboard.css";
 
@@ -100,50 +101,6 @@ function requiredHours(student) {
   return Number.isFinite(hours) && hours > 0 ? hours : null;
 }
 
-function getOjtStatus(student, hours, required) {
-  const statuses = [
-    student.ojtStatus,
-    student.deploymentStatus,
-    student.placementStatus,
-    student.status,
-  ]
-    .filter((status) => status !== undefined && status !== null)
-    .map(normalizedText);
-  const isCompleted = (status) =>
-    status.includes("complete") &&
-    !status.includes("incomplete") &&
-    !status.includes("not complete");
-
-  if (statuses.some(isCompleted) || (required && hours >= required)) {
-    return "Completed";
-  }
-  if (
-    statuses.some(
-      (status) =>
-        status.includes("deployed") ||
-        status.includes("ongoing") ||
-        status.includes("in progress") ||
-        status.includes("on ojt") ||
-        status === "active",
-    ) ||
-    Boolean(valueOf(student, ["company", "partnerCompany", "companyName"], "")) ||
-    Boolean(student.supervisorUid)
-  ) {
-    return "Ongoing";
-  }
-  return "Pending";
-}
-
-function hasCompanyAssignment(student) {
-  const company = normalizedText(
-    valueOf(student, ["company", "partnerCompany", "companyName"], ""),
-  );
-  return Boolean(
-    company &&
-      !["not assigned", "unassigned", "none", "n/a"].includes(company),
-  ) || Boolean(student.partnerCompanyId);
-}
-
 function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -212,20 +169,20 @@ function Dashboard() {
           ...student,
           hours,
           required,
-          status: getOjtStatus(student, hours, required),
+          status: getStudentDeploymentStatus(student, hours, required),
         };
       }),
     [data.attendance, data.students],
   );
 
   const completedStudents = students.filter(
-    (student) => student.status === "Completed",
+    (student) => student.status === "COMPLETED",
   );
   const ongoingStudents = students.filter(
-    (student) => student.status === "Ongoing",
+    (student) => student.status === "DEPLOYED",
   );
   const notAssignedStudents = students.filter(
-    (student) => !hasCompanyAssignment(student),
+    (student) => student.status === "NOT DEPLOYED",
   );
   const loading = collectionNames.some((name) => !ready[name]);
   const hasSourceErrors = Object.keys(sourceErrors).length > 0;

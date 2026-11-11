@@ -12,6 +12,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import {
   formatHoursMinutes,
@@ -111,6 +112,11 @@ function StudentsDashboard() {
     user?.email || "Student";
   const requiredHours = Number(studentProfile.requiredHours || studentProfile.totalRequiredHours || 0);
   const completedHours = attendanceRecords.reduce((total, record) => total + validHours(record), 0);
+  const deploymentStatus = getStudentDeploymentStatus(
+    studentProfile,
+    completedHours,
+    requiredHours,
+  );
   const presentDays = attendanceRecords.filter(
     (record) => summarizeAttendance(getRecordPeriods(record)).status === "Present",
   ).length;
@@ -129,12 +135,12 @@ function StudentsDashboard() {
 
   const summaryStats = useMemo(
     () => [
-      { label: "OJT Status", value: studentProfile.ojtStatus || studentProfile.status || "Not started", trend: "neutral" },
+      { label: "OJT Status", value: deploymentStatus, trend: "neutral" },
       { label: "Completed Hours", value: formatHoursMinutes(completedHours), trend: "positive" },
       { label: "Attendance", value: `${presentDays} days`, trend: "neutral" },
       { label: "Remaining", value: formatHoursMinutes(remainingHours), trend: "neutral" },
     ],
-    [completedHours, presentDays, remainingHours, studentProfile.ojtStatus, studentProfile.status]
+    [completedHours, deploymentStatus, presentDays, remainingHours]
   );
 
   const handleTimeIn = () => {
@@ -190,7 +196,7 @@ function StudentsDashboard() {
           <div className="student-avatar">{name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
           <div>
             <div className="student-pills" style={{ marginBottom: "8px" }}>
-              <span className="status-badge active">{studentProfile.ojtStatus || studentProfile.status || "OJT"}</span>
+              <span className="status-badge active">{deploymentStatus}</span>
             </div>
             <h2>{name}</h2>
             <p>{studentProfile.studentId || "Student ID unavailable"} • <DepartmentBadge value={studentProfile.course || studentProfile.program || studentProfile.department || "Program unavailable"} /></p>

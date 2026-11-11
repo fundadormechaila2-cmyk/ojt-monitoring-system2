@@ -282,7 +282,8 @@
 }
 
 .student-status.deployed { color: #2868c7; background: #e8f0ff; }
-.student-status.processing { color: #b4771b; background: #fff2d8; }
+.student-status.pending { color: #b4771b; background: #fff2d8; }
+.student-status.not-deployed { color: #64748b; background: #eef1f5; }
 .student-status.completed { color: #16866f; background: #e2f6ef; }
 .student-account { color: #9b6d19; background: #fff4dc; }
 .student-account.linked { color: #16866f; background: #e2f6ef; }

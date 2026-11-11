@@ -56,8 +56,12 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user }}>
-      {!loading && children}
+      {loading ? (
+        <main className="auth-loading-screen" role="status" aria-live="polite">
+          <span className="auth-loading-spinner" aria-hidden="true" />
+          <p>Loading your workspace…</p>
+        </main>
+      ) : children}
     </AuthContext.Provider>
   );
 }
-

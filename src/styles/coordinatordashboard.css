@@ -362,6 +362,9 @@
 
 .admin-reports-status.completed { background: #e2f6ef; color: #16866f; }
 .admin-reports-status.ongoing { background: #e8f0ff; color: #2868c7; }
+.admin-reports-status.deployed { background: #e8f0ff; color: #2868c7; }
+.admin-reports-status.pending { background: #fff3d9; color: #a46c12; }
+.admin-reports-status.not-deployed { background: #eef1f5; color: #64748b; }
 
 @keyframes coordinator-enter {
   from { opacity: 0; transform: translateY(7px); }

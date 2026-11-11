@@ -137,6 +137,7 @@ function accountForStudent(student, users) {
 function Students() {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
+  const [attendance, setAttendance] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sourceErrors, setSourceErrors] = useState({});
@@ -169,9 +170,11 @@ function Students() {
   const pageSize = 10;
 
   useEffect(() => {
-    const snapshots = { students: false, users: false };
+    const snapshots = { students: false, users: false, attendance: false };
     const updateLoading = () => {
-      if (snapshots.students && snapshots.users) setLoading(false);
+      if (snapshots.students && snapshots.users && snapshots.attendance) {
+        setLoading(false);
+      }
     };
     const unsubscribeStudents = onSnapshot(
       collection(db, "students"),
@@ -222,10 +225,35 @@ function Students() {
         updateLoading();
       },
     );
+    const unsubscribeAttendance = onSnapshot(
+      collection(db, "attendance"),
+      (snapshot) => {
+        setAttendance(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
+        snapshots.attendance = true;
+        setSourceErrors((current) => {
+          const next = { ...current };
+          delete next.attendance;
+          return next;
+        });
+        updateLoading();
+      },
+      (snapshotError) => {
+        console.error("Unable to load attendance for student status:", snapshotError);
+        snapshots.attendance = true;
+        setSourceErrors((current) => ({
+          ...current,
+          attendance: "Attendance records could not be loaded for student status.",
+        }));
+        updateLoading();
+      },
+    );
 
     return () => {
       unsubscribeStudents();
       unsubscribeUsers();
+      unsubscribeAttendance();
     };
   }, []);
 
@@ -247,7 +275,10 @@ function Students() {
     );
   }, []);
 
-  const records = useMemo(() => normalizedStudents(students, []), [students]);
+  const records = useMemo(
+    () => normalizedStudents(students, attendance),
+    [attendance, students],
+  );
   const courses = useMemo(
     () =>
       [...new Set([...COURSES, ...records.map((student) => student.course)])]
@@ -317,7 +348,7 @@ function Students() {
         result[student.status] = (result[student.status] || 0) + 1;
         return result;
       },
-      { DEPLOYED: 0, PROCESSING: 0, COMPLETED: 0 },
+      { "NOT DEPLOYED": 0, PENDING: 0, DEPLOYED: 0, COMPLETED: 0 },
     );
 
   const coordinators = useMemo(
@@ -1115,8 +1146,9 @@ function Students() {
               }
             >
               <option>All statuses</option>
+              <option>NOT DEPLOYED</option>
+              <option>PENDING</option>
               <option>DEPLOYED</option>
-              <option>PROCESSING</option>
               <option>COMPLETED</option>
               <option>No account</option>
               <option>Archived</option>
@@ -1139,7 +1171,7 @@ function Students() {
             <tbody>
               {visibleStudents.map((student, index) => {
                 const account = accountForStudent(student, users);
-                const statusClass = student.status.toLowerCase();
+                const statusClass = student.status.toLowerCase().replace(/\s+/g, "-");
                 return (
                   <tr key={student.id}>
                     <td>
