@@ -10,6 +10,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
+  Mail,
   Pencil,
   Plus,
   Search,
@@ -23,13 +24,16 @@ import {
   departmentLabel,
   recordDepartmentId,
 } from "../../constants/departments";
-import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
-import { createManagedUser } from "../../services/userManagementSevice";
+import {
+  createCoordinatorAccount,
+  resendCoordinatorSetupEmail,
+} from "../../services/coordinatorAccountService";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "./OJTCoordinators.css";
 
 const emptyForm = {
+  fullName: "",
   coordinatorId: "",
   firstName: "",
   lastName: "",
@@ -52,7 +56,6 @@ function coordinatorIdentifier(coordinator) {
 }
 
 function OJTCoordinators() {
-  const { user } = useAuth();
   const [coordinators, setCoordinators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -66,6 +69,7 @@ function OJTCoordinators() {
   const [addingCoordinator, setAddingCoordinator] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [resendingCoordinatorId, setResendingCoordinatorId] = useState("");
 
   useEffect(() => {
     return onSnapshot(
@@ -169,7 +173,6 @@ function OJTCoordinators() {
     }
 
     setSaving(true);
-    let managedUser;
     try {
       if (editingCoordinator) {
         await updateDoc(doc(db, "users", editingCoordinator.id), {
@@ -190,33 +193,48 @@ function OJTCoordinators() {
         return;
       }
 
-      managedUser = await createManagedUser({
-        firstName: form.firstName,
-        lastName: form.lastName,
+      const result = await createCoordinatorAccount({
+        fullName: form.fullName,
         email: form.email,
-        phone: form.phone,
-        role: "coordinator",
-        createdBy: user?.uid || null,
-        coordinatorId: form.coordinatorId.trim(),
-        department: form.department,
+        department: departmentId,
       });
 
       setAddingCoordinator(false);
       setForm(emptyForm);
-      setNotice(`Coordinator account created for ${form.firstName.trim()} ${form.lastName.trim()}.`);
-      window.setTimeout(() => setNotice(""), 5000);
-      window.alert(
-        `Coordinator account created.\n\nEmail: ${managedUser.email}\nTemporary password: ${managedUser.temporaryPassword}`,
-      );
+      if (result.emailStatus === "Sent") {
+        setNotice(
+          `Coordinator account created for ${form.fullName.trim()}. Password setup email sent to ${result.email}.`,
+        );
+        window.setTimeout(() => setNotice(""), 5000);
+      } else {
+        setError(
+          `The coordinator account was created, but the password setup email could not be sent to ${result.email}. Use the resend email button in the table to try again.`,
+        );
+      }
     } catch (createError) {
       console.error("Unable to create coordinator account:", createError);
-      setError(
-        managedUser
-          ? `The account exists, but the coordinator profile could not be fully saved. Temporary password: ${managedUser.temporaryPassword}. ${createError.message}`
-          : createError.message || "Unable to create coordinator account.",
-      );
+      setError(createError.message || "Unable to create coordinator account.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const resendSetupEmail = async (coordinator) => {
+    setResendingCoordinatorId(coordinator.id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await resendCoordinatorSetupEmail(coordinator.id);
+      if (result.emailStatus !== "Sent") {
+        throw new Error(`The password setup email could not be sent to ${result.email}.`);
+      }
+      setNotice(`Password setup email sent to ${result.email}.`);
+      window.setTimeout(() => setNotice(""), 5000);
+    } catch (resendError) {
+      console.error("Unable to resend coordinator password setup email:", resendError);
+      setError(resendError.message || "Unable to resend the password setup email.");
+    } finally {
+      setResendingCoordinatorId("");
     }
   };
 
@@ -342,8 +360,28 @@ function OJTCoordinators() {
                         {status === "ACTIVE" ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td>{coordinator.mustChangePassword ? "Password change required" : "Ready"}</td>
                     <td>
+                      {coordinator.mustChangePassword
+                        ? "Password change required"
+                        : coordinator.accountNotificationStatus === "Failed"
+                          ? "Setup email failed"
+                          : coordinator.accountNotificationStatus === "Pending"
+                            ? "Setup email pending"
+                            : coordinator.accountNotificationStatus === "Sent"
+                              ? "Setup email sent"
+                              : "Ready"}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="coordinators-icon-button"
+                        title="Resend password setup email"
+                        aria-label={`Resend password setup email to ${coordinatorName(coordinator)}`}
+                        disabled={resendingCoordinatorId === coordinator.id}
+                        onClick={() => resendSetupEmail(coordinator)}
+                      >
+                        <Mail size={16} />
+                      </button>
                       <button
                         type="button"
                         className="coordinators-icon-button"
@@ -406,7 +444,7 @@ function OJTCoordinators() {
                 <span>
                   {editingCoordinator
                     ? "Update the coordinator profile."
-                    : "Create the coordinator profile and login credentials."}
+                    : "Create a coordinator account and email the login credentials."}
                 </span>
               </div>
               <button
@@ -419,32 +457,51 @@ function OJTCoordinators() {
               </button>
             </header>
             <form className="coordinators-form" onSubmit={saveCoordinator}>
-              <label>
-                First name
-                <input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
-              </label>
-              <label>
-                Last name
-                <input required value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
-              </label>
+              {editingCoordinator ? (
+                <>
+                  <label>
+                    First name
+                    <input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} />
+                  </label>
+                  <label>
+                    Last name
+                    <input required value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} />
+                  </label>
+                </>
+              ) : (
+                <label>
+                  Full Name
+                  <input
+                    required
+                    maxLength={120}
+                    value={form.fullName}
+                    onChange={(event) => updateField("fullName", event.target.value)}
+                  />
+                </label>
+              )}
               <label>
                 Email address
                 <input
                   type="email"
                   required
+                  maxLength={254}
                   readOnly={Boolean(editingCoordinator)}
                   value={form.email}
                   onChange={(event) => updateField("email", event.target.value)}
                 />
               </label>
-              <label>
-                Coordinator ID
-                <input value={form.coordinatorId} onChange={(event) => updateField("coordinatorId", event.target.value)} />
-              </label>
-              <label>
-                Contact number
-                <input type="tel" value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />
-              </label>
+              {editingCoordinator && (
+                <>
+                  <label>
+                    Coordinator ID
+                    <input value={form.coordinatorId} onChange={(event) => updateField("coordinatorId", event.target.value)} />
+                  </label>
+                  <label>
+                    Contact number
+                    <input type="tel" value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />
+                  </label>
+                </>
+              )}
               <label>
                 Department
                 <select required value={form.department} onChange={(event) => updateField("department", event.target.value)}>
@@ -457,7 +514,7 @@ function OJTCoordinators() {
               <p className="coordinators-form-note">
                 {editingCoordinator
                   ? "Email address is the coordinator's login and cannot be changed here."
-                  : "A temporary password will be generated. The coordinator will be asked to change it after signing in."}
+                  : "A Firebase password setup link will be sent to this email. The coordinator will choose a password before their first login."}
               </p>
               <footer>
                 <button type="button" className="coordinators-secondary" disabled={saving} onClick={closeForm}>Cancel</button>

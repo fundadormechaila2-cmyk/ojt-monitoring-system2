@@ -37,10 +37,12 @@ export const generateTemporaryPassword = (length = 12) => {
   return password;
 };
 
-async function requireAdminSession(createdBy) {
+async function requireAdminSession(createdBy, accountType = "student") {
   const admin = auth.currentUser;
   if (!admin || admin.uid !== createdBy) {
-    throw new Error("Sign in as an administrator before creating student accounts.");
+    throw new Error(
+      `Sign in as an administrator before creating ${accountType} accounts.`,
+    );
   }
   const adminSnapshot = await getDoc(doc(db, "users", admin.uid));
   if (
@@ -48,8 +50,201 @@ async function requireAdminSession(createdBy) {
     adminSnapshot.data().role !== "admin" ||
     !isAccountLive(adminSnapshot.data())
   ) {
-    throw new Error("Only an active administrator can create student accounts.");
+    throw new Error(
+      `Only an active administrator can create ${accountType} accounts.`,
+    );
   }
+}
+
+async function writeCoordinatorNotificationStatus(uid, status) {
+  await updateDoc(doc(db, "users", uid), {
+    accountNotificationStatus: status,
+    accountNotificationUpdatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function createCoordinatorLoginAccount({
+  fullName,
+  email,
+  department,
+  createdBy,
+}) {
+  await requireAdminSession(createdBy, "coordinator");
+
+  const normalizedName = String(fullName || "").trim().replace(/\s+/g, " ");
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedDepartment = departmentFields(department);
+  if (!normalizedName || normalizedName.length > 120) {
+    throw new Error("Enter a full name of 1 to 120 characters.");
+  }
+  if (
+    !normalizedEmail ||
+    normalizedEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+  ) {
+    throw new Error("Enter a valid email address.");
+  }
+  if (!normalizedDepartment.departmentId) {
+    throw new Error("Select a valid coordinator department.");
+  }
+
+  const [firstName, ...lastNameParts] = normalizedName.split(" ");
+  const lastName = lastNameParts.join(" ");
+  const temporaryPassword = generateTemporaryPassword(20);
+  let firebaseUser;
+
+  try {
+    const credential = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      normalizedEmail,
+      temporaryPassword,
+    );
+    firebaseUser = credential.user;
+    await updateProfile(firebaseUser, { displayName: normalizedName });
+
+    const profile = {
+      uid: firebaseUser.uid,
+      coordinatorId: `COORD-${firebaseUser.uid}`,
+      firstName,
+      lastName,
+      fullName: normalizedName,
+      email: normalizedEmail,
+      ...normalizedDepartment,
+      role: "coordinator",
+      status: "ACTIVE",
+      accountStatus: "ACTIVE",
+      isActive: true,
+      isArchived: false,
+      mustChangePassword: false,
+      accountNotificationStatus: "Pending",
+      accountNotificationUpdatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      createdBy,
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(doc(db, "users", firebaseUser.uid), profile);
+
+    try {
+      await sendPasswordResetEmail(secondaryAuth, normalizedEmail);
+    } catch (emailError) {
+      console.error("Unable to send coordinator password setup email:", emailError);
+      try {
+        await writeCoordinatorNotificationStatus(firebaseUser.uid, "Failed");
+      } catch (statusError) {
+        console.error(
+          "Unable to save the failed coordinator setup email status:",
+          statusError,
+        );
+      }
+      return {
+        uid: firebaseUser.uid,
+        email: normalizedEmail,
+        role: "coordinator",
+        emailStatus: "Failed",
+      };
+    }
+
+    let notificationStatusSaved = true;
+    try {
+      await writeCoordinatorNotificationStatus(firebaseUser.uid, "Sent");
+    } catch (statusError) {
+      notificationStatusSaved = false;
+      console.error(
+        "Coordinator setup email was sent, but its status could not be saved:",
+        statusError,
+      );
+    }
+    return {
+      uid: firebaseUser.uid,
+      email: normalizedEmail,
+      role: "coordinator",
+      emailStatus: "Sent",
+      notificationStatusSaved,
+    };
+  } catch (error) {
+    if (firebaseUser) {
+      try {
+        await deleteUser(firebaseUser);
+      } catch (cleanupError) {
+        console.error(
+          "Unable to remove the unlinked coordinator Auth account:",
+          cleanupError,
+        );
+      }
+    }
+    if (error.code === "auth/email-already-in-use") {
+      throw new Error("This email address is already registered.", { cause: error });
+    }
+    if (error.code === "auth/invalid-email") {
+      throw new Error("Please enter a valid email address.", { cause: error });
+    }
+    if (
+      error.code === "permission-denied" ||
+      error.code === "firestore/permission-denied"
+    ) {
+      throw new Error(
+        "You do not have permission to create coordinator accounts. Sign in as an administrator and try again.",
+        { cause: error },
+      );
+    }
+    throw new Error(error.message || "Failed to create coordinator account.", {
+      cause: error,
+    });
+  } finally {
+    try {
+      await signOut(secondaryAuth);
+    } catch (signOutError) {
+      console.error(
+        "Unable to sign out the secondary coordinator account session:",
+        signOutError,
+      );
+    }
+  }
+}
+
+export async function resendCoordinatorSetupEmail(uid) {
+  if (!uid) throw new Error("A coordinator account is required.");
+  await requireAdminSession(auth.currentUser?.uid, "coordinator");
+
+  const profileRef = doc(db, "users", uid);
+  const profileSnapshot = await getDoc(profileRef);
+  if (!profileSnapshot.exists() || profileSnapshot.data().role !== "coordinator") {
+    throw new Error("The coordinator account could not be found.");
+  }
+  if (!isAccountLive(profileSnapshot.data())) {
+    throw new Error("This coordinator account is inactive or archived.");
+  }
+  const email = String(profileSnapshot.data().email || "").trim().toLowerCase();
+  if (!email) throw new Error("The coordinator account has no email address.");
+
+  await writeCoordinatorNotificationStatus(uid, "Pending");
+  try {
+    await sendPasswordResetEmail(secondaryAuth, email);
+  } catch (emailError) {
+    console.error("Unable to resend coordinator password setup email:", emailError);
+    try {
+      await writeCoordinatorNotificationStatus(uid, "Failed");
+    } catch (statusError) {
+      console.error(
+        "Unable to save the failed coordinator setup email status:",
+        statusError,
+      );
+    }
+    return { uid, email, emailStatus: "Failed" };
+  }
+
+  let notificationStatusSaved = true;
+  try {
+    await writeCoordinatorNotificationStatus(uid, "Sent");
+  } catch (statusError) {
+    notificationStatusSaved = false;
+    console.error(
+      "Coordinator setup email was sent, but its status could not be saved:",
+      statusError,
+    );
+  }
+  return { uid, email, emailStatus: "Sent", notificationStatusSaved };
 }
 
 async function writeStudentNotificationStatus(uid, studentRecordId, status) {

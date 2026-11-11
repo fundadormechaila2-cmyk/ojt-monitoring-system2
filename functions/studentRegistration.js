@@ -1,4 +1,3 @@
-const { randomInt } = require("node:crypto");
 const { getAuth } = require("firebase-admin/auth");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
@@ -7,6 +6,7 @@ const logger = require("firebase-functions/logger");
 const nodemailer = require("nodemailer");
 const { isAccountLive } = require("./accountState");
 const { departmentIdFor } = require("./departments");
+const { generateTemporaryPassword } = require("./temporaryPassword");
 
 const SMTP_HOST = defineSecret("SMTP_HOST");
 const SMTP_PORT = defineSecret("SMTP_PORT");
@@ -20,28 +20,6 @@ const notificationSecrets = [
   SMTP_PASSWORD,
   SMTP_FROM,
 ];
-
-const PASSWORD_CHARACTERS = {
-  upper: "ABCDEFGHJKLMNPQRSTUVWXYZ",
-  lower: "abcdefghijkmnopqrstuvwxyz",
-  number: "23456789",
-  special: "!@#$%&*",
-};
-
-function randomCharacter(characters) {
-  return characters[randomInt(characters.length)];
-}
-
-function generateTemporaryPassword() {
-  const characters = Object.values(PASSWORD_CHARACTERS).join("");
-  const password = Object.values(PASSWORD_CHARACTERS).map(randomCharacter);
-  while (password.length < 20) password.push(randomCharacter(characters));
-  for (let index = password.length - 1; index > 0; index -= 1) {
-    const swapIndex = randomInt(index + 1);
-    [password[index], password[swapIndex]] = [password[swapIndex], password[index]];
-  }
-  return password.join("");
-}
 
 function escapeHtml(value) {
   return String(value || "").replace(/[&<>"']/g, (character) => ({

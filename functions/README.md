@@ -25,6 +25,16 @@ remains in place for role checks and backwards compatibility with existing
 screens. Only active administrators can create student accounts. Coordinators
 can manage their assigned OJT records but cannot create student logins.
 
+## Coordinator account registration
+
+The OJT Coordinators page uses the secondary Firebase Authentication client
+to create coordinator accounts without signing the administrator out. It
+writes the `users/{uid}` profile under the existing administrator Firestore
+rules, then sends a Firebase Authentication password-setup email. Firebase
+generates the setup link; no temporary password is sent or saved. The page
+also provides an Admin-only action to resend the setup email. This process
+does not use Cloud Functions, SMTP secrets, or require billing.
+
 ## Student account registration and email
 
 The Admin Dashboard creates student Authentication accounts directly through
@@ -63,8 +73,7 @@ firebase functions:secrets:set ATTENDANCE_QR_SECRET
 ```
 
 Use a strong, randomly generated value of at least 32 bytes. Cloud Functions
-are only needed for the QR attendance features; assigning coordinators uses
-Firestore directly and does not require Cloud Functions or billing.
+are required for QR attendance.
 
 ```powershell
 firebase deploy --only firestore:rules --project ojt-monitoringsystem2
