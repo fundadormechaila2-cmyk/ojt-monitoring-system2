@@ -15,7 +15,7 @@
   box-sizing: border-box;
   padding: 4px 9px;
   border: 1px solid var(--department-border, #d8dee8);
-  border-radius: 999px;
+  border-radius: 5px;
   background: var(--department-bg, #f1f3f6);
   color: var(--department-ink, #4b5563);
   font-size: 11px;

@@ -11,7 +11,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardClock,
-  FileText,
   Settings,
   UserRoundCog,
   Users,
@@ -402,13 +401,6 @@ function Dashboard() {
             onClick={() => go("ojtcoordinators")}
           >
             <UserRoundCog size={16} /> Manage coordinators
-          </button>
-          <button
-            type="button"
-            className="dashboard-action"
-            onClick={() => go("reports-dashboard")}
-          >
-            <FileText size={16} /> View reports
           </button>
           <button
             type="button"
