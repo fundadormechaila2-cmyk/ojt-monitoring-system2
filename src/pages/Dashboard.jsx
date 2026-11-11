@@ -1,23 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowRight,
   ArrowUpRight,
   CalendarDays,
+  CheckCircle2,
   ClipboardClock,
   FileText,
   Settings,
-  UserRound,
   UserRoundCog,
   Users,
 } from "lucide-react";
 import { db } from "../services/firebase";
+import {
+  getRecordPeriods,
+  summarizeAttendance,
+} from "../services/manualAttendanceService";
 import { isAccountLive } from "../services/recordState";
 import { useAuth } from "../context/useAuth";
 import "../styles/admin-dashboard.css";
 
-const collectionNames = ["students", "users", "attendance"];
+const collectionNames = [
+  "students",
+  "users",
+  "attendance",
+];
 
 function valueOf(record, keys, fallback = "") {
   return (
@@ -28,25 +40,84 @@ function valueOf(record, keys, fallback = "") {
   );
 }
 
-function getOjtStatus(student) {
-  const ojtStatuses = [
+function normalizedText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function asNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function recordHours(record) {
+  const storedHours = asNumber(valueOf(record, ["totalHours", "hours"], 0));
+  if (storedHours) return storedHours;
+  return summarizeAttendance(getRecordPeriods(record)).totalHours;
+}
+
+function identityKeys(record, includeDocumentId = false) {
+  return [
+    record.studentUid,
+    record.userUid,
+    record.studentRecordId,
+    record.studentDocId,
+    record.studentId,
+    record.studentID,
+    record.idNumber,
+    record.email,
+    includeDocumentId ? record.id : null,
+  ]
+    .map(normalizedText)
+    .filter(Boolean);
+}
+
+function attendanceBelongsToStudent(record, student) {
+  const studentKeys = new Set(identityKeys(student, true));
+  return identityKeys(record).some((key) => studentKeys.has(key));
+}
+
+function studentHours(student, attendance) {
+  const storedHours = asNumber(
+    valueOf(
+      student,
+      ["completedHours", "ojtHours", "hoursCompleted", "hours"],
+      0,
+    ),
+  );
+  if (storedHours) return storedHours;
+
+  return attendance
+    .filter((record) => attendanceBelongsToStudent(record, student))
+    .reduce((total, record) => total + recordHours(record), 0);
+}
+
+function requiredHours(student) {
+  const value = valueOf(
+    student,
+    ["requiredHours", "totalRequiredHours", "ojtRequiredHours"],
+    null,
+  );
+  const hours = Number(value);
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+}
+
+function getOjtStatus(student, hours, required) {
+  const statuses = [
     student.ojtStatus,
     student.deploymentStatus,
     student.placementStatus,
+    student.status,
   ]
     .filter((status) => status !== undefined && status !== null)
-    .map((status) => String(status).trim().toLowerCase());
-  const statuses = ojtStatuses.length
-    ? ojtStatuses
-    : [student.status]
-        .filter((status) => status !== undefined && status !== null)
-        .map((status) => String(status).trim().toLowerCase());
+    .map(normalizedText);
   const isCompleted = (status) =>
     status.includes("complete") &&
     !status.includes("incomplete") &&
     !status.includes("not complete");
 
-  if (statuses.some(isCompleted)) return "Completed";
+  if (statuses.some(isCompleted) || (required && hours >= required)) {
+    return "Completed";
+  }
   if (
     statuses.some(
       (status) =>
@@ -55,11 +126,23 @@ function getOjtStatus(student) {
         status.includes("in progress") ||
         status.includes("on ojt") ||
         status === "active",
-    )
+    ) ||
+    Boolean(valueOf(student, ["company", "partnerCompany", "companyName"], "")) ||
+    Boolean(student.supervisorUid)
   ) {
     return "Ongoing";
   }
   return "Pending";
+}
+
+function hasCompanyAssignment(student) {
+  const company = normalizedText(
+    valueOf(student, ["company", "partnerCompany", "companyName"], ""),
+  );
+  return Boolean(
+    company &&
+      !["not assigned", "unassigned", "none", "n/a"].includes(company),
+  ) || Boolean(student.partnerCompanyId);
 }
 
 function Dashboard() {
@@ -78,10 +161,7 @@ function Dashboard() {
     const unsubscribers = collectionNames.map((name) => {
       const source =
         name === "users"
-          ? query(
-              collection(db, name),
-              where("role", "==", "coordinator"),
-            )
+          ? query(collection(db, name), where("role", "==", "coordinator"))
           : collection(db, name);
 
       return onSnapshot(
@@ -96,7 +176,7 @@ function Dashboard() {
                 ...document.data(),
               }))
               .filter((record) =>
-                name === "attendance" ? true : isAccountLive(record),
+                name === "attendance" ? record.isArchived !== true : isAccountLive(record),
               ),
           }));
           setReady((current) => ({ ...current, [name]: true }));
@@ -126,37 +206,49 @@ function Dashboard() {
 
   const students = useMemo(
     () =>
-      data.students.map((student) => ({
-        ...student,
-        status: getOjtStatus(student),
-      })),
-    [data.students],
+      data.students.map((student) => {
+        const hours = studentHours(student, data.attendance);
+        const required = requiredHours(student);
+        return {
+          ...student,
+          hours,
+          required,
+          status: getOjtStatus(student, hours, required),
+        };
+      }),
+    [data.attendance, data.students],
   );
 
-  const hasSourceErrors = Object.keys(sourceErrors).length > 0;
-  const coordinators = data.users;
   const completedStudents = students.filter(
     (student) => student.status === "Completed",
   );
   const ongoingStudents = students.filter(
     (student) => student.status === "Ongoing",
   );
-  const pendingStudents = students.filter(
-    (student) => student.status === "Pending",
+  const notAssignedStudents = students.filter(
+    (student) => !hasCompanyAssignment(student),
   );
-  const completedPercent = students.length
-    ? Math.round((completedStudents.length / students.length) * 100)
-    : 0;
-
-  const stats = [
-    ["Total Students", students.length, "All student records", Users, "blue", "students"],
-    ["OJT Coordinators", coordinators.length, "Coordinator profiles", UserRoundCog, "amber", "ojtcoordinators"],
-    ["Students Currently on OJT", ongoingStudents.length, "Ongoing placements", ClipboardClock, "blue", "students"],
-    ["Attendance", data.attendance.length, "Recorded attendance entries", CalendarDays, "teal", "attendance"],
-  ];
   const loading = collectionNames.some((name) => !ready[name]);
+  const hasSourceErrors = Object.keys(sourceErrors).length > 0;
   const go = (path) => navigate(`/admin/${path}`);
-  const attentionStudents = pendingStudents.slice(0, 5);
+  const coordinatorCount = data.users.length;
+  const studentCount = students.length;
+  const getUnavailableValue = (source, value) =>
+    sourceErrors[source] ||
+    (source === "ojtHours" &&
+      (sourceErrors.students || sourceErrors.attendance))
+      ? "—"
+      : value.toLocaleString();
+  const fullName = String(
+    valueOf(
+      user,
+      ["firstName", "displayName", "name", "fullName", "email"],
+      "Admin",
+    ),
+  ).trim();
+  const firstName = fullName.includes("@")
+    ? fullName.split("@")[0]
+    : fullName.split(/\s+/)[0] || "Admin";
 
   if (user?.role !== "admin") {
     return (
@@ -174,6 +266,45 @@ function Dashboard() {
     );
   }
 
+  const stats = [
+    [
+      "Total Students",
+      studentCount,
+      "All student records",
+      Users,
+      "blue",
+      "students",
+      "students",
+    ],
+    [
+      "Total OJT Coordinators",
+      coordinatorCount,
+      "Coordinator profiles",
+      UserRoundCog,
+      "amber",
+      "ojtcoordinators",
+      "users",
+    ],
+    [
+      "Students Currently on OJT",
+      ongoingStudents.length,
+      "Ongoing placements",
+      ClipboardClock,
+      "blue",
+      "students",
+      "students",
+    ],
+    [
+      "Completed OJT",
+      completedStudents.length,
+      "Completed placements",
+      CheckCircle2,
+      "teal",
+      "students",
+      "students",
+    ],
+  ];
+
   return (
     <div className="admin-dashboard">
       <section className="dashboard-intro dashboard-hero">
@@ -181,8 +312,7 @@ function Dashboard() {
           <p className="dashboard-eyebrow">LCCI • OJT monitoring system</p>
           <h1>Admin Dashboard</h1>
           <p className="dashboard-subtitle">
-            Welcome back, {user?.firstName || user?.email || "Admin"}. Here is
-            your live placement overview.
+            Welcome back, {firstName}! Here is your live placement overview.
           </p>
         </div>
       </section>
@@ -196,164 +326,59 @@ function Dashboard() {
             year: "numeric",
           })}
         </span>
-          <ArrowRight className="dashboard-date-arrow" size={18} aria-hidden="true" />
       </div>
 
       {hasSourceErrors && (
         <div className="dashboard-error" role="alert">
           Some dashboard data is unavailable ({Object.keys(sourceErrors).join(", ")}).
-          Check the connection or permissions. Available figures may be partial.
+          Check the connection or permissions. Unavailable figures are marked with
+          an em dash.
         </div>
       )}
 
       <section className="dashboard-stats" aria-label="OJT summary">
-        {stats.map(([label, value, detail, Icon, tone, path]) => {
-          const sourceName =
-            path === "ojtcoordinators"
-              ? "users"
-              : path === "attendance"
-                ? "attendance"
-                : "students";
-          const isUnavailable = Boolean(sourceErrors[sourceName]);
-
-          return (
-            <button
-              type="button"
-              className="dashboard-stat"
-              key={label}
-              onClick={() => go(path)}
-              aria-label={`${label}: ${isUnavailable ? "unavailable" : value}. Open ${path}`}
-            >
-              <div className={`stat-icon stat-icon-${tone}`}>
-                <Icon size={19} />
-              </div>
-              <div className="stat-copy">
-                <p>{label}</p>
-                <strong>{isUnavailable ? "—" : value.toLocaleString()}</strong>
-                <span>{detail}</span>
-              </div>
-              <ArrowUpRight className="stat-arrow" size={17} />
-            </button>
-          );
-        })}
-      </section>
-
-      <section className="dashboard-overview-grid" aria-label="Placement overview">
-        <article className="dashboard-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="panel-kicker">Student progress</p>
-              <h2>OJT placement overview</h2>
-            </div>
-            <ClipboardClock size={20} aria-hidden="true" />
-          </div>
-          {sourceErrors.students ? (
-            <p className="dashboard-panel-message">
-              Progress data is unavailable until student records load.
-            </p>
-          ) : (
-            <>
-              <div className="progress-layout">
-                <div
-                  className="progress-ring"
-                  style={{ "--progress": `${completedPercent}%` }}
-                  role="img"
-                  aria-label={`${completedPercent}% of students have completed OJT`}
-                >
-                  <div>
-                    <strong>{completedPercent}%</strong>
-                    <span>completed</span>
-                  </div>
-                </div>
-                <div className="progress-legend">
-                  <div>
-                    <span className="legend-dot legend-blue" />
-                    <p>Currently on OJT <strong>{ongoingStudents.length}</strong></p>
-                  </div>
-                  <div>
-                    <span className="legend-dot legend-teal" />
-                    <p>Completed <strong>{completedStudents.length}</strong></p>
-                  </div>
-                  <div>
-                    <span className="legend-dot legend-muted" />
-                    <p>Not yet deployed <strong>{pendingStudents.length}</strong></p>
-                  </div>
-                </div>
-              </div>
-              <p className="progress-footnote">
-                Based on {students.length.toLocaleString()} student
-                {students.length === 1 ? "" : "s"} with records.
-              </p>
-            </>
-          )}
-        </article>
-
-        <article className="dashboard-panel dashboard-attention-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="panel-kicker">Follow-up</p>
-              <h2>Students not yet deployed</h2>
-            </div>
-            <span className="attention-count">
-              {sourceErrors.students ? "—" : pendingStudents.length}
-            </span>
-          </div>
-          {sourceErrors.students ? (
-            <p className="dashboard-panel-message">
-              Student records could not be loaded.
-            </p>
-          ) : attentionStudents.length ? (
-            <div className="attention-list">
-              {attentionStudents.map((student) => {
-                const name = valueOf(
-                  student,
-                  ["name", "fullName", "studentName"],
-                  `${student.firstName || ""} ${student.lastName || ""}`.trim() ||
-                    "Unnamed student",
-                );
-                const identifier = valueOf(
-                  student,
-                  ["studentId", "studentID", "idNumber"],
-                  student.id,
-                );
-
-                return (
-                  <div className="attention-item" key={student.id}>
-                    <div className="attention-student">
-                      <span className="attention-avatar" aria-hidden="true">
-                        <UserRound size={16} />
-                      </span>
-                      <div>
-                        <strong title={name}>{name}</strong>
-                        <p title={identifier}>{identifier}</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => go("students")}
-                      aria-label={`View ${name} in student records`}
-                    >
-                      <ArrowRight size={16} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="dashboard-empty">
-              {students.length
-                ? "All students have an active or completed placement."
-                : "No student records yet."}
-            </p>
-          )}
+        {stats.map(([label, value, detail, Icon, tone, path, source]) => (
           <button
             type="button"
-            className="dashboard-panel-link"
-            onClick={() => go("students")}
+            className="dashboard-stat"
+            key={label}
+            onClick={() => go(path)}
+            aria-label={`${label}: ${sourceErrors[source] ? "unavailable" : value.toLocaleString()}. Open ${path}`}
           >
-            View all students <ArrowRight size={15} />
+            <div className={`stat-icon stat-icon-${tone}`}>
+              <Icon size={19} />
+            </div>
+            <div className="stat-copy">
+              <p>{label}</p>
+              <strong>{getUnavailableValue(source, value)}</strong>
+              <span>{detail}</span>
+            </div>
+            <ArrowUpRight className="stat-arrow" size={17} />
           </button>
-        </article>
+        ))}
+      </section>
+
+      <section className="dashboard-panel dashboard-student-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Student statistics</p>
+            <h2>Placement snapshot</h2>
+          </div>
+          <Users size={20} aria-hidden="true" />
+        </div>
+        <div className="student-statistics">
+          {[
+            ["Total Students", studentCount],
+            ["Active OJT Students", ongoingStudents.length],
+            ["Completed Students", completedStudents.length],
+            ["Students Not Yet Assigned", notAssignedStudents.length],
+          ].map(([label, value]) => (
+            <div className="student-statistic" key={label}>
+              <span>{label}</span>
+              <strong>{getUnavailableValue("students", value)}</strong>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="dashboard-panel dashboard-actions-panel">

@@ -220,6 +220,14 @@
   vertical-align: middle;
 }
 
+.coordinators-table .department-badge {
+  justify-content: flex-start;
+  padding: 5px 10px;
+  border-radius: 5px;
+  text-align: left;
+  overflow-wrap: normal;
+}
+
 .coordinators-table tbody tr:hover {
   background: #fbfdff;
 }

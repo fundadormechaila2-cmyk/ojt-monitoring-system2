@@ -1,17 +1,25 @@
 import {
   createUserWithEmailAndPassword,
   deleteUser,
+  sendPasswordResetEmail,
   updateProfile,
   signOut,
 } from "firebase/auth";
-import { httpsCallable } from "firebase/functions";
-
-import { doc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
 
 import { secondaryAuth } from "./secondatyAuth";
-import { db, functions } from "./firebase";
+import { auth, db } from "./firebase";
 import { studentAccountRef, syncStudentAccount } from "./studentAccountService";
 import { departmentFields, studentDepartmentFields } from "../constants/departments";
+import { isAccountLive } from "./recordState";
 
 // GENERATE TEMPORARY PASSWORD
 export const generateTemporaryPassword = (length = 12) => {
@@ -28,6 +36,209 @@ export const generateTemporaryPassword = (length = 12) => {
 
   return password;
 };
+
+async function requireAdminSession(createdBy) {
+  const admin = auth.currentUser;
+  if (!admin || admin.uid !== createdBy) {
+    throw new Error("Sign in as an administrator before creating student accounts.");
+  }
+  const adminSnapshot = await getDoc(doc(db, "users", admin.uid));
+  if (
+    !adminSnapshot.exists() ||
+    adminSnapshot.data().role !== "admin" ||
+    !isAccountLive(adminSnapshot.data())
+  ) {
+    throw new Error("Only an active administrator can create student accounts.");
+  }
+}
+
+async function writeStudentNotificationStatus(uid, studentRecordId, status) {
+  const changes = {
+    accountNotificationStatus: status,
+    accountNotificationUpdatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  const batch = writeBatch(db);
+  batch.set(doc(db, "users", uid), changes, { merge: true });
+  batch.set(studentAccountRef(uid), changes, { merge: true });
+  if (studentRecordId) {
+    batch.set(doc(db, "students", studentRecordId), changes, { merge: true });
+  }
+  await batch.commit();
+}
+
+async function createStudentLoginAccount({
+  firstName,
+  lastName,
+  email,
+  phone,
+  createdBy,
+  studentId,
+  studentRecordId,
+  course,
+  schoolYear,
+  company,
+  coordinatorUid,
+  coordinatorName,
+}) {
+  await requireAdminSession(createdBy);
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const temporaryPassword = generateTemporaryPassword(20);
+  let firebaseUser;
+  let profileSaved = false;
+
+  try {
+    const credential = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      normalizedEmail,
+      temporaryPassword,
+    );
+    firebaseUser = credential.user;
+
+    await updateProfile(firebaseUser, {
+      displayName: `${firstName.trim()} ${lastName.trim()}`,
+    });
+
+    const profile = {
+      uid: firebaseUser.uid,
+      email: normalizedEmail,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone?.trim() || "",
+      role: "student",
+      status: "ACTIVE",
+      isActive: true,
+      isArchived: false,
+      mustChangePassword: false,
+      ...(studentId ? { studentId } : {}),
+      ...(studentRecordId ? { studentRecordId } : {}),
+      ...(course ? { course, ...studentDepartmentFields(course) } : {}),
+      ...(schoolYear ? { schoolYear } : {}),
+      ...(company ? { company } : {}),
+      ...(coordinatorUid ? { coordinatorUid } : {}),
+      ...(coordinatorName ? { coordinatorName } : {}),
+      accountNotificationStatus: "Pending",
+      accountNotificationUpdatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      createdBy,
+      updatedAt: serverTimestamp(),
+    };
+    const userRef = doc(db, "users", firebaseUser.uid);
+    const studentProfileRef = studentAccountRef(firebaseUser.uid);
+
+    if (studentRecordId) {
+      const rosterRef = doc(db, "students", studentRecordId);
+      await runTransaction(db, async (transaction) => {
+        const rosterSnapshot = await transaction.get(rosterRef);
+        if (!rosterSnapshot.exists()) {
+          throw new Error("The student roster record no longer exists.");
+        }
+        const roster = rosterSnapshot.data();
+        if (roster.studentUid || roster.userUid || roster.accountUid) {
+          throw new Error("This student record is already linked to a login account.");
+        }
+
+        transaction.set(userRef, profile);
+        transaction.set(studentProfileRef, profile);
+        transaction.update(rosterRef, {
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          name: `${profile.firstName} ${profile.lastName}`,
+          email: normalizedEmail,
+          accountEmail: normalizedEmail,
+          studentUid: firebaseUser.uid,
+          accountNotificationStatus: "Pending",
+          accountNotificationUpdatedAt: serverTimestamp(),
+          ...(coordinatorUid ? { coordinatorUid } : {}),
+          ...(coordinatorName ? { coordinatorName } : {}),
+          updatedAt: serverTimestamp(),
+        });
+      });
+    } else {
+      const batch = writeBatch(db);
+      batch.set(userRef, profile);
+      batch.set(studentProfileRef, profile);
+      await batch.commit();
+    }
+    profileSaved = true;
+
+    try {
+      await sendPasswordResetEmail(secondaryAuth, normalizedEmail);
+    } catch (emailError) {
+      console.error("Unable to send student password setup email:", emailError);
+      try {
+        await writeStudentNotificationStatus(
+          firebaseUser.uid,
+          studentRecordId,
+          "Failed",
+        );
+      } catch (statusError) {
+        console.error("Unable to save the failed password setup email status:", statusError);
+      }
+      return {
+        uid: firebaseUser.uid,
+        email: normalizedEmail,
+        role: "student",
+        alreadyExists: false,
+        emailStatus: "Failed",
+      };
+    }
+
+    let notificationStatusSaved = true;
+    try {
+      await writeStudentNotificationStatus(
+        firebaseUser.uid,
+        studentRecordId,
+        "Sent",
+      );
+    } catch (statusError) {
+      notificationStatusSaved = false;
+      console.error("Password setup email was sent, but its status could not be saved:", statusError);
+    }
+    return {
+      uid: firebaseUser.uid,
+      email: normalizedEmail,
+      role: "student",
+      alreadyExists: false,
+      emailStatus: "Sent",
+      notificationStatusSaved,
+    };
+  } catch (error) {
+    if (firebaseUser && !profileSaved) {
+      try {
+        await deleteUser(firebaseUser);
+      } catch (cleanupError) {
+        console.error("Unable to remove the unlinked student Auth account:", cleanupError);
+      }
+    }
+
+    if (error.code === "auth/email-already-in-use") {
+      throw new Error("This email address is already registered.", { cause: error });
+    }
+    if (error.code === "auth/invalid-email") {
+      throw new Error("Please enter a valid student email address.", { cause: error });
+    }
+    if (
+      error.code === "permission-denied" ||
+      error.code === "firestore/permission-denied"
+    ) {
+      throw new Error(
+        "You do not have permission to create student accounts. Check that you are signed in as an administrator.",
+        { cause: error },
+      );
+    }
+    throw new Error(error.message || "Failed to create the student account.", {
+      cause: error,
+    });
+  } finally {
+    try {
+      await signOut(secondaryAuth);
+    } catch (signOutError) {
+      console.error("Unable to sign out the secondary student account session:", signOutError);
+    }
+  }
+}
 
 // CREATE MANAGED USER
 export const createManagedUser = async ({
@@ -79,37 +290,20 @@ export const createManagedUser = async ({
   }
 
   if (role === "student") {
-    try {
-      const createAccount = httpsCallable(functions, "createStudentAccount");
-      const { data } = await createAccount({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone?.trim() || "",
-        studentId: studentId || "",
-        studentRecordId: studentRecordId || "",
-        course: course || "",
-        schoolYear: schoolYear || "",
-        company: company || "",
-        coordinatorUid: coordinatorUid || "",
-        coordinatorName: coordinatorName || "",
-      });
-      return { ...data, role };
-    } catch (error) {
-      if (error.code === "functions/permission-denied") {
-        throw new Error("Only an administrator can create student accounts.", {
-          cause: error,
-        });
-      }
-      if (error.code === "functions/already-exists") {
-        throw new Error("This email address or student record already has an account.", {
-          cause: error,
-        });
-      }
-      throw new Error(error.message || "Failed to create the student account.", {
-        cause: error,
-      });
-    }
+    return createStudentLoginAccount({
+      firstName,
+      lastName,
+      email,
+      phone,
+      createdBy,
+      studentId,
+      studentRecordId,
+      course,
+      schoolYear,
+      company,
+      coordinatorUid,
+      coordinatorName,
+    });
   }
 
  // GENERATE TEMPORARY PASSWORD
@@ -304,16 +498,58 @@ export const resendStudentAccountNotification = async (studentRecordId) => {
   if (!studentRecordId) {
     throw new Error("A student record is required.");
   }
-  try {
-    const resend = httpsCallable(functions, "resendStudentAccountNotification");
-    const { data } = await resend({ studentRecordId });
-    return data;
-  } catch (error) {
-    throw new Error(
-      error.message || "Unable to resend the student account notification.",
-      { cause: error },
-    );
+  await requireAdminSession(auth.currentUser?.uid);
+
+  const rosterRef = doc(db, "students", studentRecordId);
+  const rosterSnapshot = await getDoc(rosterRef);
+  if (!rosterSnapshot.exists()) {
+    throw new Error("The student roster record no longer exists.");
   }
+  const roster = rosterSnapshot.data();
+  const uid = roster.studentUid || roster.userUid || roster.accountUid;
+  if (!uid) {
+    throw new Error("This student does not have a linked login account.");
+  }
+
+  const userSnapshot = await getDoc(doc(db, "users", uid));
+  if (!userSnapshot.exists() || userSnapshot.data().role !== "student") {
+    throw new Error("The linked login is not a student account.");
+  }
+  if (!isAccountLive(userSnapshot.data())) {
+    throw new Error("This student account is inactive or archived.");
+  }
+  const email = String(
+    userSnapshot.data().email ||
+      roster.accountEmail ||
+      roster.email ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!email) {
+    throw new Error("The student account has no email address.");
+  }
+
+  await writeStudentNotificationStatus(uid, studentRecordId, "Pending");
+  try {
+    await sendPasswordResetEmail(secondaryAuth, email);
+  } catch (emailError) {
+    console.error("Unable to resend student password setup email:", emailError);
+    try {
+      await writeStudentNotificationStatus(uid, studentRecordId, "Failed");
+    } catch (statusError) {
+      console.error("Unable to save the failed password setup email status:", statusError);
+    }
+    return { uid, email, emailStatus: "Failed" };
+  }
+  let notificationStatusSaved = true;
+  try {
+    await writeStudentNotificationStatus(uid, studentRecordId, "Sent");
+  } catch (statusError) {
+    notificationStatusSaved = false;
+    console.error("Password setup email was sent, but its status could not be saved:", statusError);
+  }
+  return { uid, email, emailStatus: "Sent", notificationStatusSaved };
 };
 
 //COMPLETE FIRST-TIME PASSWORD CHANGE

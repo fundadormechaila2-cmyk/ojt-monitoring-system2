@@ -27,38 +27,19 @@ can manage their assigned OJT records but cannot create student logins.
 
 ## Student account registration and email
 
-The Admin Dashboard creates student Authentication accounts through the
-`createStudentAccount` callable. The function links the account to the roster
-record and writes both student profile documents before attempting email
-delivery. A registration retry for an already-linked student does not send a
-second email. The dashboard displays `Sent` or `Failed`; an administrator can
-use **Resend account notification** to generate a fresh temporary password and
-send a new notification. Every newly sent temporary password requires a
-password change at first login. Plain-text passwords are only held in function
-memory while the notification is being sent and are never written to
-Firestore.
+The Admin Dashboard creates student Authentication accounts directly through
+the secondary Firebase Auth client and writes the linked `users/{uid}`,
+`studentAccounts/{uid}`, and roster documents under the existing administrator
+Firestore rules. It sends a Firebase Authentication password-reset email so
+the student can set their own password. The temporary initial password is
+never emailed or written to Firestore. Administrators can use **Resend password
+setup email** to send another setup link. This student account creation and
+setup-email flow does not require Cloud Functions, SMTP secrets, or a billing
+plan that supports Cloud Functions.
 
-Configure an SMTP mailbox using Firebase Functions secrets before deploying:
-
-```powershell
-firebase functions:secrets:set SMTP_HOST
-firebase functions:secrets:set SMTP_PORT
-firebase functions:secrets:set SMTP_USER
-firebase functions:secrets:set SMTP_PASSWORD
-firebase functions:secrets:set SMTP_FROM
-```
-
-Use your provider's SMTP hostname and port, the mailbox credentials, and a
-verified sender address for `SMTP_FROM`. These values are only read by the
-trusted Functions runtime, never by the frontend. The login URL defaults to
-the Firebase Hosting URL for the active project; override it by setting
-`APP_LOGIN_URL` in the Functions environment when using a custom domain.
-
-Deploy Firestore rules and Functions after configuration:
-
-```powershell
-firebase deploy --only firestore:rules,functions --project ojt-monitoringsystem2
-```
+The `createStudentAccount` and `resendStudentAccountNotification` callables
+remain in this folder for deployments that still use the legacy callable flow;
+the current Admin Dashboard no longer calls them.
 
 To copy existing student profiles into the new collection without overwriting
 documents already there, configure Firebase Admin credentials and run:
@@ -67,9 +48,9 @@ documents already there, configure Firebase Admin credentials and run:
 node functions/scripts/syncStudentAccounts.js
 ```
 
-Deploy both Cloud Functions with the command in the root README. See that
-README for the exact PowerShell commands to start the local backend and
-frontend.
+Deploy Cloud Functions for account lifecycle operations and QR attendance with
+the command in the root README. See that README for the exact PowerShell
+commands to start the local backend and frontend.
 
 Student QR codes are signed by Firebase Functions and validated by the
 server before attendance is written. Never place the signing secret in the
@@ -89,8 +70,7 @@ Firestore directly and does not require Cloud Functions or billing.
 firebase deploy --only firestore:rules --project ojt-monitoringsystem2
 ```
 
-Deploy Cloud Functions when enabling student account creation/deletion or QR
-attendance:
+Deploy Cloud Functions when enabling account deletion or QR attendance.
 
 ```powershell
 firebase deploy --only functions --project ojt-monitoringsystem2

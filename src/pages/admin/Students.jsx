@@ -31,6 +31,7 @@ import {
   studentDepartmentFields,
 } from "../../constants/departments";
 import { db } from "../../services/firebase";
+import { isAccountLive } from "../../services/recordState";
 import { studentAccountRef } from "../../services/studentAccountService";
 import {
   createManagedUser,
@@ -695,8 +696,10 @@ function Students() {
 
       setNotice(
         managedUser.emailStatus === "Sent"
-          ? `Login account created for ${accountStudent.name}. The account notification was sent.`
-          : `Login account created for ${accountStudent.name}, but the email notification failed. Use Resend notification after checking the mail service.`,
+          ? managedUser.notificationStatusSaved === false
+            ? `Login account created and a password setup link was sent to ${managedUser.email}, but the email status could not be saved. You can resend the link from the student row.`
+            : `Login account created for ${accountStudent.name}. A password setup link was sent to ${managedUser.email}.`
+          : `Login account created for ${accountStudent.name}, but the password setup email could not be sent. Use Resend notification to try again.`,
       );
       setAccountStudent(null);
     } catch (saveError) {
@@ -718,8 +721,10 @@ function Students() {
       const result = await resendStudentAccountNotification(student.id);
       setNotice(
         result.emailStatus === "Sent"
-          ? `Account notification sent to ${result.email}.`
-          : `The account notification could not be delivered to ${result.email}. Check the mail service and try again.`,
+          ? result.notificationStatusSaved === false
+            ? `Password setup link sent to ${result.email}, but the email status could not be saved. You can resend the link from the student row.`
+            : `Password setup link sent to ${result.email}.`
+          : `The password setup email could not be sent to ${result.email}. Please try again.`,
       );
       window.setTimeout(() => setNotice(""), 6000);
     } catch (resendError) {
@@ -834,8 +839,10 @@ function Students() {
 
       setNotice(
         managedUser.emailStatus === "Sent"
-          ? `Student and login account created for ${name}. The account notification was sent.`
-          : `Student and login account created for ${name}, but the email notification failed. Use Resend notification after checking the mail service.`,
+          ? managedUser.notificationStatusSaved === false
+            ? `Student and login account created for ${name}. A password setup link was sent to ${email}, but the email status could not be saved. You can resend the link from the student row.`
+            : `Student and login account created for ${name}. A password setup link was sent to ${email}.`
+          : `Student and login account created for ${name}, but the password setup email could not be sent. Use Resend notification to try again.`,
       );
       setAddingStudent(false);
       setNewStudent(emptyNewStudent);
@@ -1156,7 +1163,7 @@ function Students() {
                             <small
                               className={`account-notification-status ${account.accountNotificationStatus.toLowerCase()}`}
                             >
-                              Email notification: {account.accountNotificationStatus}
+                              Password setup email: {account.accountNotificationStatus}
                             </small>
                           )}
                         </div>
@@ -1206,12 +1213,12 @@ function Students() {
                             <KeyRound size={15} />
                           </button>
                         )}
-                        {account?.accountNotificationStatus === "Failed" && (
+                        {account && isAccountLive(account) && (
                           <button
                             type="button"
                             className="student-action"
-                            title="Resend account notification"
-                            aria-label={`Resend account notification to ${student.name}`}
+                            title="Send password setup email"
+                            aria-label={`Send password setup email to ${student.name}`}
                             disabled={saving}
                             onClick={() => resendStudentNotification(student)}
                           >
@@ -1670,8 +1677,8 @@ function Students() {
                 />
               </label>
               <p>
-                A temporary password will be generated. The account will be
-                linked to this enrolled student record.
+                A password setup link will be sent to this email address. The
+                account will be linked to this enrolled student record.
               </p>
               {error && (
                 <div className="students-error" role="alert">
@@ -1911,8 +1918,8 @@ function Students() {
                 />
               </label>
               <p>
-                A temporary password will be generated. The student will appear
-                on the coordinator roster automatically.
+                A password setup link will be sent to the student. The student
+                will appear on the coordinator roster automatically.
               </p>
               {error && (
                 <div

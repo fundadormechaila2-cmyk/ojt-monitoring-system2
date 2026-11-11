@@ -132,32 +132,12 @@
 .stat-copy span { display: block; margin-top: 8px; color: #94a0b1; font-size: 11px; }
 .stat-arrow { position: absolute; top: 19px; right: 17px; color: #aab4c5; }
 
-.dashboard-overview-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(290px, 0.9fr);
-  gap: 18px;
-  margin-bottom: 18px;
-}
-
 .dashboard-panel { min-width: 0; padding: 23px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .panel-heading h2 { margin: 0; color: #1e293b; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
 .panel-heading > svg { color: #a1adbd; }
 .panel-kicker { margin-bottom: 6px; }
 
-.progress-layout { display: flex; align-items: center; gap: 34px; margin: 28px 0 25px; }
-.progress-ring { display: grid; place-items: center; width: 142px; height: 142px; flex: 0 0 142px; border-radius: 50%; background: conic-gradient(#3576d3 0 var(--progress, 0%), #e9edf3 var(--progress, 0%) 100%); }
-.progress-ring::before { position: absolute; width: 110px; height: 110px; border-radius: 50%; background: #fff; content: ""; }
-.progress-ring > div { position: relative; z-index: 1; text-align: center; }
-.progress-ring strong { display: block; color: #1c2c46; font-size: 27px; letter-spacing: -0.05em; }
-.progress-ring span { color: #7c899d; font-size: 11px; font-weight: 700; }
-.progress-legend { display: grid; gap: 18px; width: 100%; }
-.progress-legend > div { display: flex; align-items: center; gap: 10px; }
-.legend-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; }
-.legend-blue { background: #3576d3; }.legend-teal { background: #27aa95; }.legend-muted { background: #cbd3df; }
-.progress-legend p { display: flex; justify-content: space-between; width: 100%; margin: 0; color: #768398; font-size: 12px; }
-.progress-legend strong { color: #25334a; font-size: 13px; }
-.progress-footnote { display: flex; align-items: center; gap: 8px; padding-top: 15px; border-top: 1px solid #edf0f4; color: #8792a3; font-size: 11px; }
 .dashboard-error,
 .dashboard-panel-message {
   border: 1px solid #f0d7b5;
@@ -191,6 +171,34 @@
 .dashboard-panel-link:focus-visible,
 .dashboard-action:focus-visible { outline: 2px solid #3576d3; outline-offset: 2px; }
 
+.dashboard-student-panel { margin-bottom: 18px; }
+.dashboard-student-panel .panel-heading > svg { color: #a1adbd; }
+.student-statistics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.student-statistic {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.student-statistic span {
+  color: #7d899b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.student-statistic strong {
+  color: #1d2b42;
+  font-size: 23px;
+  letter-spacing: -0.04em;
+}
 .dashboard-actions-panel { margin-bottom: 18px; }
 .dashboard-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .dashboard-action { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 39px; padding: 9px 13px; border: 1px solid var(--dashboard-line); border-radius: 7px; background: #fff; color: #536176; font: 700 12px "Trebuchet MS", "Segoe UI", sans-serif; cursor: pointer; transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, transform 0.2s ease; }
@@ -212,11 +220,11 @@
 
 @media (max-width: 1050px) {
   .dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .student-statistics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
   .dashboard-intro { align-items: flex-start; flex-direction: column; gap: 16px; }
-  .dashboard-overview-grid { grid-template-columns: 1fr; }
   .dashboard-date-button { width: 100%; justify-content: center; }
 }
 
@@ -226,9 +234,6 @@
   .dashboard-panel { padding: 18px; }
   .dashboard-actions { display: grid; grid-template-columns: 1fr; }
   .dashboard-action { justify-content: flex-start; }
-  .progress-layout { gap: 20px; }
-  .progress-ring { width: 112px; height: 112px; flex-basis: 112px; }
-  .progress-ring::before { width: 88px; height: 88px; }
   .activity-item time { display: none; }
 }
 
