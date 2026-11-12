@@ -7,10 +7,10 @@ import { useState } from "react";
 import {
   LayoutDashboard,
   BookOpen,
+  ClipboardList,
   FileAxis3d,
   Settings,
   Menu,
-  LogOut,
 } from "lucide-react";
 
 // Importing the logo image
@@ -135,20 +135,31 @@ function AdminLayout() {
             </NavLink>
           )}
 
-          <NavLink
-            to={`${basePath}/settings`}
-            end
-            onClick={closeSidebarOnMobile}
-            className={({ isActive }) =>
-              isActive ? "nav-link active" : "nav-link"
-            }
-            title="Settings"
-          >
-            <span className="nav-icon">
-              <Settings size={18} />
-            </span>
-            <span className="nav-text">Settings</span>
-          </NavLink>
+          {user?.role === "coordinator" ? (
+            <>
+              <NavLink to={`${basePath}/attendance`} onClick={closeSidebarOnMobile} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} title="Attendance">
+                <span className="nav-icon"><ClipboardList size={18} /></span>
+                <span className="nav-text">Attendance</span>
+              </NavLink>
+              <NavLink to={`${basePath}/journals`} onClick={closeSidebarOnMobile} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} title="Student Journals">
+                <span className="nav-icon"><BookOpen size={18} /></span>
+                <span className="nav-text">Student Journals</span>
+              </NavLink>
+            </>
+          ) : (
+            <NavLink
+              to={`${basePath}/settings`}
+              end
+              onClick={closeSidebarOnMobile}
+              className={({ isActive }) =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+              title="Settings"
+            >
+              <span className="nav-icon"><Settings size={18} /></span>
+              <span className="nav-text">Settings</span>
+            </NavLink>
+          )}
 
 
 
@@ -172,5 +183,3 @@ function AdminLayout() {
 }
 
 export default AdminLayout;
-
-

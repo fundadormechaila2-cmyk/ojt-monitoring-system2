@@ -1,54 +1,67 @@
 /* eslint-disable react-refresh/only-export-components */
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import "../../styles/coordinator-module.css";
 
-export const coordinatorSources = [
-  "students",
-  "applications",
-  "attendance",
-  "evaluations",
-  "partnerCompanies",
-];
+const coordinatorSources = ["students", "attendance"];
+const emptyData = { students: [], attendance: [] };
 
-export function useCoordinatorData(sources = coordinatorSources) {
-  const [data, setData] = useState(
-    Object.fromEntries(sources.map((source) => [source, []])),
-  );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+export function useCoordinatorData() {
+  const { user } = useAuth();
+  const uid = user?.role === "coordinator" ? user.uid : "";
+  const [state, setState] = useState({ uid: "", data: emptyData, loaded: [], error: "" });
+
   useEffect(() => {
-    let loaded = 0;
-    const unsubscribers = sources.map((source) =>
+    if (!uid) return undefined;
+    let active = true;
+    const unsubscribers = coordinatorSources.map((source) =>
       onSnapshot(
-        collection(db, source),
+        query(collection(db, source), where("coordinatorUid", "==", uid)),
         (snapshot) => {
-          setData((current) => ({
-            ...current,
-            [source]: snapshot.docs.map((item) => ({
-              id: item.id,
-              ...item.data(),
-            })),
-          }));
-          loaded += 1;
-          if (loaded === sources.length) setLoading(false);
+          if (!active) return;
+          setState((current) => {
+            const previous = current.uid === uid
+              ? current
+              : { uid, data: emptyData, loaded: [], error: "" };
+            return {
+              ...previous,
+              data: {
+                ...previous.data,
+                [source]: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+              },
+              loaded: [...new Set([...previous.loaded, source])],
+            };
+          });
         },
         (snapshotError) => {
           console.error(`Unable to load ${source}:`, snapshotError);
-          setError(
-            snapshotError.code === "permission-denied"
-              ? `You do not have permission to view ${source}. Update your Firestore rules for coordinator access.`
-              : `Unable to load ${source} (${snapshotError.code || "unknown error"}).`,
-          );
-          loaded += 1;
-          if (loaded === sources.length) setLoading(false);
+          if (!active) return;
+          setState((current) => {
+            const previous = current.uid === uid
+              ? current
+              : { uid, data: emptyData, loaded: [], error: "" };
+            return {
+              ...previous,
+              loaded: [...new Set([...previous.loaded, source])],
+              error: `Unable to load assigned ${source} (${snapshotError.code || "unknown error"}).`,
+            };
+          });
         },
       ),
     );
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [sources]);
-  return { data, loading, error };
+    return () => {
+      active = false;
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [uid]);
+
+  return {
+    data: state.uid === uid ? state.data : emptyData,
+    loading: Boolean(uid) && (state.uid !== uid || state.loaded.length < coordinatorSources.length),
+    error: !uid ? "Sign in as a coordinator to view assigned records." : state.uid === uid ? state.error : "",
+  };
 }
 
 export function valueOf(record, keys, fallback = "") {

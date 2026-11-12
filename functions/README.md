@@ -58,38 +58,38 @@ documents already there, configure Firebase Admin credentials and run:
 node functions/scripts/syncStudentAccounts.js
 ```
 
-Deploy Cloud Functions for account lifecycle operations and QR attendance with
-the command in the root README. See that README for the exact PowerShell
-commands to start the local backend and frontend.
+Deploy Cloud Functions for account lifecycle operations with the command in
+the root README. See that README for the exact PowerShell commands to start
+the local backend and frontend.
 
-Student QR codes are signed by Firebase Functions and validated by the
-server before attendance is written. Never place the signing secret in the
-React application.
+The current React attendance flow generates and validates QR codes in the
+browser and writes attendance through Firestore. These codes are not digitally
+signed, and the current client-side nonce check is not a permanent replay
+protection mechanism. The signed QR functions in this folder are not wired
+into the current React flow; deploying them alone does not enable signed QR
+attendance. Never place a signing secret in the React application.
 
-Before deploying, configure the secret once:
+Before deploying the signed QR functions, configure the secret once:
 
 ```powershell
 firebase functions:secrets:set ATTENDANCE_QR_SECRET
 ```
 
-Use a strong, randomly generated value of at least 32 bytes. Cloud Functions
-are required for QR attendance.
+Use a strong, randomly generated value of at least 32 bytes. The signed QR
+flow requires Cloud Functions and corresponding client integration.
 
-```powershell
-firebase deploy --only firestore:rules --project ojt-monitoringsystem2
-```
+Compare the local Firestore rules against the live rules before deploying them;
+the local rules may be older and could disrupt existing features.
 
-Deploy Cloud Functions when enabling account deletion or QR attendance.
+Deploy Cloud Functions when enabling account deletion or the signed QR flow.
 
 ```powershell
 firebase deploy --only functions --project ojt-monitoringsystem2
 ```
 
-The student portal refreshes each student's signed QR token every 30 seconds.
-The supervisor scans it using the camera scanner. The function derives the
-student and supervisor identities from Firebase Authentication, validates the
-signature, expiry, roles, and one-time nonce, then records Time-In on the
-student's first scan and Time-Out on the next scan that day. The supervisor
+The student portal refreshes its current client-generated QR code
+automatically. The supervisor scans it using the camera scanner, which records
+attendance through the client-side attendance service. The supervisor
 dashboard listens to attendance records in real time.
 
 Camera access requires HTTPS (localhost is allowed during local development).

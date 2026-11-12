@@ -8,7 +8,7 @@ function AdminPlaceholder({ title }) {
       </div>
       <p className="dashboard-eyebrow">LCCI · OJT MONITORING SYSTEM</p>
       <h1>{title}</h1>
-      <p>This section is ready for its management tools.</p>
+      <p>This section is not yet available.</p>
     </section>
   );
 }

@@ -59,6 +59,22 @@ the Cloud Build and Artifact Registry APIs. If deployment reports a permission
 error enabling either API, the owner can enable them in Google Cloud Console,
 then rerun the deploy command above.
 
+## Coordinator and supervisor UI
+
+The coordinator dashboard, student list, and attendance page query records
+assigned to the signed-in coordinator. Attendance is read-only for
+coordinators; supervisors record attendance. Coordinator applications, partner
+companies, reports, and settings are not yet available. Supervisor notification
+preferences are also unavailable and are not saved.
+
+The current student attendance QR codes are generated and validated in the
+browser and are not digitally signed. See [the Functions documentation](./functions/README.md)
+before enabling the separate server-side signed QR flow.
+
+The repository's Firestore rules may differ from the live deployment. Compare
+them with the active rules before deploying; replacing the live rules with an
+older local ruleset can disrupt other features.
+
 The frontend calls `manageAccountApi` with the current Firebase ID token in a
 Bearer authorization header. The endpoint verifies that token with Firebase
 Admin before invoking the account-management logic. The callable

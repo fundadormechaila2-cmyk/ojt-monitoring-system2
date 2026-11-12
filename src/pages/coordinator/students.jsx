@@ -5,7 +5,7 @@ import { CoordinatorState, normalizedStudents, useCoordinatorData, useFilteredSt
 import "../../styles/students-data.css";
 
 function Students() {
-  const { data, loading, error } = useCoordinatorData(["students", "attendance"]);
+  const { data, loading, error } = useCoordinatorData();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [course, setCourse] = useState("All courses");

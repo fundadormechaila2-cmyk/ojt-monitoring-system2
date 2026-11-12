@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Clock3, QrCode, RefreshCw, ShieldCheck } from "lucide-react";
+import { CalendarClock, Clock3, Printer, QrCode, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "../../context/useAuth";
@@ -51,14 +51,6 @@ function Attendance() {
     `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
     "Student";
   const profileStudentId = user?.studentId || user?.studentID || user?.idNumber || "No student ID";
-  const profileProgram = user?.course || user?.program || user?.department || "No program";
-  const profileSchoolYear = user?.schoolYear || "Not assigned";
-  const profileInitials = fullName
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "ST";
   const [qrError, setQrError] = useState("");
   const [clockNow, setClockNow] = useState(0);
   const [attendanceState, setAttendanceState] = useState({
@@ -67,7 +59,31 @@ function Attendance() {
     loading: true,
     error: "",
   });
+  const [studentRecordState, setStudentRecordState] = useState({
+    uid: "",
+    record: null,
+    error: "",
+  });
   const studentUid = user?.uid;
+  const studentRecord = studentRecordState.uid === studentUid
+    ? studentRecordState.record
+    : null;
+  const studentRecordError = studentRecordState.uid === studentUid
+    ? studentRecordState.error
+    : "";
+  const attendanceStudentName =
+    studentRecord?.fullName ||
+    studentRecord?.name ||
+    studentRecord?.studentName ||
+    `${studentRecord?.firstName || user?.firstName || ""} ${studentRecord?.lastName || user?.lastName || ""}`.trim() ||
+    fullName;
+  const attendanceStudentId =
+    studentRecord?.studentId ||
+    studentRecord?.studentID ||
+    studentRecord?.idNumber ||
+    profileStudentId;
+  const attendanceAcademicYear =
+    studentRecord?.schoolYear || user?.schoolYear || "Not provided";
   const currentAttendanceState = attendanceState.uid === studentUid
     ? attendanceState
     : { records: [], loading: Boolean(studentUid), error: "" };
@@ -82,6 +98,9 @@ function Attendance() {
   const attendanceError = currentAttendanceState.error;
   const secondsRemaining = qr
     ? Math.min(30, Math.max(0, Math.ceil((qr.expiresAt - clockNow) / 1000)))
+    : 0;
+  const secondsUntilRefresh = qr
+    ? Math.min(25, Math.max(0, Math.ceil((qr.expiresAt - 30_000 + TOKEN_REFRESH_MS - clockNow) / 1000)))
     : 0;
   const qrIsActive = Boolean(qr?.uid === studentUid && qr.token && secondsRemaining > 0);
   const todaysRecords = useMemo(
@@ -143,6 +162,34 @@ function Attendance() {
     if (!studentUid || user?.role !== "student") return undefined;
 
     return onSnapshot(
+      query(collection(db, "students"), where("studentUid", "==", studentUid)),
+      (snapshot) => {
+        const preferredRecord = snapshot.docs.find(
+          (document) => document.id === user.studentRecordId,
+        ) || snapshot.docs[0];
+        setStudentRecordState({
+          uid: studentUid,
+          record: preferredRecord
+            ? { id: preferredRecord.id, ...preferredRecord.data() }
+            : null,
+          error: "",
+        });
+      },
+      (error) => {
+        console.error("Unable to load the student's OJT record:", error);
+        setStudentRecordState({
+          uid: studentUid,
+          record: null,
+          error: "Some student details could not be loaded from your OJT record.",
+        });
+      },
+    );
+  }, [studentUid, user?.role, user?.studentRecordId]);
+
+  useEffect(() => {
+    if (!studentUid || user?.role !== "student") return undefined;
+
+    return onSnapshot(
       query(collection(db, "attendance"), where("studentUid", "==", studentUid)),
       (snapshot) => {
         const records = snapshot.docs
@@ -176,37 +223,6 @@ function Attendance() {
         </div>
       </header>
 
-      <section className="student-card" style={{ padding: "28px 26px 18px", background: "#f3f5f8", marginBottom: 20 }}>
-        <div className="student-profile-summary" style={{ display: "flex", alignItems: "center", gap: 18, padding: 0, marginBottom: 0 }}>
-          <div
-            className="student-avatar"
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              fontSize: 24,
-              background: "linear-gradient(135deg, #0a66d5, #0d4fb8)",
-              color: "#fff",
-            }}
-          >
-            {profileInitials}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: "clamp(24px, 3vw, 42px)", fontWeight: 700, color: "#1f2937", letterSpacing: "-0.04em" }}>
-              {fullName}
-            </h2>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, color: "#4b5563", fontSize: 18 }}>
-              <span>{profileStudentId}</span>
-              <span style={{ opacity: 0.7 }}>•</span>
-              <span>{profileProgram}</span>
-            </div>
-            <p style={{ marginTop: 10, color: "#374151", fontSize: 18 }}>
-              School Year: {profileSchoolYear}
-            </p>
-          </div>
-        </div>
-      </section>
-
       <section className="student-attendance-qr-layout">
         <article className="student-card student-attendance-qr-card">
           <div className="student-attendance-qr-heading">
@@ -225,19 +241,18 @@ function Attendance() {
           ) : (
             <div className="student-attendance-qr-placeholder" role="status">
               <QrCode size={36} />
-              <span>{qrError ? "QR code unavailable" : "Generating a secure QR code..."}</span>
+              <span>{qrError ? "QR code unavailable" : "Generating your QR code..."}</span>
             </div>
           )}
 
           <div className="student-attendance-qr-id">
             <span>Student ID</span>
             <strong>{qr?.studentId || user?.studentId || studentUid || "—"}</strong>
-            <ShieldCheck size={16} />
           </div>
 
           <div className="student-attendance-qr-refresh" aria-live="polite">
             <div className="student-attendance-qr-refresh-label">
-              <span><Clock3 size={15} /> {qrIsActive ? `Refreshes in ${secondsRemaining}s` : "Refreshing code..."}</span>
+              <span><Clock3 size={15} /> {qrIsActive && secondsUntilRefresh > 0 ? `Refreshes in ${secondsUntilRefresh}s` : "Refreshing code..."}</span>
               <span><RefreshCw size={13} /> Automatic refresh</span>
             </div>
             <div
@@ -245,14 +260,14 @@ function Attendance() {
               role="progressbar"
               aria-label="QR code time remaining"
               aria-valuemin="0"
-              aria-valuemax="30"
-              aria-valuenow={secondsRemaining}
+              aria-valuemax="25"
+              aria-valuenow={secondsUntilRefresh}
             >
-              <span style={{ width: `${(secondsRemaining / 30) * 100}%` }} />
+              <span style={{ width: `${(secondsUntilRefresh / 25) * 100}%` }} />
             </div>
           </div>
           <p className="student-attendance-qr-note">
-            The signed code expires after 30 seconds and can only record attendance once.
+            This code refreshes automatically. It is generated on your device and is not digitally signed.
           </p>
         </article>
 
@@ -311,67 +326,104 @@ function Attendance() {
         </article>
       </section>
 
-      <section className="student-card student-panel student-attendance-history">
-        <div className="student-panel-header">
-          <div>
-            <p className="student-panel-subtitle">History</p>
-            <h2 className="student-panel-title">Attendance Records</h2>
+      <section className="student-attendance-history">
+        <div className="attendance-record-toolbar">
+          <div className="attendance-record-toolbar-heading">
+            <h2>Attendance History</h2>
+            <p>{dateFilter ? "Only the selected date will be printed." : "View and print your OJT attendance record."}</p>
           </div>
-          <span className="student-attendance-record-count">{visibleRecords.length} records</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, margin: "0 0 12px" }}>
-          <label className="student-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            Date
-            <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} style={{ minHeight: 38, padding: "0 8px", border: "1px solid #e2e8f0", borderRadius: 8 }} />
+          <div className="attendance-record-toolbar-actions">
+            <label>
+              Filter by date
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(event) => setDateFilter(event.target.value)}
+              />
+            </label>
             {dateFilter && (
-              <button type="button" onClick={() => setDateFilter("")}>Clear</button>
+              <button type="button" onClick={() => setDateFilter("")}>
+                Clear filter
+              </button>
             )}
-          </label>
+            <button
+              type="button"
+              className="attendance-record-print"
+              onClick={() => window.print()}
+            >
+              <Printer size={16} aria-hidden="true" />
+              Print Attendance Record
+            </button>
+          </div>
         </div>
-        {attendanceError && <p className="student-attendance-qr-error" role="alert">{attendanceError}</p>}
-        <div className="student-table-wrap">
-          <table className="student-table">
-            <thead>
-              <tr>
-                <th rowSpan={2}>Date</th>
-                <th colSpan={2} style={{ textAlign: "center" }}>AM</th>
-                <th colSpan={2} style={{ textAlign: "center" }}>PM</th>
-                <th colSpan={2} style={{ textAlign: "center" }}>Overtime</th>
-                <th rowSpan={2}>Hours</th>
-                <th rowSpan={2}>Status</th>
-              </tr>
-              <tr>
-                {["In", "Out", "In", "Out", "In", "Out"].map((label, index) => (
-                  <th key={index} style={{ textAlign: "center" }}>{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {attendanceLoading ? (
-                <tr><td colSpan="9">Loading attendance records...</td></tr>
-              ) : visibleRecords.length === 0 ? (
-                <tr><td colSpan="9"><div className="student-empty-state">{attendanceRecords.length ? "No attendance records found." : "No attendance records have been recorded yet."}</div></td></tr>
-              ) : (
-                visibleRecords.map((record) => (
-                  <tr key={record.id}>
-                    <td>{formatDateLabel(record.date)}</td>
-                    <td>{record.amIn || "—"}</td>
-                    <td>{record.amOut || "—"}</td>
-                    <td>{record.pmIn || "—"}</td>
-                    <td>{record.pmOut || "—"}</td>
-                    <td>{record.overtimeIn || "—"}</td>
-                    <td>{record.overtimeOut || "—"}</td>
-                    <td>{formatHoursMinutes(record.totalHours)}</td>
-                    <td>
-                      <span className={`status-badge ${record.status === "Present" ? "active" : "pending"}`}>
-                        {record.status || "Incomplete"}
-                      </span>
+
+        <div className="attendance-record-paper">
+          <header className="attendance-record-heading">
+            <h2>OJT STUDENT ATTENDANCE RECORD</h2>
+            <div className="attendance-record-student-details">
+              <div><span>Student Name</span><strong>{attendanceStudentName}</strong></div>
+              <div><span>Student ID Number</span><strong>{attendanceStudentId}</strong></div>
+              <div><span>Academic Year</span><strong>{attendanceAcademicYear}</strong></div>
+            </div>
+          </header>
+
+          {studentRecordError && (
+            <p className="attendance-record-error" role="alert">{studentRecordError}</p>
+          )}
+          {attendanceError && (
+            <p className="attendance-record-error" role="alert">{attendanceError}</p>
+          )}
+          <div
+            className="attendance-record-table-wrap"
+            role="region"
+            aria-label="Attendance record table"
+            tabIndex={0}
+          >
+            <table className="attendance-record-table">
+              <colgroup>
+                <col className="attendance-record-date-column" />
+                <col span={6} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th rowSpan={2}>Date</th>
+                  <th colSpan={2}>AM</th>
+                  <th colSpan={2}>PM</th>
+                  <th colSpan={2}>Overtime</th>
+                </tr>
+                <tr>
+                  {["Time In", "Time Out", "Time In", "Time Out", "Time In", "Time Out"].map((label, index) => (
+                    <th key={index}>{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceLoading ? (
+                  <tr><td colSpan={7}>Loading attendance records...</td></tr>
+                ) : visibleRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>
+                      {attendanceRecords.length
+                        ? "No attendance records found for this date."
+                        : "No attendance records have been recorded yet."}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  visibleRecords.map((record) => (
+                    <tr key={record.id}>
+                      <td>{formatDateLabel(record.date)}</td>
+                      <td>{record.amIn || "—"}</td>
+                      <td>{record.amOut || "—"}</td>
+                      <td>{record.pmIn || "—"}</td>
+                      <td>{record.pmOut || "—"}</td>
+                      <td>{record.overtimeIn || "—"}</td>
+                      <td>{record.overtimeOut || "—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>

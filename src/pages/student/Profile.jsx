@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
@@ -9,18 +10,16 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { updateEmail } from "firebase/auth";
-import { ChevronRight, ShieldCheck, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { auth, db } from "../../services/firebase";
 import { studentAccountRef } from "../../services/studentAccountService";
-import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/student-portal.css";
 
 function Profile() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [studentRecord, setStudentRecord] = useState(null);
+  const [savedProfile, setSavedProfile] = useState(null);
   const [editForm, setEditForm] = useState({
     email: "",
     phone: "",
@@ -50,7 +49,7 @@ function Profile() {
     );
   }, [user?.uid]);
 
-  const student = { ...user, ...studentRecord };
+  const student = { ...user, ...studentRecord, ...(savedProfile?.uid === user?.uid ? savedProfile : {}) };
   const profile = {
     fullName:
       student.fullName ||
@@ -102,6 +101,8 @@ function Profile() {
     setNotice("");
     let authEmailUpdated = false;
     try {
+      const accountRef = studentAccountRef(user.uid);
+      const accountSnapshot = await getDoc(accountRef);
       if (email !== firebaseUser.email) {
         await updateEmail(firebaseUser, email);
         authEmailUpdated = true;
@@ -117,8 +118,10 @@ function Profile() {
       const batch = writeBatch(db);
       batch.update(doc(db, "users", user.uid), updates);
       batch.set(
-        studentAccountRef(user.uid),
-        { ...user, ...updates, uid: user.uid },
+        accountRef,
+        accountSnapshot.exists()
+          ? updates
+          : { ...user, ...updates, uid: user.uid, role: "student" },
         { merge: true },
       );
       if (studentRecord?.id) {
@@ -126,6 +129,7 @@ function Profile() {
       }
       await batch.commit();
 
+      setSavedProfile({ uid: user.uid, email, phone, contactNumber: phone, address });
       setIsEditing(false);
       setNotice("Profile updated successfully.");
       window.setTimeout(() => setNotice(""), 4000);
@@ -156,16 +160,9 @@ function Profile() {
     .join("")
     .slice(0, 2)
     .toUpperCase() || "ST";
-  const accountStatus =
-    user?.isActive === false ||
-    user?.isArchived === true ||
-    ["INACTIVE", "ARCHIVED"].includes(String(user?.status || "").toUpperCase())
-      ? "Inactive"
-      : "Active";
-
   return (
     <div className="student-portal-page">
-      <header className="student-page-header" style={{ display: "none" }}>
+      <header className="student-page-header">
         <div>
           <p className="student-meta">Student profile</p>
           <h1>My Profile</h1>

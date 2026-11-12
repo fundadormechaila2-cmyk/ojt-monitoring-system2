@@ -233,7 +233,7 @@ function ScanStudentQR() {
       <PageHeader
         eyebrow="Supervisor workspace · Attendance"
         title="QR Attendance Scanner"
-        description="Scan the signed QR code displayed in a student’s My Attendance page to record Time-In or Time-Out."
+        description="Scan the QR code displayed in a student’s My Attendance page to record Time-In or Time-Out."
       />
 
       <section className="supervisor-student-qr-layout">
@@ -242,7 +242,7 @@ function ScanStudentQR() {
             <span className="supervisor-student-qr-icon"><ScanLine size={20} /></span>
             <div>
               <h2>Student Attendance Scanner</h2>
-              <p>Each code expires in 30 seconds and can only be used once.</p>
+              <p>Student codes refresh automatically and are not digitally signed.</p>
             </div>
           </div>
 
