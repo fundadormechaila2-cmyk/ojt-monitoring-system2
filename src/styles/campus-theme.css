@@ -172,6 +172,38 @@
   background: rgba(243, 247, 252, 0.16);
 }
 
+.content :is(
+  .application-table-wrap,
+  .attendance-management-table-wrap,
+  .attendance-record-table-wrap,
+  .admin-reports-table-wrap,
+  .coordinators-table-wrap,
+  .coordinator-data-table-wrap,
+  .partner-data-table-wrap,
+  .students-data-table-wrap,
+  .supervisor-table-wrap,
+  .users-table-wrap
+) {
+  min-width: 0;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.coordinator-modal-backdrop {
+  z-index: 1200;
+  box-sizing: border-box;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.coordinator-modal {
+  box-sizing: border-box;
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .admin-dashboard,
 .coordinator-dashboard,
 .supervisor-page,
@@ -796,6 +828,12 @@
 
   .sidebar-closed .sidebar {
     left: 8px;
+  }
+
+  .coordinator-data-search input,
+  .coordinator-journals-search input,
+  .supervisor-search input {
+    min-width: 0;
   }
 }
 

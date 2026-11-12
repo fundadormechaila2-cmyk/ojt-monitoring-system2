@@ -198,6 +198,28 @@
   margin-bottom: 14px;
 }
 
+.journal-panel-header > div:first-child {
+  min-width: 0;
+}
+
+.journal-search {
+  flex: 0 1 220px;
+  min-width: 0;
+}
+
+.journal-search-input {
+  position: relative;
+}
+
+.journal-search-input > svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: #718096;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .student-panel-heading-actions {
   display: flex;
   align-items: center;
@@ -381,11 +403,19 @@
 
 .journal-table-wrap {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid var(--student-line);
   scrollbar-color: #b7c5d8 #eef2f7;
   scrollbar-width: thin;
+}
+
+.journal-table-wrap:focus-visible {
+  outline: 2px solid var(--student-primary);
+  outline-offset: 2px;
 }
 
 .student-portal-page .journal-table {
@@ -899,6 +929,16 @@
 
   .student-header-actions .student-button {
     flex: 1;
+  }
+
+  .journal-panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .journal-search {
+    flex: none;
+    width: 100%;
   }
 
   .student-overview-grid,

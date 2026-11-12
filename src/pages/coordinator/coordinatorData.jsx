@@ -2,7 +2,9 @@
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/useAuth";
-import { db } from "../../services/firebase";
+import { auth, db } from "../../services/firebase";
+import { recordDepartmentId } from "../../constants/departments";
+import { subscribeToCoordinatorAttendance } from "../../services/coordinatorAttendanceService";
 import "../../styles/coordinator-module.css";
 
 const coordinatorSources = ["students", "attendance"];
@@ -10,26 +12,35 @@ const emptyData = { students: [], attendance: [] };
 
 export function useCoordinatorData() {
   const { user } = useAuth();
-  const uid = user?.role === "coordinator" ? user.uid : "";
-  const [state, setState] = useState({ uid: "", data: emptyData, loaded: [], error: "" });
+  const uid = user?.role === "coordinator" ? auth.currentUser?.uid : "";
+  const departmentId = recordDepartmentId(user);
+  const key = `${uid}:${departmentId}`;
+  const [state, setState] = useState({ key: "", data: emptyData, loaded: [], error: "" });
 
   useEffect(() => {
-    if (!uid) return undefined;
+    if (!uid || !departmentId) return undefined;
     let active = true;
+    const subscribe = (source, onItems, onError) => source === "attendance"
+      ? subscribeToCoordinatorAttendance(uid, departmentId, onItems, onError)
+      : onSnapshot(
+          query(collection(db, source), where("coordinatorUid", "==", uid), where("departmentId", "==", departmentId)),
+          (snapshot) => onItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
+          onError,
+        );
     const unsubscribers = coordinatorSources.map((source) =>
-      onSnapshot(
-        query(collection(db, source), where("coordinatorUid", "==", uid)),
-        (snapshot) => {
+      subscribe(
+        source,
+        (items) => {
           if (!active) return;
           setState((current) => {
-            const previous = current.uid === uid
+            const previous = current.key === key
               ? current
-              : { uid, data: emptyData, loaded: [], error: "" };
+              : { key, data: emptyData, loaded: [], error: "" };
             return {
               ...previous,
               data: {
                 ...previous.data,
-                [source]: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+                [source]: items,
               },
               loaded: [...new Set([...previous.loaded, source])],
             };
@@ -39,9 +50,9 @@ export function useCoordinatorData() {
           console.error(`Unable to load ${source}:`, snapshotError);
           if (!active) return;
           setState((current) => {
-            const previous = current.uid === uid
+            const previous = current.key === key
               ? current
-              : { uid, data: emptyData, loaded: [], error: "" };
+              : { key, data: emptyData, loaded: [], error: "" };
             return {
               ...previous,
               loaded: [...new Set([...previous.loaded, source])],
@@ -55,12 +66,12 @@ export function useCoordinatorData() {
       active = false;
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [uid]);
+  }, [uid, departmentId, key]);
 
   return {
-    data: state.uid === uid ? state.data : emptyData,
-    loading: Boolean(uid) && (state.uid !== uid || state.loaded.length < coordinatorSources.length),
-    error: !uid ? "Sign in as a coordinator to view assigned records." : state.uid === uid ? state.error : "",
+    data: state.key === key ? state.data : emptyData,
+    loading: Boolean(uid && departmentId) && (state.key !== key || state.loaded.length < coordinatorSources.length),
+    error: !uid ? "Sign in as a coordinator to view assigned records." : !departmentId ? "Your coordinator account has no recognized department. Ask an administrator to assign one in OJT Coordinators." : state.key === key ? state.error : "",
   };
 }
 

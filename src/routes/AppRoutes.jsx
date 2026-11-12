@@ -12,7 +12,7 @@ import Students from "../pages/admin/Students";
 import OJTCoordinators from "../pages/admin/OJTCoordinators";
 import AdminReportsDashboard from "../pages/admin/AdminReportsDashboard";
 import Users from "../pages/admin/Users";
-import Settings from "../pages/admin/Settings";
+import OwnAccountSettings from "../components/OwnAccountSettings";
 import CoordinatorDashboard from "../pages/coordinator/CoordinatorDashboard";
 import CoordinatorAttendance from "../pages/coordinator/Attendance";
 import CoordinatorStudents from "../pages/coordinator/students";
@@ -48,7 +48,7 @@ function AppRoutes() {
             <Route index element={<Dashboard />} />
             <Route path="students" element={<Students />} />
             <Route path="ojtcoordinators" element={<OJTCoordinators />} />
-            <Route path="settings" element={<Settings />} />
+            <Route path="settings" element={<OwnAccountSettings />} />
         </Route>
 
         <Route
@@ -70,7 +70,7 @@ function AppRoutes() {
           <Route path="attendancereports" element={<AdminPlaceholder title="Attendance Reports" />} />
           <Route path="ojthours" element={<AdminPlaceholder title="OJT Hours" />} />
           <Route path="evaluation" element={<AdminPlaceholder title="Evaluation" />} />
-          <Route path="settings" element={<AdminPlaceholder title="Settings" />} />
+          <Route path="settings" element={<OwnAccountSettings />} />
           <Route path="ojtcoordinators" element={<CoordinatorPlaceholder />} />
           {placeholderRoutes.filter(([path]) => !["ojtcoordinators", "ojthours", "evaluation"].includes(path)).map(([path, title]) => (
             <Route key={path} path={path} element={<AdminPlaceholder title={title} />} />

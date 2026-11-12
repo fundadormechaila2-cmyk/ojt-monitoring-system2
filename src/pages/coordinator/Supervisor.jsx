@@ -35,6 +35,7 @@ import {
 import { withoutArchived } from "../../services/recordState";
 import { createManagedUser } from "../../services/userManagementSevice";
 import DepartmentBadge from "../../components/DepartmentBadge";
+import { recordDepartmentId } from "../../constants/departments";
 
 const emptyForm = {
   firstName: "",
@@ -84,6 +85,7 @@ function formatDate(value) {
 
 function Supervisor() {
   const { user } = useAuth();
+  const departmentId = recordDepartmentId(user);
   const [supervisors, setSupervisors] = useState([]);
   const [students, setStudents] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -150,7 +152,7 @@ function Supervisor() {
   }, [user?.role]);
 
   useEffect(() => {
-    if (user?.role !== "coordinator" || !user.uid) {
+    if (user?.role !== "coordinator" || !user.uid || !departmentId) {
       return undefined;
     }
 
@@ -160,7 +162,7 @@ function Supervisor() {
       setReferenceLoading(!(studentsLoaded && companiesLoaded));
     };
     const unsubscribeStudents = onSnapshot(
-      query(collection(db, "students"), where("coordinatorUid", "==", user.uid)),
+      query(collection(db, "students"), where("coordinatorUid", "==", user.uid), where("departmentId", "==", departmentId)),
       (snapshot) => {
         setStudents(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
         studentsLoaded = true;
@@ -193,7 +195,7 @@ function Supervisor() {
       unsubscribeStudents();
       unsubscribeCompanies();
     };
-  }, [user?.role, user?.uid]);
+  }, [user?.role, user?.uid, departmentId]);
 
   const supervisorIds = useMemo(
     () => new Set(supervisors.map((supervisor) => supervisor.id)),
@@ -288,7 +290,11 @@ function Supervisor() {
       supervisor.isActive !== false &&
       String(supervisor.status || "ACTIVE").toUpperCase() === "ACTIVE",
   ).length;
-  const referenceError = [studentLoadError, companyLoadError]
+  const referenceError = [
+    !departmentId ? "Your coordinator account has no recognized department. Ask an administrator to assign one in OJT Coordinators." : "",
+    studentLoadError,
+    companyLoadError,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -727,9 +733,9 @@ function Supervisor() {
             <p>{loadError}</p>
           </div>
         )}
-        {(studentLoadError || companyLoadError) && (
+        {referenceError && (
           <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">
-            {[studentLoadError, companyLoadError].filter(Boolean).join(" ")}
+            {referenceError}
           </div>
         )}
 

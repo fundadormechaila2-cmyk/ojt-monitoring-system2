@@ -22,7 +22,9 @@ function AdminLayout() {
   const basePath = user?.role === "coordinator" ? "/coordinator" : "/admin";
 
   // State to manage the sidebar's open/closed state
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => window.innerWidth > 700,
+  );
 
   // Toggle the sidebar open/closed state
   const toggleSidebar = () => {
@@ -146,20 +148,19 @@ function AdminLayout() {
                 <span className="nav-text">Student Journals</span>
               </NavLink>
             </>
-          ) : (
-            <NavLink
-              to={`${basePath}/settings`}
-              end
-              onClick={closeSidebarOnMobile}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
-              title="Settings"
-            >
-              <span className="nav-icon"><Settings size={18} /></span>
-              <span className="nav-text">Settings</span>
-            </NavLink>
-          )}
+          ) : null}
+          <NavLink
+            to={`${basePath}/settings`}
+            end
+            onClick={closeSidebarOnMobile}
+            className={({ isActive }) =>
+              isActive ? "nav-link active" : "nav-link"
+            }
+            title="Settings"
+          >
+            <span className="nav-icon"><Settings size={18} /></span>
+            <span className="nav-text">Settings</span>
+          </NavLink>
 
 
 

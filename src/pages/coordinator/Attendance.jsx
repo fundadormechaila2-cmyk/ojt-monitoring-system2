@@ -1,9 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { CalendarDays, CheckCircle2, Clock3, Eye, Search, UserX, X } from "lucide-react";
 import { formatHoursMinutes, getLocalDate, getRecordPeriods, summarizeAttendance } from "../../services/manualAttendanceService";
-import { useCoordinatorData } from "./coordinatorData";
+import { sortAttendanceRecords, withAttendanceTimes } from "../../services/attendanceRecord";
+import { db } from "../../services/firebase";
+import { withoutArchived } from "../../services/recordState";
+import AttendanceRecord from "../../components/AttendanceRecord";
+import { studentNameOf, useCoordinatorData } from "./coordinatorData";
+import { buildAttendanceRows } from "./attendanceRows";
 import "../../styles/attendance-management.css";
 import "../../styles/coordinator-module.css";
+import "../../styles/student-portal.css";
+import "../../styles/student-attendance-qr.css";
+import "../../styles/coordinator-attendance-record.css";
 
 const statuses = ["Present", "Absent", "Late", "Incomplete"];
 
@@ -17,7 +26,7 @@ function normalizeRecord(record) {
     studentName: record.studentName || record.student || "Unnamed student",
     company: record.company || record.partnerCompany || "Not assigned",
     date: record.date || "",
-    totalHours: Number(record.totalHours ?? record.hours ?? summary.totalHours),
+    totalHours: summary.totalHours,
     status: record.status || summary.status,
     remarks: record.remarks || record.note || "",
   };
@@ -26,25 +35,59 @@ function normalizeRecord(record) {
 function Attendance() {
   const { data, loading, error } = useCoordinatorData();
   const [search, setSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState(getLocalDate);
+  const [dateFilter, setDateFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [companyFilter, setCompanyFilter] = useState("All companies");
   const [selectedId, setSelectedId] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [studentAttendance, setStudentAttendance] = useState(null);
+  const assignedStudents = useMemo(() => withoutArchived(data.students), [data.students]);
+  const tableStudents = useMemo(() => assignedStudents.map((student) => ({
+    id: student.id,
+    uid: student.studentUid || student.userUid || student.accountUid || "",
+    name: studentNameOf(student),
+    studentId: student.studentId || student.studentID || student.idNumber || "",
+    company: student.company || student.partnerCompany || student.companyName || "Not assigned",
+  })), [assignedStudents]);
+  const selectedStudent = assignedStudents.find((student) => student.id === selectedStudentId);
+  const selectedStudentUid = selectedStudent?.studentUid || selectedStudent?.userUid || selectedStudent?.accountUid || "";
+  const selectedKey = selectedStudent ? `${selectedStudent.id}:${selectedStudentUid}` : "";
+  useEffect(() => {
+    if (!selectedStudent || !selectedStudentUid) return undefined;
+    return onSnapshot(
+      query(collection(db, "attendance"), where("studentUid", "==", selectedStudentUid)),
+      (snapshot) => {
+        setStudentAttendance({
+          key: selectedKey,
+          records: sortAttendanceRecords(
+            snapshot.docs.map((document) => ({ id: document.id, ...document.data() })),
+          ).map(withAttendanceTimes),
+          error: "",
+        });
+      },
+      (snapshotError) => {
+        console.error("Unable to load the assigned student's attendance:", snapshotError);
+        setStudentAttendance({
+          key: selectedKey,
+          records: [],
+          error: "Attendance history could not be loaded. Check the student's assignment and Firestore permissions.",
+        });
+      },
+    );
+  }, [selectedKey, selectedStudent, selectedStudentUid]);
+
   const records = useMemo(() => data.attendance.map(normalizeRecord), [data.attendance]);
   const selectedRecord = records.find((record) => record.id === selectedId);
   const companies = useMemo(
-    () => ["All companies", ...new Set(records.map((record) => record.company).filter(Boolean))],
-    [records],
+    () => ["All companies", ...new Set([...records, ...tableStudents].map((item) => item.company).filter(Boolean))],
+    [records, tableStudents],
   );
-  const visibleRecords = useMemo(() => {
-    const searchValue = search.trim().toLowerCase();
-    return records.filter((record) =>
-      (!searchValue || `${record.studentName} ${record.studentId} ${record.company}`.toLowerCase().includes(searchValue)) &&
-      (!dateFilter || record.date === dateFilter) &&
-      (statusFilter === "All" || record.status === statusFilter) &&
-      (companyFilter === "All companies" || record.company === companyFilter),
-    );
-  }, [records, search, dateFilter, statusFilter, companyFilter]);
+  const visibleRows = useMemo(() => buildAttendanceRows(tableStudents, records, {
+    search,
+    date: dateFilter,
+    status: statusFilter,
+    company: companyFilter,
+  }), [tableStudents, records, search, dateFilter, statusFilter, companyFilter]);
   const summary = useMemo(() => records.reduce((result, record) => {
     if (record.date === getLocalDate()) {
       const status = record.status.toLowerCase();
@@ -52,6 +95,39 @@ function Attendance() {
     }
     return result;
   }, { present: 0, absent: 0, late: 0 }), [records]);
+
+  if (selectedStudent) {
+    const currentAttendance = studentAttendance?.key === selectedKey ? studentAttendance : null;
+    const studentRecords = currentAttendance?.records || [];
+    const totalHours = studentRecords.reduce((total, record) => total + record.totalHours, 0);
+    return (
+      <div className="coordinator-dtr-view">
+        <button type="button" className="attendance-management-secondary coordinator-dtr-back" onClick={() => setSelectedStudentId("")}>
+          Back to attendance
+        </button>
+        <div className="student-portal-page">
+          <article className="student-card student-attendance-today-card coordinator-dtr-total">
+            <div className="student-attendance-accumulated">
+              <span>Total recorded hours</span>
+              <strong>{currentAttendance && !currentAttendance.error ? formatHoursMinutes(totalHours) : "—"}</strong>
+            </div>
+          </article>
+          <AttendanceRecord
+            key={selectedKey}
+            studentName={selectedStudent.fullName || selectedStudent.name || selectedStudent.studentName ||
+              `${selectedStudent.firstName || ""} ${selectedStudent.lastName || ""}`.trim() || "Student"}
+            studentId={selectedStudent.studentId || selectedStudent.studentID || selectedStudent.idNumber || "No student ID"}
+            academicYear={selectedStudent.schoolYear || "Not provided"}
+            records={studentRecords}
+            loading={Boolean(selectedStudentUid) && !currentAttendance}
+            error={!selectedStudentUid
+              ? "This student has no linked account. Contact an administrator to link their student account."
+              : currentAttendance?.error}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="attendance-management-page">
@@ -94,34 +170,72 @@ function Attendance() {
           <div className="attendance-management-empty">Loading attendance records...</div>
         ) : error ? (
           <div className="attendance-management-empty">Attendance records are unavailable.</div>
-        ) : visibleRecords.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <div className="attendance-management-empty">
-            <strong>{records.length ? "No matching attendance records" : "No attendance records yet"}</strong>
-            <span>{records.length ? "Try changing the search or filters." : "Attendance records will appear here once supervisors record them."}</span>
+            <strong>{assignedStudents.length ? "No matching attendance records" : "No assigned students"}</strong>
+            <span>{assignedStudents.length ? "Try changing the search or filters." : "Assigned students will appear here."}</span>
           </div>
         ) : (
-          <div className="attendance-management-table-wrap">
-            <table className="attendance-management-table">
-              <thead><tr><th>Student Name</th><th>Student ID</th><th>Partner Company</th><th>Date</th><th>AM In</th><th>AM Out</th><th>PM In</th><th>PM Out</th><th>Overtime In</th><th>Overtime Out</th><th>Total Hours</th><th>Status</th><th>Details</th></tr></thead>
+          <div className="attendance-management-table-wrap coordinator-attendance-table-wrap" role="region" aria-label="Assigned student attendance table" tabIndex={0}>
+            <table className="attendance-management-table coordinator-attendance-table">
+              <colgroup>
+                <col className="coordinator-attendance-name-column" />
+                <col className="coordinator-attendance-id-column" />
+                <col className="coordinator-attendance-company-column" />
+                <col className="coordinator-attendance-date-column" />
+                <col span={6} className="coordinator-attendance-time-column" />
+                <col className="coordinator-attendance-hours-column" />
+                <col className="coordinator-attendance-status-column" />
+                <col className="coordinator-attendance-details-column" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" rowSpan={2}>Student Name</th>
+                  <th scope="col" rowSpan={2}>Student ID</th>
+                  <th scope="col" rowSpan={2}>Partner Company</th>
+                  <th scope="col" rowSpan={2}>Date</th>
+                  <th scope="colgroup" colSpan={2}>AM</th>
+                  <th scope="colgroup" colSpan={2}>PM</th>
+                  <th scope="colgroup" colSpan={2}>Overtime</th>
+                  <th scope="col" rowSpan={2}>Total Hours</th>
+                  <th scope="col" rowSpan={2}>Status</th>
+                  <th scope="col" rowSpan={2}>Details</th>
+                </tr>
+                <tr>
+                  <th scope="col">In</th><th scope="col">Out</th>
+                  <th scope="col">In</th><th scope="col">Out</th>
+                  <th scope="col">In</th><th scope="col">Out</th>
+                </tr>
+              </thead>
               <tbody>
-                {visibleRecords.map((record) => (
-                  <tr key={record.id}>
-                    <td><strong>{record.studentName}</strong></td>
-                    <td>{record.studentId || "—"}</td><td>{record.company}</td><td>{record.date || "—"}</td>
-                    <td>{record.amIn || "—"}</td><td>{record.amOut || "—"}</td>
-                    <td>{record.pmIn || "—"}</td><td>{record.pmOut || "—"}</td>
-                    <td>{record.overtimeIn || "—"}</td><td>{record.overtimeOut || "—"}</td>
-                    <td>{formatHoursMinutes(record.totalHours)}</td>
-                    <td><span className={`attendance-management-status ${record.status.toLowerCase()}`}>{record.status}</span></td>
-                    <td><div className="attendance-management-actions"><button type="button" title="View details" aria-label={`View ${record.studentName}`} onClick={() => setSelectedId(record.id)}><Eye size={15} /></button></div></td>
+                {visibleRows.map(({ key, student, record, name, studentId, company }) => (
+                  <tr key={key}>
+                    <td>
+                      {student ? (
+                        <button
+                          type="button"
+                          className="coordinator-attendance-student-link"
+                          onClick={() => setSelectedStudentId(student.id)}
+                        >
+                          {name}
+                        </button>
+                      ) : <strong>{name}</strong>}
+                    </td>
+                    <td>{studentId || "—"}</td><td>{company}</td><td>{record?.date || "—"}</td>
+                    <td>{record?.amIn || "—"}</td><td>{record?.amOut || "—"}</td>
+                    <td>{record?.pmIn || "—"}</td><td>{record?.pmOut || "—"}</td>
+                    <td>{record?.overtimeIn || "—"}</td><td>{record?.overtimeOut || "—"}</td>
+                    <td>{record ? formatHoursMinutes(record.totalHours) : "—"}</td>
+                    <td>{record ? <span className={`attendance-management-status ${record.status.toLowerCase()}`}>{record.status}</span> : "—"}</td>
+                    <td>{record ? <div className="attendance-management-actions"><button type="button" title="View details" aria-label={`View attendance details for ${name}`} onClick={() => setSelectedId(record.id)}><Eye size={15} /></button></div> : "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        {!loading && !error && records.length > 0 && (
-          <footer className="attendance-management-footer">Showing {visibleRecords.length} of {records.length} attendance records</footer>
+        {!loading && !error && visibleRows.length > 0 && (
+          <footer className="attendance-management-footer">Showing {visibleRows.length} attendance {visibleRows.length === 1 ? "row" : "rows"}</footer>
         )}
       </section>
 

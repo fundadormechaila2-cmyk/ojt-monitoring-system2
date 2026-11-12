@@ -15,7 +15,9 @@ import schoolLogo from "../assets/school-logo.png";
 function StudentDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => window.innerWidth > 700,
+  );
 
   const closeSidebarOnMobile = () => {
     if (window.innerWidth <= 700) setSidebarOpen(false);

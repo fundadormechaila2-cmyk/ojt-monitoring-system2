@@ -304,28 +304,21 @@ function StudentReports() {
       </header>
 
       <section className="student-card student-panel">
-        <div className="student-panel-header">
+        <div className="student-panel-header journal-panel-header">
           <div>
             <p className="student-panel-subtitle">Weekly tracking</p>
             <h2 className="student-panel-title">Report Management</h2>
           </div>
-          <div className="student-field" style={{ minWidth: "220px" }}>
-            <label htmlFor="reportSearch" style={{ display: "none" }}>
-              Search reports
-            </label>
-            <div style={{ position: "relative" }}>
+          <div className="student-field journal-search">
+            <div className="journal-search-input">
               <Search
                 size={14}
-                style={{
-                  position: "absolute",
-                  left: "10px",
-                  top: "10px",
-                  color: "#718096",
-                }}
+                aria-hidden="true"
               />
               <input
                 id="reportSearch"
                 type="text"
+                aria-label="Search reports"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search reports"
@@ -353,7 +346,12 @@ function StudentReports() {
           </div>
         )}
 
-        <div className="journal-table-wrap">
+        <div
+          className="journal-table-wrap"
+          role="region"
+          aria-label="Journal reports"
+          tabIndex={0}
+        >
           <table className="student-table journal-table">
             <thead>
               <tr>

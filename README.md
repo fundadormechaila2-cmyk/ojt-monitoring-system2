@@ -64,8 +64,9 @@ then rerun the deploy command above.
 The coordinator dashboard, student list, and attendance page query records
 assigned to the signed-in coordinator. Attendance is read-only for
 coordinators; supervisors record attendance. Coordinator applications, partner
-companies, reports, and settings are not yet available. Supervisor notification
-preferences are also unavailable and are not saved.
+companies, and reports are not yet available. Coordinators and supervisors use
+the Admin Settings interface to manage their own profile and password.
+Supervisor notification preferences are unavailable and are not saved.
 
 The current student attendance QR codes are generated and validated in the
 browser and are not digitally signed. See [the Functions documentation](./functions/README.md)
@@ -74,6 +75,34 @@ before enabling the separate server-side signed QR flow.
 The repository's Firestore rules may differ from the live deployment. Compare
 them with the active rules before deploying; replacing the live rules with an
 older local ruleset can disrupt other features.
+Coordinator roster and attendance access requires a recognized department on
+the coordinator (a canonical `departmentId` or a legacy `department`), and
+matching canonical `departmentId` values on the student profile and roster record,
+plus the current `coordinatorUid` on both student documents. The student profile
+must link to the roster with `studentRecordId`, and the roster must link back
+with `studentUid`. BSBA majors use the shared `BSBA` department ID. Legacy,
+missing, or inconsistent links and department IDs must be reconciled by an
+administrator before those records can be accessed; missing roster department
+IDs will not appear in the coordinator's roster query. With consistent links,
+the coordinator can review the student's complete attendance history, including
+records from before a reassignment. Merge the relevant local rules into the
+active rules after comparison and deploy the students `coordinatorUid` /
+`departmentId` composite index in `firestore.indexes.json` before relying on
+these queries.
+The self-profile update rule in `firestore.rules` must be merged into the active
+rules before coordinators and supervisors can save profile changes. It permits
+only their own first name, last name, contact number, and update timestamp.
+To test these permissions locally with the Firebase CLI and Firestore emulator:
+
+```powershell
+firebase emulators:exec --project demo-settings --only firestore "node --test tests\settings-rules.test.js"
+```
+
+Run the attendance access checks with:
+
+```powershell
+firebase emulators:exec --project demo-settings --only firestore "node --test tests\attendance-rules.test.js"
+```
 
 The frontend calls `manageAccountApi` with the current Firebase ID token in a
 Bearer authorization header. The endpoint verifies that token with Firebase

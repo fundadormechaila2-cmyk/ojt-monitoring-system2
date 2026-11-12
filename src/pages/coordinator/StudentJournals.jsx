@@ -15,6 +15,7 @@ import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
 import { PageHeader } from "../supervisor/SupervisorComponents";
 import DepartmentBadge from "../../components/DepartmentBadge";
+import { recordDepartmentId } from "../../constants/departments";
 import "../../styles/coordinator-journals.css";
 
 function studentName(student) {
@@ -66,6 +67,7 @@ function formatDate(value) {
 
 function StudentJournals() {
   const { user } = useAuth();
+  const departmentId = recordDepartmentId(user);
   const [students, setStudents] = useState([]);
   const [studentsLoadedUid, setStudentsLoadedUid] = useState("");
   const [studentLoadError, setStudentLoadError] = useState(null);
@@ -78,12 +80,13 @@ function StudentJournals() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    if (user?.role !== "coordinator" || !user.uid) return undefined;
+    if (user?.role !== "coordinator" || !user.uid || !departmentId) return undefined;
 
     return onSnapshot(
       query(
         collection(db, "students"),
         where("coordinatorUid", "==", user.uid),
+        where("departmentId", "==", departmentId),
       ),
       (snapshot) => {
         const assignedStudents = withoutArchived(
@@ -102,10 +105,10 @@ function StudentJournals() {
         });
       },
     );
-  }, [user?.role, user?.uid]);
+  }, [user?.role, user?.uid, departmentId]);
 
   const studentsLoading =
-    Boolean(user?.uid) &&
+    Boolean(user?.uid && departmentId) &&
     studentsLoadedUid !== user.uid &&
     studentLoadError?.uid !== user.uid;
   const studentsError =
@@ -113,6 +116,8 @@ function StudentJournals() {
       ? studentLoadError.message
       : user?.role !== "coordinator"
         ? "A coordinator account is required to view student journals."
+        : !departmentId
+          ? "Your coordinator account has no recognized department. Ask an administrator to assign one in OJT Coordinators."
         : "";
 
   const studentUids = useMemo(

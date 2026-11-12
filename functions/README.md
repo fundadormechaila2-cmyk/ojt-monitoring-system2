@@ -2,6 +2,27 @@
 
 ## Account management
 
+### Role-collection migration audit
+
+The existing `students` documents are roster records and their document IDs
+are referenced by assignments and attendance. Do not rename or delete them
+without resolving those references. `users/{uid}` remains the current source
+of role and account state; separate admin, coordinator, and supervisor
+profiles are not yet maintained by the current application.
+
+An emulator-only, read-only audit is available to identify missing role
+profiles, role mismatches, misplaced non-student roster entries, and
+conflicting student links. It prints document IDs and returns a nonzero exit
+code when issues require review. It does not copy, change, or delete data:
+
+```powershell
+firebase emulators:exec --project demo-settings --only firestore "node functions\scripts\auditRoleCollections.js"
+```
+
+The audit must not be interpreted as a completed migration. Production data,
+live rules, and all profile write paths need a separate reviewed migration
+and deployment plan before role collections can be used as authoritative data.
+
 `manageAccountApi` is the trusted HTTP backend for account lifecycle
 operations; it verifies the Firebase ID token from the Bearer authorization
 header before invoking the shared account-management logic. The callable

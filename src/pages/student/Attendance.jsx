@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Clock3, Printer, QrCode, RefreshCw } from "lucide-react";
+import { CalendarClock, Clock3, QrCode, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "../../context/useAuth";
 import { issueStudentAttendanceQrToken } from "../../services/attendanceQrService";
 import { db } from "../../services/firebase";
+import AttendanceRecord from "../../components/AttendanceRecord";
+import { formatAttendanceDate, sortAttendanceRecords, withAttendanceTimes } from "../../services/attendanceRecord";
 import {
   formatHoursMinutes,
-  getRecordPeriods,
-  summarizeAttendance,
 } from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 import "../../styles/student-attendance-qr.css";
@@ -24,26 +24,8 @@ function getLocalDate() {
   }).format(new Date());
 }
 
-function formatDateLabel(value) {
-  if (!value) return "—";
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function withTimes(record) {
-  if (!record) return null;
-  const periods = getRecordPeriods(record);
-  const summary = summarizeAttendance(periods);
-  const status = record.status === "Absent" ? "Absent" : summary.status;
-  return { ...record, ...periods, totalHours: summary.totalHours, status };
-}
-
 function Attendance() {
   const { user } = useAuth();
-  const [dateFilter, setDateFilter] = useState("");
   const [qr, setQr] = useState(null);
   const fullName =
     user?.fullName ||
@@ -88,12 +70,9 @@ function Attendance() {
     ? attendanceState
     : { records: [], loading: Boolean(studentUid), error: "" };
   const attendanceRecords = useMemo(
-    () => currentAttendanceState.records.map(withTimes),
+    () => currentAttendanceState.records.map(withAttendanceTimes),
     [currentAttendanceState.records],
   );
-  const visibleRecords = useMemo(() => {
-    return attendanceRecords.filter((record) => !dateFilter || record.date === dateFilter);
-  }, [attendanceRecords, dateFilter]);
   const attendanceLoading = currentAttendanceState.loading;
   const attendanceError = currentAttendanceState.error;
   const secondsRemaining = qr
@@ -192,13 +171,9 @@ function Attendance() {
     return onSnapshot(
       query(collection(db, "attendance"), where("studentUid", "==", studentUid)),
       (snapshot) => {
-        const records = snapshot.docs
-          .map((document) => ({ id: document.id, ...document.data() }))
-          .sort((left, right) =>
-            `${right.date || ""} ${right.updatedAt?.seconds || ""}`.localeCompare(
-              `${left.date || ""} ${left.updatedAt?.seconds || ""}`,
-            ),
-          );
+        const records = sortAttendanceRecords(
+          snapshot.docs.map((document) => ({ id: document.id, ...document.data() })),
+        );
         setAttendanceState({ uid: studentUid, records, loading: false, error: "" });
       },
       (error) => {
@@ -274,7 +249,7 @@ function Attendance() {
         <article className="student-card student-attendance-today-card">
           <div className="student-panel-header">
             <div>
-              <p className="student-panel-subtitle">Today · {formatDateLabel(getLocalDate())}</p>
+              <p className="student-panel-subtitle">Today · {formatAttendanceDate(getLocalDate())}</p>
               <h2 className="student-panel-title">Attendance Status</h2>
             </div>
             <CalendarClock size={19} color="#2868c7" />
@@ -326,106 +301,15 @@ function Attendance() {
         </article>
       </section>
 
-      <section className="student-attendance-history">
-        <div className="attendance-record-toolbar">
-          <div className="attendance-record-toolbar-heading">
-            <h2>Attendance History</h2>
-            <p>{dateFilter ? "Only the selected date will be printed." : "View and print your OJT attendance record."}</p>
-          </div>
-          <div className="attendance-record-toolbar-actions">
-            <label>
-              Filter by date
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(event) => setDateFilter(event.target.value)}
-              />
-            </label>
-            {dateFilter && (
-              <button type="button" onClick={() => setDateFilter("")}>
-                Clear filter
-              </button>
-            )}
-            <button
-              type="button"
-              className="attendance-record-print"
-              onClick={() => window.print()}
-            >
-              <Printer size={16} aria-hidden="true" />
-              Print Attendance Record
-            </button>
-          </div>
-        </div>
-
-        <div className="attendance-record-paper">
-          <header className="attendance-record-heading">
-            <h2>OJT STUDENT ATTENDANCE RECORD</h2>
-            <div className="attendance-record-student-details">
-              <div><span>Student Name</span><strong>{attendanceStudentName}</strong></div>
-              <div><span>Student ID Number</span><strong>{attendanceStudentId}</strong></div>
-              <div><span>Academic Year</span><strong>{attendanceAcademicYear}</strong></div>
-            </div>
-          </header>
-
-          {studentRecordError && (
-            <p className="attendance-record-error" role="alert">{studentRecordError}</p>
-          )}
-          {attendanceError && (
-            <p className="attendance-record-error" role="alert">{attendanceError}</p>
-          )}
-          <div
-            className="attendance-record-table-wrap"
-            role="region"
-            aria-label="Attendance record table"
-            tabIndex={0}
-          >
-            <table className="attendance-record-table">
-              <colgroup>
-                <col className="attendance-record-date-column" />
-                <col span={6} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th rowSpan={2}>Date</th>
-                  <th colSpan={2}>AM</th>
-                  <th colSpan={2}>PM</th>
-                  <th colSpan={2}>Overtime</th>
-                </tr>
-                <tr>
-                  {["Time In", "Time Out", "Time In", "Time Out", "Time In", "Time Out"].map((label, index) => (
-                    <th key={index}>{label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceLoading ? (
-                  <tr><td colSpan={7}>Loading attendance records...</td></tr>
-                ) : visibleRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={7}>
-                      {attendanceRecords.length
-                        ? "No attendance records found for this date."
-                        : "No attendance records have been recorded yet."}
-                    </td>
-                  </tr>
-                ) : (
-                  visibleRecords.map((record) => (
-                    <tr key={record.id}>
-                      <td>{formatDateLabel(record.date)}</td>
-                      <td>{record.amIn || "—"}</td>
-                      <td>{record.amOut || "—"}</td>
-                      <td>{record.pmIn || "—"}</td>
-                      <td>{record.pmOut || "—"}</td>
-                      <td>{record.overtimeIn || "—"}</td>
-                      <td>{record.overtimeOut || "—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+      <AttendanceRecord
+        studentName={attendanceStudentName}
+        studentId={attendanceStudentId}
+        academicYear={attendanceAcademicYear}
+        records={attendanceRecords}
+        loading={attendanceLoading}
+        error={attendanceError}
+        studentRecordError={studentRecordError}
+      />
     </div>
   );
 }

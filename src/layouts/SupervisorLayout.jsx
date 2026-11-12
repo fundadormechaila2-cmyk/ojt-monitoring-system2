@@ -16,7 +16,9 @@ import "../styles/AdminLayout.css";
 function SupervisorLayout() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => window.innerWidth > 700,
+  );
 
   const closeSidebarOnMobile = () => {
     if (window.innerWidth <= 700) {

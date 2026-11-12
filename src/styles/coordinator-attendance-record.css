@@ -1,0 +1,65 @@
+.coordinator-attendance-table-wrap {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.coordinator-attendance-table {
+  min-width: 1460px;
+  table-layout: fixed;
+}
+
+.coordinator-attendance-name-column { width: 220px; }
+.coordinator-attendance-id-column { width: 120px; }
+.coordinator-attendance-company-column { width: 165px; }
+.coordinator-attendance-date-column { width: 115px; }
+.coordinator-attendance-time-column { width: 85px; }
+.coordinator-attendance-hours-column { width: 115px; }
+.coordinator-attendance-status-column { width: 110px; }
+.coordinator-attendance-details-column { width: 90px; }
+
+.coordinator-attendance-table th[colspan],
+.coordinator-attendance-table thead tr:nth-child(2) th,
+.coordinator-attendance-table tbody td:nth-child(n+5):nth-child(-n+10) {
+  text-align: center;
+}
+
+.coordinator-attendance-table tbody td:nth-child(2),
+.coordinator-attendance-table tbody td:nth-child(n+4) {
+  white-space: nowrap;
+}
+
+.coordinator-attendance-student-link {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2868c7;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.coordinator-attendance-student-link:hover {
+  text-decoration: underline;
+}
+
+.coordinator-dtr-back {
+  margin-bottom: 12px;
+}
+
+.coordinator-dtr-total {
+  margin-bottom: 20px;
+}
+
+.coordinator-dtr-total .student-attendance-accumulated {
+  padding-top: 0;
+  border-top: 0;
+}
+
+@media print {
+  .coordinator-dtr-back {
+    display: none !important;
+  }
+}
