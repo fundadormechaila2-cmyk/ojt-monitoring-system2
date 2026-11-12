@@ -8,14 +8,13 @@ import {
   LayoutDashboard,
   BookOpen,
   FileAxis3d,
-  UserRound,
-  ClipboardCheck,
-  FileText,
   Settings,
   Menu,
+  LogOut,
 } from "lucide-react";
 
-import schoolLogo from "../assets/school-logo.png";
+// Importing the logo image
+import hero from "../assets/hero.png";
 
 function AdminLayout() {
   const { user } = useAuth();
@@ -68,11 +67,7 @@ function AdminLayout() {
 
           {/* Application Title */}
           <div className="admin-title">
-            <img
-              src={schoolLogo}
-              alt="La Consolacion College logo"
-              className="admin-logo"
-            />
+            <img src={hero} alt="OJT Monitoring System LCCI" className="admin-logo" />
             <h2>OJT Monitoring System LCCI</h2>
           </div>
         </div>
@@ -97,13 +92,14 @@ function AdminLayout() {
             to={basePath}
             end
             onClick={closeSidebarOnMobile}
-            className="nav-link"
+            className={({ isActive }) =>
+              isActive ? "nav-link active" : "nav-link"
+            }
             title="Dashboard"
           >
             <span className="nav-icon">
               <LayoutDashboard size={18} />
             </span>
-
             <span className="nav-text">Dashboard</span>
           </NavLink>
 
@@ -111,67 +107,25 @@ function AdminLayout() {
             to={`${basePath}/students`}
             end
             onClick={closeSidebarOnMobile}
-            className="nav-link"
+            className={({ isActive }) =>
+              isActive ? "nav-link active" : "nav-link"
+            }
             title="Students"
           >
             <span className="nav-icon">
               <BookOpen size={18} />
             </span>
-
             <span className="nav-text">Students</span>
           </NavLink>
-
-          {user?.role === "coordinator" && (
-            <NavLink
-              to={`${basePath}/attendance`}
-              end
-              onClick={closeSidebarOnMobile}
-              className="nav-link"
-              title="Attendance"
-            >
-              <span className="nav-icon">
-                <ClipboardCheck size={18} />
-              </span>
-              <span className="nav-text">Attendance</span>
-            </NavLink>
-          )}
-
-          {user?.role === "coordinator" && (
-            <NavLink
-              to={`${basePath}/journals`}
-              end
-              onClick={closeSidebarOnMobile}
-              className="nav-link"
-              title="Student Journals"
-            >
-              <span className="nav-icon">
-                <FileText size={18} />
-              </span>
-              <span className="nav-text">Student Journals</span>
-            </NavLink>
-          )}
-
-          {user?.role === "coordinator" && (
-            <NavLink
-              to={`${basePath}/supervisor`}
-              end
-              onClick={closeSidebarOnMobile}
-              className="nav-link"
-              title="Supervisor"
-            >
-              <span className="nav-icon">
-                <UserRound size={18} />
-              </span>
-              <span className="nav-text">Supervisor</span>
-            </NavLink>
-          )}
 
           {user?.role === "admin" && (
             <NavLink
               to={`${basePath}/ojtcoordinators`}
               end
               onClick={closeSidebarOnMobile}
-              className="nav-link"
+              className={({ isActive }) =>
+                isActive ? "nav-link active" : "nav-link"
+              }
               title="OJT Coordinators"
             >
               <span className="nav-icon">
@@ -181,24 +135,29 @@ function AdminLayout() {
             </NavLink>
           )}
 
-          {(user?.role === "admin" || user?.role === "coordinator") && (
-            <NavLink
-              to={`${basePath}/settings`}
-              end
-              onClick={closeSidebarOnMobile}
-              className="nav-link"
-              title="Settings"
-            >
-              <span className="nav-icon">
-                <Settings size={18} />
-              </span>
+          <NavLink
+            to={`${basePath}/settings`}
+            end
+            onClick={closeSidebarOnMobile}
+            className={({ isActive }) =>
+              isActive ? "nav-link active" : "nav-link"
+            }
+            title="Settings"
+          >
+            <span className="nav-icon">
+              <Settings size={18} />
+            </span>
+            <span className="nav-text">Settings</span>
+          </NavLink>
 
-              <span className="nav-text">Settings</span>
-            </NavLink>
-          )}
 
+
+
+
+
+          
         </aside>
-        {/* MOBILE OVERLAY - this overlay is displayed on mobile devices when the sidebar is open. Clicking on it will close the sidebar. */}
+                {/* MOBILE OVERLAY - this overlay is displayed on mobile devices when the sidebar is open. Clicking on it will close the sidebar. */}
         {sidebarOpen && (
           <div className="sidebar-overlay" onClick={toggleSidebar} />
         )}
@@ -213,3 +172,5 @@ function AdminLayout() {
 }
 
 export default AdminLayout;
+
+

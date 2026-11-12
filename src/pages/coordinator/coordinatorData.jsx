@@ -1,11 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../../services/firebase";
-import { withoutArchived } from "../../services/recordState";
-import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
-import { useAuth } from "../../context/useAuth";
-import { majorIdFor } from "../../constants/departments";
 import "../../styles/coordinator-module.css";
 
 export const coordinatorSources = [
@@ -15,16 +11,8 @@ export const coordinatorSources = [
   "evaluations",
   "partnerCompanies",
 ];
-const departmentScopedSources = [
-  "students",
-  "applications",
-  "attendance",
-  "evaluations",
-  "studentAccounts",
-];
 
 export function useCoordinatorData(sources = coordinatorSources) {
-  const { user } = useAuth();
   const [data, setData] = useState(
     Object.fromEntries(sources.map((source) => [source, []])),
   );
@@ -34,24 +22,14 @@ export function useCoordinatorData(sources = coordinatorSources) {
     let loaded = 0;
     const unsubscribers = sources.map((source) =>
       onSnapshot(
-        user?.role === "coordinator" &&
-          user.uid &&
-          departmentScopedSources.includes(source)
-          ? query(
-              collection(db, source),
-              ...(source === "studentAccounts"
-                ? [where("role", "==", "student")]
-                : []),
-              where("coordinatorUid", "==", user.uid),
-            )
-          : collection(db, source),
+        collection(db, source),
         (snapshot) => {
           setData((current) => ({
             ...current,
-            [source]: withoutArchived(snapshot.docs.map((item) => ({
+            [source]: snapshot.docs.map((item) => ({
               id: item.id,
               ...item.data(),
-            }))),
+            })),
           }));
           loaded += 1;
           if (loaded === sources.length) setLoading(false);
@@ -69,7 +47,7 @@ export function useCoordinatorData(sources = coordinatorSources) {
       ),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [sources, user?.role, user?.uid]);
+  }, [sources]);
   return { data, loading, error };
 }
 
@@ -120,28 +98,34 @@ export function requiredHours(student) {
 }
 export function normalizedStudents(students, attendance) {
   return students.map((student) => {
-    const completed = Math.round(hoursForStudent(student, attendance) * 100) / 100;
+    const completed = hoursForStudent(student, attendance);
     const required = requiredHours(student);
-    const status = getStudentDeploymentStatus(student, completed, required);
-    const course = valueOf(
-      student,
-      ["course", "program", "courseProgram"],
-      "Not specified",
-    );
+    const rawStatus = String(
+      valueOf(student, ["ojtStatus", "status", "placementStatus"], ""),
+    ).toLowerCase();
+    const status =
+      rawStatus.includes("complete") || completed >= required
+        ? "Completed"
+        : rawStatus.includes("pending") || rawStatus.includes("not started")
+          ? "Pending"
+          : "Ongoing";
     return {
       ...student,
       studentId: studentIdOf(student),
       name: studentNameOf(student),
-      course,
-      major: student.major || majorIdFor(course),
+      course: valueOf(
+        student,
+        ["course", "program", "courseProgram"],
+        "Not specified",
+      ),
       company: valueOf(
         student,
-        ["company", "partnerCompany", "companyName", "partnerCompanyName"],
+        ["company", "partnerCompany", "companyName"],
         "Not assigned",
       ),
       completed,
       required,
-      remaining: Math.round(Math.max(0, required - completed) * 100) / 100,
+      remaining: Math.max(0, required - completed),
       status,
     };
   });
@@ -171,7 +155,7 @@ export function useFilteredStudents(records, search, filters = {}) {
         const query = search.trim().toLowerCase();
         return (
           (!query ||
-            `${record.name} ${record.studentId} ${record.course} ${record.schoolYear || ""} ${record.company}`
+            `${record.name} ${record.studentId} ${record.course} ${record.company}`
               .toLowerCase()
               .includes(query)) &&
           (!filters.status ||
@@ -180,25 +164,11 @@ export function useFilteredStudents(records, search, filters = {}) {
           (!filters.course ||
             filters.course === "All courses" ||
             record.course === filters.course) &&
-          (!filters.schoolYear ||
-            filters.schoolYear === "All school years" ||
-            record.schoolYear === filters.schoolYear) &&
-          (!filters.major ||
-            filters.major === "All majors" ||
-            record.major === filters.major) &&
           (!filters.company ||
             filters.company === "All companies" ||
             record.company === filters.company)
         );
       }),
-    [
-      filters.company,
-      filters.course,
-      filters.major,
-      filters.schoolYear,
-      filters.status,
-      records,
-      search,
-    ],
+    [filters.company, filters.course, filters.status, records, search],
   );
 }

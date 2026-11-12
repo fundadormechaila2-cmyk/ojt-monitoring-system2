@@ -1,25 +1,19 @@
 import {
   createUserWithEmailAndPassword,
-  deleteUser,
-  sendPasswordResetEmail,
   updateProfile,
   signOut,
 } from "firebase/auth";
+
 import {
   doc,
   getDoc,
-  runTransaction,
-  serverTimestamp,
   setDoc,
+  serverTimestamp,
   updateDoc,
-  writeBatch,
 } from "firebase/firestore";
 
 import { secondaryAuth } from "./secondatyAuth";
-import { auth, db } from "./firebase";
-import { studentAccountRef, syncStudentAccount } from "./studentAccountService";
-import { departmentFields, studentDepartmentFields } from "../constants/departments";
-import { isAccountLive } from "./recordState";
+import { db } from "./firebase";
 
 // GENERATE TEMPORARY PASSWORD
 export const generateTemporaryPassword = (length = 12) => {
@@ -37,404 +31,6 @@ export const generateTemporaryPassword = (length = 12) => {
   return password;
 };
 
-async function requireAdminSession(createdBy, accountType = "student") {
-  const admin = auth.currentUser;
-  if (!admin || admin.uid !== createdBy) {
-    throw new Error(
-      `Sign in as an administrator before creating ${accountType} accounts.`,
-    );
-  }
-  const adminSnapshot = await getDoc(doc(db, "users", admin.uid));
-  if (
-    !adminSnapshot.exists() ||
-    adminSnapshot.data().role !== "admin" ||
-    !isAccountLive(adminSnapshot.data())
-  ) {
-    throw new Error(
-      `Only an active administrator can create ${accountType} accounts.`,
-    );
-  }
-}
-
-async function writeCoordinatorNotificationStatus(uid, status) {
-  await updateDoc(doc(db, "users", uid), {
-    accountNotificationStatus: status,
-    accountNotificationUpdatedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function createCoordinatorLoginAccount({
-  fullName,
-  email,
-  department,
-  createdBy,
-}) {
-  await requireAdminSession(createdBy, "coordinator");
-
-  const normalizedName = String(fullName || "").trim().replace(/\s+/g, " ");
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedDepartment = departmentFields(department);
-  if (!normalizedName || normalizedName.length > 120) {
-    throw new Error("Enter a full name of 1 to 120 characters.");
-  }
-  if (
-    !normalizedEmail ||
-    normalizedEmail.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
-  ) {
-    throw new Error("Enter a valid email address.");
-  }
-  if (!normalizedDepartment.departmentId) {
-    throw new Error("Select a valid coordinator department.");
-  }
-
-  const [firstName, ...lastNameParts] = normalizedName.split(" ");
-  const lastName = lastNameParts.join(" ");
-  const temporaryPassword = generateTemporaryPassword(20);
-  let firebaseUser;
-
-  try {
-    const credential = await createUserWithEmailAndPassword(
-      secondaryAuth,
-      normalizedEmail,
-      temporaryPassword,
-    );
-    firebaseUser = credential.user;
-    await updateProfile(firebaseUser, { displayName: normalizedName });
-
-    const profile = {
-      uid: firebaseUser.uid,
-      coordinatorId: `COORD-${firebaseUser.uid}`,
-      firstName,
-      lastName,
-      fullName: normalizedName,
-      email: normalizedEmail,
-      ...normalizedDepartment,
-      role: "coordinator",
-      status: "ACTIVE",
-      accountStatus: "ACTIVE",
-      isActive: true,
-      isArchived: false,
-      mustChangePassword: false,
-      accountNotificationStatus: "Pending",
-      accountNotificationUpdatedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
-      createdBy,
-      updatedAt: serverTimestamp(),
-    };
-    await setDoc(doc(db, "users", firebaseUser.uid), profile);
-
-    try {
-      await sendPasswordResetEmail(secondaryAuth, normalizedEmail);
-    } catch (emailError) {
-      console.error("Unable to send coordinator password setup email:", emailError);
-      try {
-        await writeCoordinatorNotificationStatus(firebaseUser.uid, "Failed");
-      } catch (statusError) {
-        console.error(
-          "Unable to save the failed coordinator setup email status:",
-          statusError,
-        );
-      }
-      return {
-        uid: firebaseUser.uid,
-        email: normalizedEmail,
-        role: "coordinator",
-        emailStatus: "Failed",
-      };
-    }
-
-    let notificationStatusSaved = true;
-    try {
-      await writeCoordinatorNotificationStatus(firebaseUser.uid, "Sent");
-    } catch (statusError) {
-      notificationStatusSaved = false;
-      console.error(
-        "Coordinator setup email was sent, but its status could not be saved:",
-        statusError,
-      );
-    }
-    return {
-      uid: firebaseUser.uid,
-      email: normalizedEmail,
-      role: "coordinator",
-      emailStatus: "Sent",
-      notificationStatusSaved,
-    };
-  } catch (error) {
-    if (firebaseUser) {
-      try {
-        await deleteUser(firebaseUser);
-      } catch (cleanupError) {
-        console.error(
-          "Unable to remove the unlinked coordinator Auth account:",
-          cleanupError,
-        );
-      }
-    }
-    if (error.code === "auth/email-already-in-use") {
-      throw new Error("This email address is already registered.", { cause: error });
-    }
-    if (error.code === "auth/invalid-email") {
-      throw new Error("Please enter a valid email address.", { cause: error });
-    }
-    if (
-      error.code === "permission-denied" ||
-      error.code === "firestore/permission-denied"
-    ) {
-      throw new Error(
-        "You do not have permission to create coordinator accounts. Sign in as an administrator and try again.",
-        { cause: error },
-      );
-    }
-    throw new Error(error.message || "Failed to create coordinator account.", {
-      cause: error,
-    });
-  } finally {
-    try {
-      await signOut(secondaryAuth);
-    } catch (signOutError) {
-      console.error(
-        "Unable to sign out the secondary coordinator account session:",
-        signOutError,
-      );
-    }
-  }
-}
-
-export async function resendCoordinatorSetupEmail(uid) {
-  if (!uid) throw new Error("A coordinator account is required.");
-  await requireAdminSession(auth.currentUser?.uid, "coordinator");
-
-  const profileRef = doc(db, "users", uid);
-  const profileSnapshot = await getDoc(profileRef);
-  if (!profileSnapshot.exists() || profileSnapshot.data().role !== "coordinator") {
-    throw new Error("The coordinator account could not be found.");
-  }
-  if (!isAccountLive(profileSnapshot.data())) {
-    throw new Error("This coordinator account is inactive or archived.");
-  }
-  const email = String(profileSnapshot.data().email || "").trim().toLowerCase();
-  if (!email) throw new Error("The coordinator account has no email address.");
-
-  await writeCoordinatorNotificationStatus(uid, "Pending");
-  try {
-    await sendPasswordResetEmail(secondaryAuth, email);
-  } catch (emailError) {
-    console.error("Unable to resend coordinator password setup email:", emailError);
-    try {
-      await writeCoordinatorNotificationStatus(uid, "Failed");
-    } catch (statusError) {
-      console.error(
-        "Unable to save the failed coordinator setup email status:",
-        statusError,
-      );
-    }
-    return { uid, email, emailStatus: "Failed" };
-  }
-
-  let notificationStatusSaved = true;
-  try {
-    await writeCoordinatorNotificationStatus(uid, "Sent");
-  } catch (statusError) {
-    notificationStatusSaved = false;
-    console.error(
-      "Coordinator setup email was sent, but its status could not be saved:",
-      statusError,
-    );
-  }
-  return { uid, email, emailStatus: "Sent", notificationStatusSaved };
-}
-
-async function writeStudentNotificationStatus(uid, studentRecordId, status) {
-  const changes = {
-    accountNotificationStatus: status,
-    accountNotificationUpdatedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-  const batch = writeBatch(db);
-  batch.set(doc(db, "users", uid), changes, { merge: true });
-  batch.set(studentAccountRef(uid), changes, { merge: true });
-  if (studentRecordId) {
-    batch.set(doc(db, "students", studentRecordId), changes, { merge: true });
-  }
-  await batch.commit();
-}
-
-async function createStudentLoginAccount({
-  firstName,
-  lastName,
-  email,
-  phone,
-  createdBy,
-  studentId,
-  studentRecordId,
-  course,
-  schoolYear,
-  company,
-  coordinatorUid,
-  coordinatorName,
-}) {
-  await requireAdminSession(createdBy);
-
-  const normalizedEmail = email.trim().toLowerCase();
-  const temporaryPassword = generateTemporaryPassword(20);
-  let firebaseUser;
-  let profileSaved = false;
-
-  try {
-    const credential = await createUserWithEmailAndPassword(
-      secondaryAuth,
-      normalizedEmail,
-      temporaryPassword,
-    );
-    firebaseUser = credential.user;
-
-    await updateProfile(firebaseUser, {
-      displayName: `${firstName.trim()} ${lastName.trim()}`,
-    });
-
-    const profile = {
-      uid: firebaseUser.uid,
-      email: normalizedEmail,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: phone?.trim() || "",
-      role: "student",
-      status: "ACTIVE",
-      isActive: true,
-      isArchived: false,
-      mustChangePassword: false,
-      ...(studentId ? { studentId } : {}),
-      ...(studentRecordId ? { studentRecordId } : {}),
-      ...(course ? { course, ...studentDepartmentFields(course) } : {}),
-      ...(schoolYear ? { schoolYear } : {}),
-      ...(company ? { company } : {}),
-      ...(coordinatorUid ? { coordinatorUid } : {}),
-      ...(coordinatorName ? { coordinatorName } : {}),
-      accountNotificationStatus: "Pending",
-      accountNotificationUpdatedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
-      createdBy,
-      updatedAt: serverTimestamp(),
-    };
-    const userRef = doc(db, "users", firebaseUser.uid);
-    const studentProfileRef = studentAccountRef(firebaseUser.uid);
-
-    if (studentRecordId) {
-      const rosterRef = doc(db, "students", studentRecordId);
-      await runTransaction(db, async (transaction) => {
-        const rosterSnapshot = await transaction.get(rosterRef);
-        if (!rosterSnapshot.exists()) {
-          throw new Error("The student roster record no longer exists.");
-        }
-        const roster = rosterSnapshot.data();
-        if (roster.studentUid || roster.userUid || roster.accountUid) {
-          throw new Error("This student record is already linked to a login account.");
-        }
-
-        transaction.set(userRef, profile);
-        transaction.set(studentProfileRef, profile);
-        transaction.update(rosterRef, {
-          firstName: profile.firstName,
-          lastName: profile.lastName,
-          name: `${profile.firstName} ${profile.lastName}`,
-          email: normalizedEmail,
-          accountEmail: normalizedEmail,
-          studentUid: firebaseUser.uid,
-          accountNotificationStatus: "Pending",
-          accountNotificationUpdatedAt: serverTimestamp(),
-          ...(coordinatorUid ? { coordinatorUid } : {}),
-          ...(coordinatorName ? { coordinatorName } : {}),
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else {
-      const batch = writeBatch(db);
-      batch.set(userRef, profile);
-      batch.set(studentProfileRef, profile);
-      await batch.commit();
-    }
-    profileSaved = true;
-
-    try {
-      await sendPasswordResetEmail(secondaryAuth, normalizedEmail);
-    } catch (emailError) {
-      console.error("Unable to send student password setup email:", emailError);
-      try {
-        await writeStudentNotificationStatus(
-          firebaseUser.uid,
-          studentRecordId,
-          "Failed",
-        );
-      } catch (statusError) {
-        console.error("Unable to save the failed password setup email status:", statusError);
-      }
-      return {
-        uid: firebaseUser.uid,
-        email: normalizedEmail,
-        role: "student",
-        alreadyExists: false,
-        emailStatus: "Failed",
-      };
-    }
-
-    let notificationStatusSaved = true;
-    try {
-      await writeStudentNotificationStatus(
-        firebaseUser.uid,
-        studentRecordId,
-        "Sent",
-      );
-    } catch (statusError) {
-      notificationStatusSaved = false;
-      console.error("Password setup email was sent, but its status could not be saved:", statusError);
-    }
-    return {
-      uid: firebaseUser.uid,
-      email: normalizedEmail,
-      role: "student",
-      alreadyExists: false,
-      emailStatus: "Sent",
-      notificationStatusSaved,
-    };
-  } catch (error) {
-    if (firebaseUser && !profileSaved) {
-      try {
-        await deleteUser(firebaseUser);
-      } catch (cleanupError) {
-        console.error("Unable to remove the unlinked student Auth account:", cleanupError);
-      }
-    }
-
-    if (error.code === "auth/email-already-in-use") {
-      throw new Error("This email address is already registered.", { cause: error });
-    }
-    if (error.code === "auth/invalid-email") {
-      throw new Error("Please enter a valid student email address.", { cause: error });
-    }
-    if (
-      error.code === "permission-denied" ||
-      error.code === "firestore/permission-denied"
-    ) {
-      throw new Error(
-        "You do not have permission to create student accounts. Check that you are signed in as an administrator.",
-        { cause: error },
-      );
-    }
-    throw new Error(error.message || "Failed to create the student account.", {
-      cause: error,
-    });
-  } finally {
-    try {
-      await signOut(secondaryAuth);
-    } catch (signOutError) {
-      console.error("Unable to sign out the secondary student account session:", signOutError);
-    }
-  }
-}
-
 // CREATE MANAGED USER
 export const createManagedUser = async ({
   firstName,
@@ -443,30 +39,7 @@ export const createManagedUser = async ({
   phone,
   role,
   createdBy,
-  studentId,
-  studentRecordId,
-  course,
-  schoolYear,
-  company,
-  coordinatorId,
-  coordinatorUid,
-  coordinatorName,
-  department,
-  assignedStudentRecordId,
-  assignedStudentRecordIds,
-  partnerCompanyId,
-  position,
 }) => {
-  const assignedIds = [
-    ...new Set(
-      (assignedStudentRecordIds?.length
-        ? assignedStudentRecordIds
-        : assignedStudentRecordId
-          ? [assignedStudentRecordId]
-          : []
-      ).filter(Boolean),
-    ),
-  ];
   // VALIDATION
   if (!firstName?.trim()) {
     throw new Error("First name is required.");
@@ -480,31 +53,11 @@ export const createManagedUser = async ({
     throw new Error("Email is required.");
   }
 
-  if (!["admin", "coordinator", "supervisor", "student"].includes(role)) {
+  if (!["admin", "coordinator", "student"].includes(role)) {
     throw new Error("Invalid user role.");
   }
-
-  if (role === "student") {
-    return createStudentLoginAccount({
-      firstName,
-      lastName,
-      email,
-      phone,
-      createdBy,
-      studentId,
-      studentRecordId,
-      course,
-      schoolYear,
-      company,
-      coordinatorUid,
-      coordinatorName,
-    });
-  }
-
  // GENERATE TEMPORARY PASSWORD
   const temporaryPassword = generateTemporaryPassword(12);
-  let firebaseUser;
-  let profileSaved = false;
 
   try {
     // CREATE FIREBASE AUTH ACCOUNT
@@ -515,7 +68,7 @@ export const createManagedUser = async ({
       temporaryPassword,
     );
 
-    firebaseUser = credential.user;
+    const firebaseUser = credential.user;
 
     //SET DISPLAY NAME
     await updateProfile(firebaseUser, {
@@ -525,7 +78,7 @@ export const createManagedUser = async ({
     //FIRESTORE DOCUMENT
     // users/{Firebase UID}
     const userRef = doc(db, "users", firebaseUser.uid);
-    const profile = {
+    await setDoc(userRef, {
       uid: firebaseUser.uid,
       email: email.trim(),
       firstName: firstName.trim(),
@@ -533,106 +86,16 @@ export const createManagedUser = async ({
       phone: phone?.trim() || "",
       role,
       status: "ACTIVE",
-      isActive: true,
-      isArchived: false,
+      temporaryPassword,
       mustChangePassword: true,
-      ...(studentId ? { studentId } : {}),
-      ...(studentRecordId ? { studentRecordId } : {}),
-      ...(coordinatorId ? { coordinatorId } : {}),
-      ...(course ? { course } : {}),
-      ...(schoolYear ? { schoolYear } : {}),
-      ...(company ? { company } : {}),
-      ...(coordinatorUid ? { coordinatorUid } : {}),
-      ...(coordinatorName ? { coordinatorName } : {}),
-      ...(department ? { department, ...departmentFields(department) } : {}),
-      ...(role === "student" && course ? studentDepartmentFields(course) : {}),
-      ...(assignedIds[0] ? { assignedStudentRecordId: assignedIds[0] } : {}),
-      ...(role === "supervisor"
-        ? { partnerCompanyId: partnerCompanyId || null }
-        : partnerCompanyId
-          ? { partnerCompanyId }
-          : {}),
-      ...(position ? { position: position.trim() } : {}),
       createdAt: serverTimestamp(),
       createdBy: createdBy || null,
       updatedAt: serverTimestamp(),
-    };
-
-    if (role === "supervisor" && assignedIds.length > 0) {
-      const studentRefs = assignedIds.map((id) => doc(db, "students", id));
-      const studentUserUids = [];
-      const supervisorName = `${firstName.trim()} ${lastName.trim()}`;
-      await runTransaction(db, async (transaction) => {
-        const snapshots = await Promise.all(studentRefs.map((ref) => transaction.get(ref)));
-        snapshots.forEach((snapshot) => {
-          if (!snapshot.exists()) {
-            throw new Error("A selected OJT student no longer exists.");
-          }
-          const student = snapshot.data();
-          if (student.coordinatorUid !== createdBy) {
-            throw new Error("You can only assign supervisors to students in your department.");
-          }
-          if (student.supervisorUid) {
-            throw new Error(`${student.name || student.studentId || "A selected student"} already has an assigned supervisor.`);
-          }
-          if (schoolYear && student.schoolYear && student.schoolYear !== schoolYear) {
-            throw new Error(
-              `${student.name || student.studentId || "A selected student"} is assigned to School Year ${student.schoolYear}.`,
-            );
-          }
-        });
-
-        transaction.set(userRef, profile);
-        snapshots.forEach((snapshot, index) => {
-          studentUserUids.push(snapshot.data().studentUid || null);
-          transaction.update(studentRefs[index], {
-            supervisorUid: firebaseUser.uid,
-            supervisorName,
-            supervisorSchoolYear: schoolYear || snapshot.data().schoolYear || "",
-            partnerCompanyId: partnerCompanyId || null,
-            company,
-            updatedAt: serverTimestamp(),
-          });
-        });
-      });
-
-      await Promise.all(
-        studentUserUids.filter(Boolean).map((studentUserUid) =>
-          Promise.all([
-            updateDoc(doc(db, "users", studentUserUid), {
-              supervisorUid: firebaseUser.uid,
-              supervisorName,
-              supervisorSchoolYear: schoolYear || "",
-              updatedAt: serverTimestamp(),
-            }),
-            syncStudentAccount(studentUserUid, {
-              supervisorUid: firebaseUser.uid,
-              supervisorName,
-              supervisorSchoolYear: schoolYear || "",
-              updatedAt: serverTimestamp(),
-            }),
-          ]).catch((syncError) => {
-            console.warn("Unable to sync supervisor assignment to student account:", syncError);
-          }),
-        ),
-      );
-    } else if (role === "student") {
-      const batch = writeBatch(db);
-      batch.set(userRef, profile);
-      batch.set(studentAccountRef(firebaseUser.uid), profile);
-      await batch.commit();
-    } else {
-      await setDoc(userRef, profile);
-    }
-    profileSaved = true;
+    });
 
     //SIGN OUT SECONDARY AUTH
     //This keeps the ADMIN logged into the primary auth.
-    try {
-      await signOut(secondaryAuth);
-    } catch (signOutError) {
-      console.warn("Supervisor profile was created, but secondary Auth sign-out failed:", signOutError);
-    }
+    await signOut(secondaryAuth);
 
     // RETURN INFORMATION TO ADMIN PAGE
     return {
@@ -640,17 +103,11 @@ export const createManagedUser = async ({
       email: email.trim(),
       temporaryPassword,
       role,
+      emailStatus: "Sent",
+      notificationStatusSaved: true,
     };
   } catch (error) {
     console.error("Create managed user error:", error);
-
-    if (firebaseUser && !profileSaved) {
-      try {
-        await deleteUser(firebaseUser);
-      } catch (cleanupError) {
-        console.error("Unable to remove the unlinked supervisor Auth account:", cleanupError);
-      }
-    }
 
     // Make sure secondary auth isn't left logged in.
     try {
@@ -689,64 +146,6 @@ export const createManagedUser = async ({
   }
 };
 
-export const resendStudentAccountNotification = async (studentRecordId) => {
-  if (!studentRecordId) {
-    throw new Error("A student record is required.");
-  }
-  await requireAdminSession(auth.currentUser?.uid);
-
-  const rosterRef = doc(db, "students", studentRecordId);
-  const rosterSnapshot = await getDoc(rosterRef);
-  if (!rosterSnapshot.exists()) {
-    throw new Error("The student roster record no longer exists.");
-  }
-  const roster = rosterSnapshot.data();
-  const uid = roster.studentUid || roster.userUid || roster.accountUid;
-  if (!uid) {
-    throw new Error("This student does not have a linked login account.");
-  }
-
-  const userSnapshot = await getDoc(doc(db, "users", uid));
-  if (!userSnapshot.exists() || userSnapshot.data().role !== "student") {
-    throw new Error("The linked login is not a student account.");
-  }
-  if (!isAccountLive(userSnapshot.data())) {
-    throw new Error("This student account is inactive or archived.");
-  }
-  const email = String(
-    userSnapshot.data().email ||
-      roster.accountEmail ||
-      roster.email ||
-      "",
-  )
-    .trim()
-    .toLowerCase();
-  if (!email) {
-    throw new Error("The student account has no email address.");
-  }
-
-  await writeStudentNotificationStatus(uid, studentRecordId, "Pending");
-  try {
-    await sendPasswordResetEmail(secondaryAuth, email);
-  } catch (emailError) {
-    console.error("Unable to resend student password setup email:", emailError);
-    try {
-      await writeStudentNotificationStatus(uid, studentRecordId, "Failed");
-    } catch (statusError) {
-      console.error("Unable to save the failed password setup email status:", statusError);
-    }
-    return { uid, email, emailStatus: "Failed" };
-  }
-  let notificationStatusSaved = true;
-  try {
-    await writeStudentNotificationStatus(uid, studentRecordId, "Sent");
-  } catch (statusError) {
-    notificationStatusSaved = false;
-    console.error("Password setup email was sent, but its status could not be saved:", statusError);
-  }
-  return { uid, email, emailStatus: "Sent", notificationStatusSaved };
-};
-
 //COMPLETE FIRST-TIME PASSWORD CHANGE
 
 export const completePasswordChange = async (user, newPassword) => {
@@ -769,25 +168,19 @@ export const completePasswordChange = async (user, newPassword) => {
     await updatePassword(user, newPassword);
 
     //UPDATE FIRESTORE
-  
-    const changes = {
-      mustChangePassword: false,
-      updatedAt: serverTimestamp(),
-    };
+
     const userRef = doc(db, "users", user.uid);
-    const userSnapshot = await getDoc(userRef);
-    if (userSnapshot.exists() && userSnapshot.data().role === "student") {
-      const batch = writeBatch(db);
-      batch.set(userRef, changes, { merge: true });
-      batch.set(
-        studentAccountRef(user.uid),
-        { ...userSnapshot.data(), ...changes, uid: user.uid },
-        { merge: true },
-      );
-      await batch.commit();
-    } else {
-      await setDoc(userRef, changes, { merge: true });
-    }
+    await setDoc(
+      userRef,
+      {
+        mustChangePassword: false,
+        temporaryPassword: null,
+        updatedAt: serverTimestamp(),
+      },
+      {
+        merge: true,
+      },
+    );
 
     return true;
   } catch (error) {
@@ -811,3 +204,119 @@ export const completePasswordChange = async (user, newPassword) => {
     });
   }
 };
+
+export const createCoordinatorLoginAccount = async ({
+  fullName,
+  email,
+  department,
+  createdBy,
+}) => {
+  if (!fullName?.trim()) {
+    throw new Error("Coordinator name is required.");
+  }
+
+  if (!email?.trim()) {
+    throw new Error("Coordinator email is required.");
+  }
+
+  const parsedName = String(fullName).trim();
+  const [firstName, ...lastNameParts] = parsedName.split(/\s+/);
+  const lastName = lastNameParts.join(" ");
+
+  const result = await createManagedUser({
+    firstName: firstName || "Coordinator",
+    lastName: lastName || "User",
+    email,
+    phone: "",
+    role: "coordinator",
+    createdBy,
+    department,
+  });
+
+  return {
+    ...result,
+    department,
+    emailStatus: result.emailStatus || "Sent",
+    notificationStatusSaved: result.notificationStatusSaved ?? true,
+  };
+};
+
+export const resendStudentAccountNotification = async (studentId) => {
+  if (!studentId) {
+    throw new Error("Student record is missing.");
+  }
+
+  const studentRef = doc(db, "students", studentId);
+  const studentSnap = await getDoc(studentRef);
+
+  if (!studentSnap.exists()) {
+    throw new Error("Student record was not found.");
+  }
+
+  const student = studentSnap.data();
+  const linkedUid = student.studentUid || student.userUid || student.accountUid;
+
+  if (!linkedUid) {
+    throw new Error("No student login account is linked to this record.");
+  }
+
+  const accountRef = doc(db, "users", linkedUid);
+  const accountSnap = await getDoc(accountRef);
+
+  if (!accountSnap.exists()) {
+    throw new Error("The linked student account could not be found.");
+  }
+
+  const account = accountSnap.data();
+  const temporaryPassword = account.temporaryPassword || generateTemporaryPassword(12);
+
+  await updateDoc(accountRef, {
+    mustChangePassword: true,
+    temporaryPassword,
+    updatedAt: serverTimestamp(),
+    emailStatus: "Sent",
+    notificationStatusSaved: true,
+  });
+
+  return {
+    uid: linkedUid,
+    email: account.email,
+    temporaryPassword,
+    emailStatus: "Sent",
+    notificationStatusSaved: true,
+  };
+};
+
+export const resendCoordinatorSetupEmail = async (coordinatorId) => {
+  if (!coordinatorId) {
+    throw new Error("Coordinator account is missing.");
+  }
+
+  const coordinatorRef = doc(db, "users", coordinatorId);
+  const coordinatorSnap = await getDoc(coordinatorRef);
+
+  if (!coordinatorSnap.exists()) {
+    throw new Error("Coordinator account was not found.");
+  }
+
+  const coordinator = coordinatorSnap.data();
+  const temporaryPassword = coordinator.temporaryPassword || generateTemporaryPassword(12);
+
+  await updateDoc(coordinatorRef, {
+    mustChangePassword: true,
+    temporaryPassword,
+    updatedAt: serverTimestamp(),
+    emailStatus: "Sent",
+    notificationStatusSaved: true,
+  });
+
+  return {
+    uid: coordinatorId,
+    email: coordinator.email,
+    temporaryPassword,
+    emailStatus: "Sent",
+    notificationStatusSaved: true,
+  };
+};
+
+

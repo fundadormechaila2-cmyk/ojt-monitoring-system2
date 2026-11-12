@@ -266,7 +266,7 @@ function Dashboard() {
       <section className="dashboard-intro dashboard-hero">
         <div>
           <p className="dashboard-eyebrow">LCCI • OJT monitoring system</p>
-          <h1>Admin Dashboard</h1>
+          <h1>Live Placement Overview</h1>
           <p className="dashboard-subtitle">
             Welcome back, {firstName}! Here is your live placement overview.
           </p>

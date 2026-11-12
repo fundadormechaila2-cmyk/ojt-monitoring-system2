@@ -1547,7 +1547,11 @@ function Students() {
               </label>
               <label>
                 Partner company
-                <input value={editForm.company} disabled />
+                <input
+                  value={editForm.company || "It will be assigned by coordinator"}
+                  readOnly
+                  aria-label="Partner company"
+                />
               </label>
               <label>
                 Assigned coordinator
@@ -1880,14 +1884,9 @@ function Students() {
               <label>
                 Partner company
                 <input
-                  value={newStudent.company}
-                  disabled
-                  onChange={(event) =>
-                    setNewStudent((current) => ({
-                      ...current,
-                      company: event.target.value,
-                    }))
-                  }
+                  value={newStudent.company || "It will be assigned by coordinator"}
+                  readOnly
+                  aria-label="Partner company"
                 />
               </label>
               <label>

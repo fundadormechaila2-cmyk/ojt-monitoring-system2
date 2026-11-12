@@ -541,12 +541,8 @@ function StudentReports() {
                     required
                   />
                 </div>
-                <div className="student-field">
-                  <label htmlFor="journalAttachment">Attachment</label>
-                  <input id="journalAttachment" type="file" />
-                </div>
                 <div className="student-field full">
-                  <label htmlFor="journalTasks">Tasks performed</label>
+                  <label htmlFor="journalTasks">Task Performed</label>
                   <textarea
                     id="journalTasks"
                     value={form.tasks}
@@ -554,16 +550,16 @@ function StudentReports() {
                     required
                   />
                 </div>
-                <div className="student-field">
-                  <label htmlFor="journalSkills">Skills learned</label>
+                <div className="student-field full">
+                  <label htmlFor="journalSkills">Skills Learned</label>
                   <textarea
                     id="journalSkills"
                     value={form.skills}
                     onChange={(event) => handleChange("skills", event.target.value)}
                   />
                 </div>
-                <div className="student-field">
-                  <label htmlFor="journalChallenges">Problems encountered</label>
+                <div className="student-field full">
+                  <label htmlFor="journalChallenges">Problems Encountered</label>
                   <textarea
                     id="journalChallenges"
                     value={form.challenges}
@@ -571,7 +567,7 @@ function StudentReports() {
                   />
                 </div>
                 <div className="student-field full">
-                  <label htmlFor="journalReflection">Reflection / remarks</label>
+                  <label htmlFor="journalReflection">Reflection</label>
                   <textarea
                     id="journalReflection"
                     value={form.reflection}

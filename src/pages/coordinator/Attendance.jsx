@@ -1,55 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { Clock3, Download, Printer, X } from "lucide-react";
-import { useAuth } from "../../context/useAuth";
-import { db } from "../../services/firebase";
-import { subscribeToAssignedAttendance } from "../../services/assignedAttendanceService";
 import {
-  formatHoursMinutes,
-  getRecordPeriods,
-  summarizeAttendance,
-} from "../../services/manualAttendanceService";
-import { PageHeader, SearchBox, Status } from "../supervisor/SupervisorComponents";
-import DepartmentBadge from "../../components/DepartmentBadge";
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Edit3,
+  Eye,
+  Search,
+  Trash2,
+  UserX,
+  X,
+} from "lucide-react";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
+import { db } from "../../services/firebase";
+import { useAuth } from "../../context/useAuth";
+import "../../styles/attendance-management.css";
 import "../../styles/coordinator-module.css";
 
-const recentLoginLimit = 8;
-const attendanceGroups = [
-  {
-    value: "am",
-    label: "AM",
-    columns: [
-      { value: "amIn", label: "IN" },
-      { value: "amOut", label: "OUT" },
-    ],
-  },
-  {
-    value: "pm",
-    label: "PM",
-    columns: [
-      { value: "pmIn", label: "IN" },
-      { value: "pmOut", label: "OUT" },
-    ],
-  },
-  {
-    value: "overtime",
-    label: "OVERTIME",
-    columns: [
-      { value: "overtimeIn", label: "IN" },
-      { value: "overtimeOut", label: "OUT" },
-    ],
-  },
-];
-const attendancePeriods = attendanceGroups.flatMap((group) => group.columns);
+const statuses = ["Present", "Absent", "Late", "Incomplete"];
+const today = () => new Date().toISOString().slice(0, 10);
 
-function getLocalDate() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+const emptyForm = {
+  studentId: "",
+  date: today(),
+  timeIn: "",
+  timeOut: "",
+  status: "Present",
+  remarks: "",
+};
 
 function getStudentName(student) {
   return (
@@ -62,637 +47,660 @@ function getStudentName(student) {
 }
 
 function getStudentId(student) {
-  return String(
-    student.studentId ||
-      student.studentID ||
-      student.idNumber ||
-      student.id ||
-      "",
+  return (
+    student.studentId || student.idNumber || student.studentID || student.id
   );
 }
 
-function attendanceDateOf(record) {
-  if (typeof record.date === "string") {
-    return record.date.slice(0, 10);
-  }
-
-  const date = record.date?.toDate?.() || record.date;
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+function getCompany(student) {
+  return (
+    student.company ||
+    student.partnerCompany ||
+    student.companyName ||
+    "Not assigned"
+  );
 }
 
-function getPeriodTime(record, period) {
-  return getRecordPeriods(record)[period] || "";
+function getInitials(name) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
-function hoursForRecord(record) {
-  return summarizeAttendance(getRecordPeriods(record)).totalHours;
+function calculateHours(timeIn, timeOut) {
+  if (!timeIn || !timeOut) return 0;
+  const [inHour, inMinute] = timeIn.split(":").map(Number);
+  const [outHour, outMinute] = timeOut.split(":").map(Number);
+  return Number(
+    ((outHour * 60 + outMinute - (inHour * 60 + inMinute)) / 60).toFixed(2),
+  );
 }
 
-function csvCell(value) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
-}
-
-function statusForRecord(record) {
-  return record.status === "Absent"
-    ? "Absent"
-    : summarizeAttendance(getRecordPeriods(record)).status;
-}
-
-function loginTimeLabel(timestamp) {
-  const date = timestamp?.toDate?.() || (timestamp ? new Date(timestamp) : null);
-  if (!date || Number.isNaN(date.getTime())) return "Time unavailable";
-
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+function normalizeRecord(record) {
+  return {
+    ...record,
+    studentId: record.studentId || record.studentID || "",
+    studentName: record.studentName || record.student || "Unnamed student",
+    company: record.company || record.partnerCompany || "Not assigned",
+    date: record.date || "",
+    timeIn: record.timeIn || "",
+    timeOut: record.timeOut || "",
+    totalHours: Number(record.totalHours ?? record.hours ?? 0),
+    status: record.status || "Incomplete",
+    remarks: record.remarks || record.note || "",
+  };
 }
 
 function Attendance() {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [records, setRecords] = useState([]);
-  const [loginActivity, setLoginActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [loginActivityError, setLoginActivityError] = useState("");
-  const [loginActivityLoading, setLoginActivityLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(getLocalDate);
+  const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedDtr, setSelectedDtr] = useState(null);
+  const [dateFilter, setDateFilter] = useState(today());
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [companyFilter, setCompanyFilter] = useState("All companies");
+  const [modal, setModal] = useState(null);
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    let studentsLoaded = false;
+    let attendanceLoaded = false;
+
+    const finishLoading = () => {
+      if (studentsLoaded && attendanceLoaded) setLoading(false);
+    };
+
     const unsubscribeStudents = onSnapshot(
-      query(
-        collection(db, "students"),
-        where("coordinatorUid", "==", user.uid),
-      ),
+      collection(db, "students"),
       (snapshot) => {
         setStudents(
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
         );
+        studentsLoaded = true;
+        finishLoading();
       },
       (snapshotError) => {
         console.error("Unable to load students for attendance:", snapshotError);
-        setError("Student records could not be loaded. Check Firestore permissions.");
+        setError(
+          "Students could not be loaded. Check your Firestore permissions and try again.",
+        );
+        studentsLoaded = true;
+        finishLoading();
       },
     );
-    const unsubscribeLoginActivity = onSnapshot(
-      query(
-        collection(db, "studentLoginActivity"),
-        where("coordinatorUid", "==", user.uid),
-      ),
+
+    const unsubscribeAttendance = onSnapshot(
+      collection(db, "attendance"),
       (snapshot) => {
-        setLoginActivity(
-          snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() }))
-            .sort(
-              (left, right) =>
-                (right.loggedInAt?.seconds || 0) -
-                (left.loggedInAt?.seconds || 0),
-            )
-            .slice(0, recentLoginLimit),
+        setRecords(
+          snapshot.docs.map((item) =>
+            normalizeRecord({ id: item.id, ...item.data() }),
+          ),
         );
-        setLoginActivityLoading(false);
-        setLoginActivityError("");
+        attendanceLoaded = true;
+        finishLoading();
       },
       (snapshotError) => {
-        console.error("Unable to load student sign-in activity:", snapshotError);
-        setLoginActivityLoading(false);
-        setLoginActivityError(
-          "Student sign-ins could not be loaded. Check Firestore permissions.",
+        console.error("Unable to load attendance records:", snapshotError);
+        setError(
+          snapshotError.code === "permission-denied"
+            ? "You do not have permission to view attendance records. Update your Firestore rules to allow coordinator access."
+            : `Attendance records could not be loaded (${snapshotError.code || "unknown error"}).`,
         );
+        attendanceLoaded = true;
+        finishLoading();
       },
     );
 
     return () => {
       unsubscribeStudents();
-      unsubscribeLoginActivity();
+      unsubscribeAttendance();
     };
-  }, [user.uid]);
+  }, []);
 
-  useEffect(() => subscribeToAssignedAttendance({
-    role: "coordinator",
-    userUid: user.uid,
-    onRecords: (items) => {
-      setRecords(items);
-      setLoading(false);
-      setError("");
-    },
-    onError: (snapshotError) => {
-      console.error("Unable to load assigned coordinator attendance:", snapshotError);
-      setError(
-        snapshotError.code === "permission-denied"
-          ? "Access to attendance records was denied. Check the deployed Firestore rules and coordinator assignment."
-          : "Attendance records could not be loaded. Please try again.",
-      );
-      setLoading(false);
-    },
-  }), [user.uid]);
-
-  const studentById = useMemo(
+  const studentMap = useMemo(
     () => new Map(students.map((student) => [getStudentId(student), student])),
     [students],
   );
-  const visibleRecords = useMemo(() => {
-    const queryText = search.trim().toLowerCase();
-
-    return records
-      .filter((record) => attendanceDateOf(record) === selectedDate)
-      .map((record) => {
-        const student =
-          studentById.get(String(record.studentId || "")) ||
-          students.find(
-            (item) =>
-              item.studentUid === record.studentUid ||
-              item.id === record.studentUid,
-          );
-        return {
-          ...record,
-          studentRecord: student || {},
-          displayName:
-            record.studentName || record.student || getStudentName(student || {}),
-          displayId: record.studentId || getStudentId(student || {}) || "—",
-          displayDepartment:
-            record.department || student?.department || student?.course || "—",
-        };
-      })
-      .filter((record) =>
-        `${record.displayName} ${record.displayId} ${record.displayDepartment} ${record.company || ""}`
-          .toLowerCase()
-          .includes(queryText),
-      )
-      .sort((left, right) =>
-        `${right.date || ""}${right.updatedAt?.seconds || ""}`.localeCompare(
-          `${left.date || ""}${left.updatedAt?.seconds || ""}`,
-        ),
-      );
-  }, [records, search, selectedDate, studentById, students]);
-
-  const selectedDtrRecords = useMemo(() => {
-    if (!selectedDtr) return [];
-    return records
-      .filter(
-        (record) =>
-          selectedDtr.studentUid
-            ? record.studentUid === selectedDtr.studentUid
-            : selectedDtr.studentId &&
-              String(record.studentId || "") === selectedDtr.studentId,
-      )
-      .sort((left, right) =>
-        attendanceDateOf(right).localeCompare(attendanceDateOf(left)),
-      );
-  }, [records, selectedDtr]);
-
-  const selectedStudent = useMemo(
+  const companies = useMemo(
+    () => [
+      "All companies",
+      ...new Set(records.map((record) => record.company).filter(Boolean)),
+    ],
+    [records],
+  );
+  const visibleRecords = useMemo(
     () =>
-      students.find(
-        (student) =>
-          (selectedDtr?.studentUid &&
-            (student.studentUid === selectedDtr.studentUid ||
-              student.id === selectedDtr.studentUid)) ||
-          (selectedDtr?.studentId &&
-            getStudentId(student) === selectedDtr.studentId),
-      ) || {},
-    [selectedDtr, students],
+      records.filter((record) => {
+        const searchValue = search.trim().toLowerCase();
+        const matchesSearch =
+          !searchValue ||
+          `${record.studentName} ${record.studentId} ${record.company}`
+            .toLowerCase()
+            .includes(searchValue);
+        return (
+          matchesSearch &&
+          (!dateFilter || record.date === dateFilter) &&
+          (statusFilter === "All" || record.status === statusFilter) &&
+          (companyFilter === "All companies" ||
+            record.company === companyFilter)
+        );
+      }),
+    [companyFilter, dateFilter, records, search, statusFilter],
   );
 
-  const selectedDtrRecordedHours = selectedDtrRecords
-    .reduce((sum, record) => sum + hoursForRecord(record), 0)
-    .toFixed(2);
-  const savedCompletedHours = Number(
-    selectedStudent.completedHours ??
-      selectedStudent.ojtHours ??
-      selectedStudent.hoursCompleted ??
-      selectedStudent.hours ??
-      0,
-  );
-  const selectedDtrCompletedHours =
-    Number.isFinite(savedCompletedHours) && savedCompletedHours > 0
-      ? savedCompletedHours
-      : Number(selectedDtrRecordedHours);
-  const savedRequiredHours = Number(
-    selectedStudent.requiredHours ??
-      selectedStudent.totalRequiredHours ??
-      selectedStudent.ojtRequiredHours ??
-      500,
-  );
-  const selectedDtrRequiredHours =
-    Number.isFinite(savedRequiredHours) && savedRequiredHours > 0
-      ? savedRequiredHours
-      : 500;
-  const selectedDtrRemainingHours = Math.max(
-    0,
-    selectedDtrRequiredHours - selectedDtrCompletedHours,
+  const summary = useMemo(
+    () =>
+      records.reduce(
+        (result, record) => {
+          if (record.date === today()) {
+            result[record.status.toLowerCase()] =
+              (result[record.status.toLowerCase()] || 0) + 1;
+          }
+          return result;
+        },
+        { present: 0, absent: 0, late: 0 },
+      ),
+    [records],
   );
 
-  useEffect(() => {
-    if (!selectedDtr) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const closeOnEscape = (event) => {
-      if (event.key === "Escape") setSelectedDtr(null);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [selectedDtr]);
-
-  const downloadDtrCsv = () => {
-    if (!selectedDtr) return;
-    const rows = [
-      [
-        "Date",
-        "AM Time In",
-        "AM Time Out",
-        "PM Time In",
-        "PM Time Out",
-        "Overtime Time In",
-        "Overtime Time Out",
-        "Hours Rendered",
-      ],
-      ...selectedDtrRecords.map((record) => [
-        attendanceDateOf(record),
-        getPeriodTime(record, "amIn") || "—",
-        getPeriodTime(record, "amOut") || "—",
-        getPeriodTime(record, "pmIn") || "—",
-        getPeriodTime(record, "pmOut") || "—",
-        getPeriodTime(record, "overtimeIn") || "—",
-        getPeriodTime(record, "overtimeOut") || "—",
-        formatHoursMinutes(hoursForRecord(record)),
-      ]),
-    ];
-    const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedDtr.displayName.replace(/[^a-z0-9-_]+/gi, "_")}-DTR.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  const showNotice = (message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 3000);
   };
 
-  const openStudentDtr = (record) => {
-    setSelectedDtr({
-    studentUid: record.studentUid || "",
-    studentId: String(record.displayId === "—" ? "" : record.displayId),
-    displayName: record.displayName,
-    displayId: record.displayId,
-    department:
-      record.displayDepartment ||
-      record.studentRecord?.department ||
-      record.studentRecord?.course ||
-      record.studentRecord?.program ||
-      record.studentRecord?.courseProgram ||
-      "—",
-    company:
-      record.company ||
-      record.studentRecord?.company ||
-      record.studentRecord?.partnerCompany ||
-      record.studentRecord?.companyName ||
-      "—",
-    supervisorName:
-      record.supervisorName ||
-      record.studentRecord?.supervisorName ||
-      record.studentRecord?.supervisor ||
-      record.studentRecord?.companySupervisor ||
-      "—",
+  const openEdit = (record) => {
+    setForm({
+      studentId: record.studentId,
+      date: record.date,
+      timeIn: record.timeIn,
+      timeOut: record.timeOut,
+      status: record.status,
+      remarks: record.remarks,
     });
+    setEditingRecord(record);
+    setFormError("");
+    setModal("form");
+  };
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+    setFormError("");
+    const student = studentMap.get(form.studentId);
+    const hours = calculateHours(form.timeIn, form.timeOut);
+
+    if (!student) {
+      setFormError("Student is required.");
+      return;
+    }
+    if (!form.date) {
+      setFormError("Date is required.");
+      return;
+    }
+    if (["Present", "Late"].includes(form.status) && !form.timeIn) {
+      setFormError("Time In is required for Present or Late attendance.");
+      return;
+    }
+    if (form.timeOut && !form.timeIn) {
+      setFormError("Time In is required before entering Time Out.");
+      return;
+    }
+    if (form.timeIn && form.timeOut && hours < 0) {
+      setFormError("Time Out cannot be earlier than Time In.");
+      return;
+    }
+    const duplicate = records.find(
+      (record) =>
+        record.studentId === form.studentId &&
+        record.date === form.date &&
+        record.id !== editingRecord?.id,
+    );
+    if (duplicate) {
+      setFormError(
+        "An attendance record already exists for this student and date.",
+      );
+      return;
+    }
+
+    const data = {
+      studentId: form.studentId,
+      studentName: getStudentName(student),
+      company: getCompany(student),
+      date: form.date,
+      timeIn: form.timeIn,
+      timeOut: form.timeOut,
+      totalHours: hours,
+      status: form.status,
+      remarks: form.remarks.trim(),
+      updatedBy: user?.uid || null,
+      updatedAt: serverTimestamp(),
+    };
+
+    setSaving(true);
+    try {
+      if (editingRecord) {
+        await updateDoc(doc(db, "attendance", editingRecord.id), data);
+        showNotice("Attendance updated successfully.");
+      } else {
+        await addDoc(collection(db, "attendance"), {
+          ...data,
+          createdAt: serverTimestamp(),
+        });
+        showNotice("Attendance added successfully.");
+      }
+      setModal(null);
+    } catch (saveError) {
+      console.error("Unable to save attendance record:", saveError);
+      setFormError("Attendance could not be saved. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (record) => {
+    if (
+      !window.confirm(
+        `Delete attendance for ${record.studentName} on ${record.date}?`,
+      )
+    )
+      return;
+    try {
+      await deleteDoc(doc(db, "attendance", record.id));
+      showNotice("Attendance deleted successfully.");
+      if (modal?.id === record.id) setModal(null);
+    } catch (deleteError) {
+      console.error("Unable to delete attendance record:", deleteError);
+      setError("Attendance could not be deleted. Please try again.");
+    }
   };
 
   return (
-    <main className="supervisor-page space-y-6 coordinator-attendance-page">
-      <PageHeader
-        eyebrow="Coordinator workspace · Attendance"
-        title="Daily Time Records of Students"
-        description="Review student attendance records by date and search."
-      />
-
-      {error && (
-        <p className="supervisor-error" role="alert">
-          {error}
-        </p>
-      )}
-
-      <section className="supervisor-panel supervisor-table-panel">
-        <div className="supervisor-toolbar">
-          <SearchBox
-            value={search}
-            onChange={setSearch}
-            placeholder="Search student name or ID"
-          />
-          <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            Date
-            <input
-              aria-label="Filter attendance by date"
-              className="supervisor-select"
-              type="date"
-              value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value)}
-            />
-          </label>
+    <main className="attendance-management-page">
+      <header className="attendance-management-header">
+        <div>
+          <p className="attendance-management-eyebrow">
+            LCCI · OJT MONITORING SYSTEM
+          </p>
+          <h1>Attendance</h1>
+          <p>Monitor and manage student OJT attendance records.</p>
         </div>
+      </header>
 
-        <div className="supervisor-table-wrap">
-          <table className="supervisor-table">
-            <thead>
-              <tr>
-                <th rowSpan={2}>Date</th>
-                <th rowSpan={2}>Student</th>
-                <th rowSpan={2}>ID Number</th>
-                <th rowSpan={2}>Department</th>
-                {attendanceGroups.map((group) => (
-                  <th
-                    className="text-center"
-                    colSpan={group.columns.length}
-                    key={group.value}
-                  >
-                    {group.label}
-                  </th>
-                ))}
-                <th rowSpan={2}>Hours</th>
-                <th rowSpan={2}>Status</th>
-              </tr>
-              <tr>
-                {attendanceGroups.flatMap((group) =>
-                  group.columns.map((column) => (
-                    <th
-                      className="text-center"
-                      key={`${group.value}-${column.value}`}
-                    >
-                      {column.label}
-                    </th>
-                  )),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td className="supervisor-empty" colSpan={12}>
-                    Loading attendance records...
-                  </td>
-                </tr>
-              ) : visibleRecords.length === 0 ? (
-                <tr>
-                  <td className="supervisor-empty" colSpan={12}>
-                    {error
-                      ? "Attendance records are unavailable."
-                      : "No attendance records found for this date."}
-                  </td>
-                </tr>
-              ) : (
-                visibleRecords.map((record) => (
-                  <tr
-                    key={record.id}
-                    className="coordinator-attendance-clickable-row"
-                    onClick={() => openStudentDtr(record)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openStudentDtr(record);
-                      }
-                    }}
-                    tabIndex={0}
-                    aria-haspopup="dialog"
-                    title="Open student's DTR history"
-                  >
-                    <td>{attendanceDateOf(record) || "—"}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="coordinator-dtr-student-link"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openStudentDtr(record);
-                        }}
-                      >
-                        {record.displayName}
-                      </button>
-                    </td>
-                    <td>{record.displayId}</td>
-                    <td><DepartmentBadge value={record.displayDepartment} /></td>
-                    {attendancePeriods.map((period) => (
-                      <td key={period.value}>
-                        {getPeriodTime(record, period.value) || "—"}
-                      </td>
-                    ))}
-                    <td>{formatHoursMinutes(hoursForRecord(record))}</td>
-                    <td>
-                      <Status value={statusForRecord(record)} />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <footer className="px-5 py-3 text-xs text-slate-500">
-          Showing {visibleRecords.length} attendance record
-          {visibleRecords.length === 1 ? "" : "s"} · Total hours{" "}
-          {formatHoursMinutes(
-            visibleRecords.reduce((sum, record) => sum + hoursForRecord(record), 0),
-          )}
-          {" "}(all dates:{" "}
-          {formatHoursMinutes(
-            records.reduce((sum, record) => sum + hoursForRecord(record), 0),
-          )})
-        </footer>
+      <section
+        className="attendance-summary-cards"
+        aria-label="Attendance summary"
+      >
+        <article>
+          <span className="attendance-summary-icon blue">
+            <CalendarDays size={18} />
+          </span>
+          <div>
+            <small>Total Students</small>
+            <strong>{students.length}</strong>
+          </div>
+        </article>
+        <article>
+          <span className="attendance-summary-icon green">
+            <CheckCircle2 size={18} />
+          </span>
+          <div>
+            <small>Present Today</small>
+            <strong>{summary.present}</strong>
+          </div>
+        </article>
+        <article>
+          <span className="attendance-summary-icon red">
+            <UserX size={18} />
+          </span>
+          <div>
+            <small>Absent Today</small>
+            <strong>{summary.absent}</strong>
+          </div>
+        </article>
+        <article>
+          <span className="attendance-summary-icon amber">
+            <Clock3 size={18} />
+          </span>
+          <div>
+            <small>Late Today</small>
+            <strong>{summary.late}</strong>
+          </div>
+        </article>
       </section>
 
-      {selectedDtr && (
+      <section className="attendance-management-panel">
+        <div className="attendance-management-toolbar">
+          <label className="attendance-management-search">
+            <Search size={17} />
+            <span className="sr-only">Search student attendance</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search student by name or ID"
+            />
+          </label>
+          <div className="attendance-management-filters">
+            <label>
+              <span className="sr-only">Filter by date</span>
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(event) => setDateFilter(event.target.value)}
+              />
+            </label>
+            <select
+              aria-label="Filter by attendance status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option>All</option>
+              {statuses.map((status) => (
+                <option key={status}>{status}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter by partner company"
+              value={companyFilter}
+              onChange={(event) => setCompanyFilter(event.target.value)}
+            >
+              {companies.map((company) => (
+                <option key={company}>{company}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {error && (
+          <div className="attendance-management-error" role="alert">
+            {error}
+          </div>
+        )}
+        {loading ? (
+          <div className="attendance-management-empty">
+            Loading attendance records...
+          </div>
+        ) : records.length === 0 ? (
+          <div className="attendance-management-empty">
+            <strong>No attendance records yet</strong>
+            <span>
+              Attendance records will appear here once they are added.
+            </span>
+          </div>
+        ) : visibleRecords.length === 0 ? (
+          <div className="attendance-management-empty">
+            <strong>No matching attendance records</strong>
+            <span>Try changing the search or filters.</span>
+          </div>
+        ) : (
+          <div className="attendance-management-table-wrap">
+            <table className="attendance-management-table">
+              <thead>
+                <tr>
+                  <th>Student Name</th>
+                  <th>Student ID</th>
+                  <th>Partner Company</th>
+                  <th>Date</th>
+                  <th>Time In</th>
+                  <th>Time Out</th>
+                  <th>Total Hours</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRecords.map((record) => (
+                  <tr key={record.id}>
+                    <td>
+                      <div className="attendance-management-student">
+                        <span>{getInitials(record.studentName)}</span>
+                        <strong>{record.studentName}</strong>
+                      </div>
+                    </td>
+                    <td>{record.studentId || "—"}</td>
+                    <td>{record.company}</td>
+                    <td>{record.date || "—"}</td>
+                    <td>{record.timeIn || "—"}</td>
+                    <td>{record.timeOut || "—"}</td>
+                    <td>
+                      {record.totalHours ? `${record.totalHours} hrs` : "—"}
+                    </td>
+                    <td>
+                      <span
+                        className={`attendance-management-status ${record.status.toLowerCase()}`}
+                      >
+                        {record.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="attendance-management-actions">
+                        <button
+                          type="button"
+                          title="View details"
+                          aria-label={`View ${record.studentName}`}
+                          onClick={() => setModal(record)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Edit"
+                          aria-label={`Edit ${record.studentName}`}
+                          onClick={() => openEdit(record)}
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete"
+                          aria-label={`Delete ${record.studentName}`}
+                          onClick={() => handleDelete(record)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!loading && records.length > 0 && (
+          <footer className="attendance-management-footer">
+            Showing {visibleRecords.length} of {records.length} attendance
+            records
+          </footer>
+        )}
+      </section>
+
+      {modal && (
         <div
-          className="coordinator-dtr-backdrop"
+          className="attendance-management-backdrop"
+          role="presentation"
           onClick={(event) => {
-            if (event.target === event.currentTarget) setSelectedDtr(null);
+            if (event.target === event.currentTarget) setModal(null);
           }}
         >
           <section
-            className="coordinator-dtr-modal"
+            className="attendance-management-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="coordinator-dtr-title"
+            aria-labelledby="attendance-management-modal-title"
           >
-            <header className="coordinator-dtr-header">
+            <header>
               <div>
-                <p>Student Daily Time Record</p>
-                <h2 id="coordinator-dtr-title">{selectedDtr.displayName}</h2>
+                <p>
+                  {modal === "form"
+                    ? editingRecord
+                      ? "Edit attendance record"
+                      : "Attendance record"
+                    : "Attendance details"}
+                </p>
+                <h2 id="attendance-management-modal-title">
+                  {modal === "form"
+                    ? editingRecord
+                      ? "Edit Attendance"
+                      : "Add Attendance"
+                    : modal.studentName}
+                </h2>
               </div>
               <button
                 type="button"
-                className="coordinator-dtr-close"
-                onClick={() => setSelectedDtr(null)}
-                aria-label="Close DTR history"
+                aria-label="Close"
+                onClick={() => setModal(null)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </header>
-
-            <div className="coordinator-dtr-meta">
-              <div>
-                <span>Student Name</span>
-                <strong>{selectedDtr.displayName}</strong>
-              </div>
-              <div>
-                <span>ID Number</span>
-                <strong>{selectedDtr.displayId || "—"}</strong>
-              </div>
-              <div>
-                <span>Department / Course</span>
-                <strong>
-                  <DepartmentBadge value={selectedDtr.department ||
-                    selectedStudent.department ||
-                    selectedStudent.course ||
-                    selectedStudent.program ||
-                    selectedStudent.courseProgram ||
-                    "—"} />
-                </strong>
-              </div>
-              <div>
-                <span>Assigned Company</span>
-                <strong>
-                  {selectedDtr.company ||
-                    selectedStudent.company ||
-                    selectedStudent.partnerCompany ||
-                  selectedStudent.companyName ||
-                  "—"}
-                </strong>
-              </div>
-              <div>
-                <span>Company Supervisor</span>
-                <strong>
-                  {selectedDtr.supervisorName ||
-                    selectedStudent.supervisorName ||
-                    selectedStudent.supervisor ||
-                  selectedStudent.companySupervisor ||
-                  "—"}
-                </strong>
-              </div>
-              <div>
-                <span>Total OJT Hours Completed</span>
-                <strong>{formatHoursMinutes(selectedDtrCompletedHours)}</strong>
-              </div>
-              <div>
-                <span>Required OJT Hours</span>
-                <strong>{formatHoursMinutes(selectedDtrRequiredHours)}</strong>
-              </div>
-              <div>
-                <span>Remaining OJT Hours</span>
-                <strong>{formatHoursMinutes(selectedDtrRemainingHours)}</strong>
-              </div>
-            </div>
-
-            <div className="coordinator-dtr-actions">
-              <button type="button" onClick={() => window.print()}>
-                <Printer size={16} />
-                Print Report
-              </button>
-              <button type="button" onClick={downloadDtrCsv}>
-                <Download size={16} />
-                Download CSV
-              </button>
-            </div>
-
-            <div className="coordinator-dtr-table-wrap">
-              <table className="coordinator-dtr-table">
-                <thead>
-                  <tr>
-                    <th rowSpan={2}>Date</th>
-                    {attendanceGroups.map((group) => (
-                      <th
-                        key={group.value}
-                        className="coordinator-dtr-period-heading"
-                        colSpan={group.columns.length}
-                      >
-                        {group.label}
-                      </th>
-                    ))}
-                    <th rowSpan={2}>Hours Rendered</th>
-                  </tr>
-                  <tr>
-                    {attendanceGroups.flatMap((group) =>
-                      group.columns.map((column) => (
-                        <th
-                          key={column.value}
-                          className="coordinator-dtr-period-subheading"
-                        >
-                          {column.label}
-                        </th>
-                      )),
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedDtrRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={8}>No DTR history is available for this student.</td>
-                    </tr>
-                  ) : (
-                    selectedDtrRecords.map((record) => (
-                      <tr key={record.id}>
-                        <td>{attendanceDateOf(record) || "—"}</td>
-                        <td>{getPeriodTime(record, "amIn") || "—"}</td>
-                        <td>{getPeriodTime(record, "amOut") || "—"}</td>
-                        <td>{getPeriodTime(record, "pmIn") || "—"}</td>
-                        <td>{getPeriodTime(record, "pmOut") || "—"}</td>
-                        <td>{getPeriodTime(record, "overtimeIn") || "—"}</td>
-                        <td>{getPeriodTime(record, "overtimeOut") || "—"}</td>
-                        <td>{formatHoursMinutes(hoursForRecord(record))}</td>
-                      </tr>
-                    ))
+            {modal === "form" ? (
+              <form onSubmit={handleSave}>
+                <div className="attendance-management-form">
+                  <label>
+                    <span>Student *</span>
+                    <select
+                      value={form.studentId}
+                      onChange={(event) =>
+                        setForm({ ...form, studentId: event.target.value })
+                      }
+                    >
+                      <option value="">Select student</option>
+                      {students.map((student) => (
+                        <option key={student.id} value={getStudentId(student)}>
+                          {getStudentName(student)} · {getStudentId(student)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Date *</span>
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={(event) =>
+                        setForm({ ...form, date: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Time In</span>
+                    <input
+                      type="time"
+                      value={form.timeIn}
+                      onChange={(event) =>
+                        setForm({ ...form, timeIn: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Time Out</span>
+                    <input
+                      type="time"
+                      value={form.timeOut}
+                      onChange={(event) =>
+                        setForm({ ...form, timeOut: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Status *</span>
+                    <select
+                      value={form.status}
+                      onChange={(event) =>
+                        setForm({ ...form, status: event.target.value })
+                      }
+                    >
+                      {statuses.map((status) => (
+                        <option key={status}>{status}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="attendance-management-form-wide">
+                    <span>Remarks</span>
+                    <textarea
+                      value={form.remarks}
+                      onChange={(event) =>
+                        setForm({ ...form, remarks: event.target.value })
+                      }
+                      rows="3"
+                    />
+                  </label>
+                  {formError && (
+                    <p
+                      className="attendance-management-form-error"
+                      role="alert"
+                    >
+                      {formError}
+                    </p>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+                <footer>
+                  <button
+                    type="button"
+                    className="attendance-management-secondary"
+                    onClick={() => setModal(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="attendance-primary-button"
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : "Save Attendance"}
+                  </button>
+                </footer>
+              </form>
+            ) : (
+              <div className="attendance-management-details">
+                <div>
+                  <small>Student ID</small>
+                  <strong>{modal.studentId || "—"}</strong>
+                </div>
+                <div>
+                  <small>Partner Company</small>
+                  <strong>{modal.company}</strong>
+                </div>
+                <div>
+                  <small>Date</small>
+                  <strong>{modal.date || "—"}</strong>
+                </div>
+                <div>
+                  <small>Time</small>
+                  <strong>
+                    {modal.timeIn || "—"} - {modal.timeOut || "—"}
+                  </strong>
+                </div>
+                <div>
+                  <small>Total Hours</small>
+                  <strong>{modal.totalHours || "—"}</strong>
+                </div>
+                <div>
+                  <small>Status</small>
+                  <strong>{modal.status}</strong>
+                </div>
+                <div className="attendance-management-detail-wide">
+                  <small>Remarks</small>
+                  <strong>{modal.remarks || "No remarks"}</strong>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}
-
-      <section className="supervisor-panel">
-        <div className="supervisor-panel-heading">
-          <div>
-            <h2>Recent student sign-ins</h2>
-            <p>Latest {recentLoginLimit} student account logins</p>
-          </div>
-          <Clock3 size={18} className="text-slate-400" aria-hidden="true" />
+      {notice && (
+        <div className="attendance-management-notice" role="status">
+          {notice}
         </div>
-
-        {loginActivityError ? (
-          <p className="supervisor-error" role="alert">{loginActivityError}</p>
-        ) : loginActivityLoading ? (
-          <p className="supervisor-muted" role="status">Loading student sign-ins...</p>
-        ) : loginActivity.length === 0 ? (
-          <p className="supervisor-muted">No student sign-ins have been recorded yet.</p>
-        ) : (
-          <ul className="supervisor-list">
-            {loginActivity.map((activity) => (
-              <li className="supervisor-list-item" key={activity.id}>
-                <div>
-                  <strong>{activity.studentName || activity.email || "Student"}</strong>
-                  <span>
-                    {activity.studentId ? `ID: ${activity.studentId} · ` : ""}
-                    {activity.email || "Student account"}
-                  </span>
-                </div>
-                <time className="supervisor-muted">
-                  {loginTimeLabel(activity.loggedInAt)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      )}
     </main>
   );
 }

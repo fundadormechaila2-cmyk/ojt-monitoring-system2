@@ -1,14 +1,13 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "../pages/login";
 import Dashboard from "../pages/Dashboard";
+import StudentDashboardPage from "../pages/student/StudentsDashboard";
+import StudentProfile from "../pages/student/Profile";
+import StudentAttendance from "../pages/student/Attendance";
+import StudentJournal from "../pages/student/MyJournal";
 import RoleRoute from "../services/RoleRoute";
 import AdminLayout from "../layouts/AdminLayout";
 import AdminPlaceholder from "../pages/admin/AdminPlaceholder";
-import StudentDashboardPage from "../pages/student/StudentsDashboard";
-import StudentAttendancePage from "../pages/student/Attendance";
-import StudentProfilePage from "../pages/student/Profile";
-import StudentReportsPage from "../pages/student/MyJournal";
-import StudentSettingsPage from "../pages/student/Settings";
 import Students from "../pages/admin/Students";
 import OJTCoordinators from "../pages/admin/OJTCoordinators";
 import AdminReportsDashboard from "../pages/admin/AdminReportsDashboard";
@@ -17,16 +16,21 @@ import Settings from "../pages/admin/Settings";
 import CoordinatorDashboard from "../pages/coordinator/CoordinatorDashboard";
 import CoordinatorAttendance from "../pages/coordinator/Attendance";
 import CoordinatorStudents from "../pages/coordinator/students";
-import CoordinatorSupervisor from "../pages/coordinator/Supervisor";
-import CoordinatorStudentJournals from "../pages/coordinator/StudentJournals";
+import StudentJournals from "../pages/coordinator/StudentJournals";
+import CoordinatorPlaceholder from "../pages/coordinator/CoordinatorPlaceholder";
 import StudentDashboardLayout from "../layouts/StudentsLayout";
 import SupervisorLayout from "../layouts/SupervisorLayout";
 import SupervisorDashboard from "../pages/supervisor/Dashboard";
-import SupervisorStudents from "../pages/supervisor/Trainess";
 import SupervisorAttendance from "../pages/supervisor/Attendance";
-import SupervisorHours from "../pages/supervisor/OJTHours";
-import SupervisorDailyLogs from "../pages/supervisor/DailyLogs";
-import ScanStudentQR from "../pages/supervisor/ScanStudentQR";
+import SupervisorStudents from "../pages/supervisor/Trainess";
+import SupervisorScanStudentQR from "../pages/supervisor/ScanStudentQR";
+import SupervisorSettings from "../pages/supervisor/Settings";
+
+const placeholderRoutes = [
+  ["ojtcoordinators", "OJT Coordinators"],
+  ["ojthours", "OJT Hours"],
+  ["evaluation", "Evaluations"],
+];
 
 function AppRoutes() {
   return (
@@ -37,44 +41,14 @@ function AppRoutes() {
           path="/admin"
           element={
             <RoleRoute allowedRole="admin">
-              <AdminLayout />
+              <AdminLayout/>
             </RoleRoute>
           }
         >
-          <Route index element={<Dashboard />} />
-          <Route path="reports-dashboard" element={<AdminReportsDashboard />} />
-          <Route
-            path="application"
-            element={<AdminPlaceholder title="Applications" />}
-          />
-          <Route path="students" element={<Students />} />
-          <Route
-            path="partnercompanies"
-            element={<AdminPlaceholder title="Partner Companies" />}
-          />
-          <Route
-            path="attendance"
-            element={<AdminPlaceholder title="Attendance" />}
-          />
-          <Route
-            path="ojtreports"
-            element={<AdminPlaceholder title="My Journal" />}
-          />
-          <Route
-            path="attendancereports"
-            element={<AdminPlaceholder title="Attendance Reports" />}
-          />
-          <Route path="users" element={<Users />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="ojtcoordinators" element={<OJTCoordinators />} />
-          <Route
-            path="ojthours"
-            element={<AdminPlaceholder title="OJT Hours" />}
-          />
-          <Route
-            path="evaluation"
-            element={<AdminPlaceholder title="Evaluations" />}
-          />
+            <Route index element={<Dashboard />} />
+            <Route path="students" element={<Students />} />
+            <Route path="ojtcoordinators" element={<OJTCoordinators />} />
+            <Route path="settings" element={<Settings />} />
         </Route>
 
         <Route
@@ -86,11 +60,21 @@ function AppRoutes() {
           }
         >
           <Route index element={<CoordinatorDashboard />} />
-          <Route path="attendance" element={<CoordinatorAttendance />} />
-          <Route path="journals" element={<CoordinatorStudentJournals />} />
+          <Route path="reports-dashboard" element={<AdminPlaceholder title="Reports Dashboard" />} />
+          <Route path="application" element={<AdminPlaceholder title="Applications" />} />
           <Route path="students" element={<CoordinatorStudents />} />
-          <Route path="supervisor" element={<CoordinatorSupervisor />} />
-          <Route path="settings" element={<Settings />} />
+          <Route path="journals" element={<StudentJournals />} />
+          <Route path="partnercompanies" element={<AdminPlaceholder title="Partner Companies" />} />
+          <Route path="attendance" element={<CoordinatorAttendance />} />
+          <Route path="ojtreports" element={<AdminPlaceholder title="OJT Reports" />} />
+          <Route path="attendancereports" element={<AdminPlaceholder title="Attendance Reports" />} />
+          <Route path="ojthours" element={<AdminPlaceholder title="OJT Hours" />} />
+          <Route path="evaluation" element={<AdminPlaceholder title="Evaluation" />} />
+          <Route path="settings" element={<AdminPlaceholder title="Settings" />} />
+          <Route path="ojtcoordinators" element={<CoordinatorPlaceholder />} />
+          {placeholderRoutes.filter(([path]) => !["ojtcoordinators", "ojthours", "evaluation"].includes(path)).map(([path, title]) => (
+            <Route key={path} path={path} element={<AdminPlaceholder title={title} />} />
+          ))}
         </Route>
 
         <Route
@@ -102,10 +86,10 @@ function AppRoutes() {
           }
         >
           <Route index element={<StudentDashboardPage />} />
-          <Route path="profile" element={<StudentProfilePage />} />
-          <Route path="attendance" element={<StudentAttendancePage />} />
-          <Route path="ojtreports" element={<StudentReportsPage />} />
-          <Route path="settings" element={<StudentSettingsPage />} />
+          <Route path="profile" element={<StudentProfile />} />
+          <Route path="attendance" element={<StudentAttendance />} />
+          <Route path="ojtreports" element={<StudentJournal />} />
+          <Route path="settings" element={<AdminPlaceholder title="Settings" />} />
         </Route>
 
         <Route
@@ -117,16 +101,10 @@ function AppRoutes() {
           }
         >
           <Route index element={<SupervisorDashboard />} />
-          <Route path="scan-student-qr" element={<ScanStudentQR />} />
-          <Route
-            path="generate-attendance-qr"
-            element={<Navigate to="/supervisor/scan-student-qr" replace />}
-          />
-          <Route path="students" element={<SupervisorStudents />} />
+          <Route path="scan-student-qr" element={<SupervisorScanStudentQR />} />
           <Route path="attendance" element={<SupervisorAttendance />} />
-          <Route path="ojthours" element={<SupervisorHours />} />
-          <Route path="dailylogs" element={<SupervisorDailyLogs />} />
-          <Route path="settings" element={<Settings />} />
+          <Route path="students" element={<SupervisorStudents />} />
+          <Route path="settings" element={<SupervisorSettings />} />
         </Route>
       </Routes>
     </BrowserRouter>
