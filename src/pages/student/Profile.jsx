@@ -165,7 +165,7 @@ function Profile() {
 
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
+      <header className="student-page-header" style={{ display: "none" }}>
         <div>
           <p className="student-meta">Student profile</p>
           <h1>My Profile</h1>
@@ -180,13 +180,17 @@ function Profile() {
       {notice && <div className="student-profile-notice" role="status">{notice}</div>}
       {error && <div className="student-profile-error" role="alert">{error}</div>}
 
-      <section className="student-card student-panel">
-        <div className="student-profile-summary">
-          <div className="student-avatar">{initials}</div>
-          <div>
-            <h2>{profile.fullName || "Loading..."}</h2>
-            <p>{profile.studentId || "No student ID"} • <DepartmentBadge value={profile.program || "No program"} /></p>
-            <p>School Year: {profile.schoolYear || "Not assigned"}</p>
+      <section className="student-card student-panel" style={{ padding: "28px 26px 18px", background: "#f3f5f8" }}>
+        <div className="student-profile-summary" style={{ display: "flex", alignItems: "center", gap: 18, padding: 0, marginBottom: 18 }}>
+          <div className="student-avatar" style={{ width: 52, height: 52, borderRadius: 14, fontSize: 24, background: "linear-gradient(135deg, #0a66d5, #0d4fb8)", color: "#fff" }}>{initials}</div>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: "clamp(24px, 3vw, 42px)", fontWeight: 700, color: "#1f2937", letterSpacing: "-0.04em" }}>{profile.fullName || "Loading..."}</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, color: "#4b5563", fontSize: 18 }}>
+              <span>{profile.studentId || "No student ID"}</span>
+              <span style={{ opacity: 0.7 }}>•</span>
+              <span>{profile.program || "No program"}</span>
+            </div>
+            <p style={{ marginTop: 10, color: "#374151", fontSize: 18 }}>School Year: {profile.schoolYear || "Not assigned"}</p>
           </div>
         </div>
 
@@ -197,56 +201,6 @@ function Profile() {
           <ReadOnlyField label="OJT Company" value={profile.company} />
           <ReadOnlyField label="Company Supervisor" value={profile.companySupervisor} />
           <ReadOnlyField label="Faculty Coordinator" value={profile.facultyCoordinator} />
-        </div>
-      </section>
-
-      <section className="student-card student-security-card">
-        <div className="student-security-card-heading">
-          <span className="student-security-card-icon">
-            <ShieldCheck size={20} />
-          </span>
-          <div>
-            <p>Account protection</p>
-            <h2>Security</h2>
-            <span>Review the account details used to protect your access.</span>
-          </div>
-        </div>
-        <div className="student-security-details">
-          <div>
-            <span>Email</span>
-            <strong>{profile.email || "—"}</strong>
-            <small>Firebase Authentication account</small>
-          </div>
-          <div>
-            <span>Account Role</span>
-            <strong>Student</strong>
-            <small>Role changes are managed by administrators.</small>
-          </div>
-          <div>
-            <span>Account Status</span>
-            <strong>{accountStatus}</strong>
-            <small>
-              {accountStatus === "Active"
-                ? "Your account is currently enabled."
-                : "Contact an administrator for assistance."}
-            </small>
-          </div>
-        </div>
-        <div className="student-security-card-action">
-          <span className="student-security-card-icon">
-            <ShieldCheck size={20} />
-          </span>
-          <div>
-            <strong>Change password</strong>
-            <small>Use your current password to update your credentials.</small>
-          </div>
-          <button
-            type="button"
-            className="student-button"
-            onClick={() => navigate("/Student/settings")}
-          >
-            Change <ChevronRight size={16} />
-          </button>
         </div>
       </section>
 

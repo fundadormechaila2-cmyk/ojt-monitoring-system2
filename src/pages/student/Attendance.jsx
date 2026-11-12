@@ -44,8 +44,21 @@ function withTimes(record) {
 function Attendance() {
   const { user } = useAuth();
   const [dateFilter, setDateFilter] = useState("");
-  const [search, setSearch] = useState("");
   const [qr, setQr] = useState(null);
+  const fullName =
+    user?.fullName ||
+    user?.name ||
+    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+    "Student";
+  const profileStudentId = user?.studentId || user?.studentID || user?.idNumber || "No student ID";
+  const profileProgram = user?.course || user?.program || user?.department || "No program";
+  const profileSchoolYear = user?.schoolYear || "Not assigned";
+  const profileInitials = fullName
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "ST";
   const [qrError, setQrError] = useState("");
   const [clockNow, setClockNow] = useState(0);
   const [attendanceState, setAttendanceState] = useState({
@@ -63,15 +76,8 @@ function Attendance() {
     [currentAttendanceState.records],
   );
   const visibleRecords = useMemo(() => {
-    const text = search.trim().toLowerCase();
-    return attendanceRecords
-      .filter((record) => !dateFilter || record.date === dateFilter)
-      .filter(
-        (record) =>
-          !text ||
-          `${record.studentName || ""} ${record.studentId || ""}`.toLowerCase().includes(text),
-      );
-  }, [attendanceRecords, dateFilter, search]);
+    return attendanceRecords.filter((record) => !dateFilter || record.date === dateFilter);
+  }, [attendanceRecords, dateFilter]);
   const attendanceLoading = currentAttendanceState.loading;
   const attendanceError = currentAttendanceState.error;
   const secondsRemaining = qr
@@ -169,6 +175,37 @@ function Attendance() {
           <p>Show your current QR code to your OJT supervisor to record attendance. Your assigned coordinator and supervisor can review your attendance history.</p>
         </div>
       </header>
+
+      <section className="student-card" style={{ padding: "28px 26px 18px", background: "#f3f5f8", marginBottom: 20 }}>
+        <div className="student-profile-summary" style={{ display: "flex", alignItems: "center", gap: 18, padding: 0, marginBottom: 0 }}>
+          <div
+            className="student-avatar"
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              fontSize: 24,
+              background: "linear-gradient(135deg, #0a66d5, #0d4fb8)",
+              color: "#fff",
+            }}
+          >
+            {profileInitials}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: "clamp(24px, 3vw, 42px)", fontWeight: 700, color: "#1f2937", letterSpacing: "-0.04em" }}>
+              {fullName}
+            </h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, color: "#4b5563", fontSize: 18 }}>
+              <span>{profileStudentId}</span>
+              <span style={{ opacity: 0.7 }}>•</span>
+              <span>{profileProgram}</span>
+            </div>
+            <p style={{ marginTop: 10, color: "#374151", fontSize: 18 }}>
+              School Year: {profileSchoolYear}
+            </p>
+          </div>
+        </div>
+      </section>
 
       <section className="student-attendance-qr-layout">
         <article className="student-card student-attendance-qr-card">
@@ -282,15 +319,7 @@ function Attendance() {
           </div>
           <span className="student-attendance-record-count">{visibleRecords.length} records</span>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, margin: "0 0 12px" }}>
-          <input
-            type="search"
-            aria-label="Search attendance records"
-            placeholder="Search student name or ID"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            style={{ flex: "1 1 220px", minHeight: 38, padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: 8 }}
-          />
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, margin: "0 0 12px" }}>
           <label className="student-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             Date
             <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} style={{ minHeight: 38, padding: "0 8px", border: "1px solid #e2e8f0", borderRadius: 8 }} />
@@ -305,8 +334,6 @@ function Attendance() {
             <thead>
               <tr>
                 <th rowSpan={2}>Date</th>
-                <th rowSpan={2}>Student</th>
-                <th rowSpan={2}>ID Number</th>
                 <th colSpan={2} style={{ textAlign: "center" }}>AM</th>
                 <th colSpan={2} style={{ textAlign: "center" }}>PM</th>
                 <th colSpan={2} style={{ textAlign: "center" }}>Overtime</th>
@@ -321,15 +348,13 @@ function Attendance() {
             </thead>
             <tbody>
               {attendanceLoading ? (
-                <tr><td colSpan="11">Loading attendance records...</td></tr>
+                <tr><td colSpan="9">Loading attendance records...</td></tr>
               ) : visibleRecords.length === 0 ? (
-                <tr><td colSpan="11"><div className="student-empty-state">{attendanceRecords.length ? "No attendance records found." : "No attendance records have been recorded yet."}</div></td></tr>
+                <tr><td colSpan="9"><div className="student-empty-state">{attendanceRecords.length ? "No attendance records found." : "No attendance records have been recorded yet."}</div></td></tr>
               ) : (
                 visibleRecords.map((record) => (
                   <tr key={record.id}>
                     <td>{formatDateLabel(record.date)}</td>
-                    <td><strong>{record.studentName || user?.name || "—"}</strong></td>
-                    <td>{record.studentId || "—"}</td>
                     <td>{record.amIn || "—"}</td>
                     <td>{record.amOut || "—"}</td>
                     <td>{record.pmIn || "—"}</td>
