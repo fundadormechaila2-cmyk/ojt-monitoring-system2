@@ -105,6 +105,18 @@ firebase functions:secrets:set ATTENDANCE_QR_SECRET
 Use a strong, randomly generated value of at least 32 bytes. The signed QR
 flow requires Cloud Functions and corresponding client integration.
 
+The signed QR and manual attendance callables accept `amIn`, `amOut`, `pmIn`,
+`pmOut`, `otIn`, and `otOut` as period values. Manual attendance also accepts
+`overtimeIn` and `overtimeOut`. Each period is recorded once per Manila date.
+QR scans use server time; manual attendance uses the selected date and `HH:mm`
+time, rejects future dates, and records the supervisor and server audit time.
+Time-outs require their matching time-in,
+and overtime requires PM Out. The callables retain the legacy `timeIn`,
+`timeOut`, and `hours` fields and include completed overtime in `totalHours`.
+The signed QR callable also retains its legacy no-period Time-In/Time-Out mode
+for records without session fields. The current browser attendance flow is
+separate and is not changed by these callables.
+
 Compare the local Firestore rules against the live rules before deploying them;
 the local rules may be older and could disrupt existing features.
 

@@ -3,8 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // AUTHENTICATION AND ROLE HELPERS
-
     function signedIn() {
       return request.auth != null;
     }
@@ -33,8 +31,6 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
-    // DEPARTMENT HELPERS
-
     function departmentCode(value) {
       return !(value is string) ? "" :
         value.matches("(?i).*\\bbsba\\b.*") || value.matches("(?i).*business administration.*") ? "BSBA" :
@@ -49,8 +45,6 @@ service cloud.firestore {
       return id != "" ? id : departmentCode(profile().data.get("department", ""));
     }
 
-    // COORDINATOR SUPERVISOR ACCOUNT CREATION
-
     function coordinatorCreatesSupervisor() {
       return isCoordinator() &&
         request.resource.data.get("role", "") == "supervisor" &&
@@ -62,8 +56,6 @@ service cloud.firestore {
           )
         ) == coordinatorDepartment();
     }
-
-    // VALIDATE SUPERVISOR ASSIGNMENT
 
     function validCoordinatorSupervisorAssignment() {
       let supervisorUid = request.resource.data.get("supervisorUid", "");
@@ -83,46 +75,49 @@ service cloud.firestore {
         );
     }
 
-    // USERS COLLECTION
-
     match /users/{userId} {
 
-  allow update: if isAdmin() || (
-  isCoordinator() &&
-  resource.data.get("role", "") == "supervisor" &&
-  resource.data.get("createdBy", "") == request.auth.uid &&
-  request.resource.data.get("role", "") == "supervisor" &&
-  request.resource.data.get("createdBy", "") == request.auth.uid &&
-  request.resource.data.diff(resource.data).affectedKeys()
-    .hasOnly([
-      "firstName",
-      "lastName",
-      "phone",
-      "position",
-      "company",
-      "schoolYear",
-      "partnerCompanyId",
-      "updatedAt"
-    ]) &&
-  request.resource.data.updatedAt == request.time
-) || (
-  signedIn() &&
-  request.auth.uid == userId &&
-  (isCoordinator() || hasRole("supervisor")) &&
-  request.resource.data.diff(resource.data).affectedKeys()
-    .hasOnly(["firstName", "lastName", "contactNumber", "updatedAt"]) &&
-  request.resource.data.firstName is string &&
-  request.resource.data.lastName is string &&
-  request.resource.data.contactNumber is string &&
-  request.resource.data.updatedAt == request.time
-);
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId) ||
+        (isCoordinator() &&
+          resource.data.get("role", "") == "supervisor");
 
+      allow create: if isAdmin() || coordinatorCreatesSupervisor();
+
+      allow delete: if isAdmin();
+
+      allow update: if isAdmin() || (
+        isCoordinator() &&
+        resource.data.get("role", "") == "supervisor" &&
+        resource.data.get("createdBy", "") == request.auth.uid &&
+        request.resource.data.get("role", "") == "supervisor" &&
+        request.resource.data.get("createdBy", "") == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            "firstName",
+            "lastName",
+            "phone",
+            "position",
+            "company",
+            "schoolYear",
+            "partnerCompanyId",
+            "updatedAt"
+          ]) &&
+        request.resource.data.updatedAt == request.time
+      ) || (
+        signedIn() &&
+        request.auth.uid == userId &&
+        (isCoordinator() || hasRole("supervisor")) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["firstName", "lastName", "contactNumber", "updatedAt"]) &&
+        request.resource.data.firstName is string &&
+        request.resource.data.lastName is string &&
+        request.resource.data.contactNumber is string &&
+        request.resource.data.updatedAt == request.time
+      );
     }
 
-    // COORDINATOR ACCOUNTS
-
     match /coordinatorsAccount/{uid} {
-
       allow read: if isAdmin() || ownsAccount(uid);
 
       allow create, delete: if isAdmin();
@@ -135,18 +130,16 @@ service cloud.firestore {
       );
     }
 
-    // SUPERVISOR ACCOUNTS
-
     match /supervisorsAccount/{uid} {
-
       allow read: if isAdmin() || ownsAccount(uid) || isCoordinator();
 
       allow create: if isAdmin() || coordinatorCreatesSupervisor();
 
       allow update: if isAdmin() ||
-        (isCoordinator() &&
-          resource.data.get("createdBy", "") == request.auth.uid) ||
         (
+          isCoordinator() &&
+          resource.data.get("createdBy", "") == request.auth.uid
+        ) || (
           ownsAccount(uid) &&
           hasRole("supervisor") &&
           request.resource.data.diff(resource.data).affectedKeys()
@@ -156,16 +149,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // STUDENT ACCOUNTS
-
     match /studentsAccount/{uid} {
-
-      allow read: if isAdmin() ||
-        ownsAccount(uid) ||
-        (isCoordinator() &&
-          resource.data.get("coordinatorUid", "") == request.auth.uid) ||
-        (hasRole("supervisor") &&
-          resource.data.get("supervisorUid", "") == request.auth.uid);
+      allow read: if isAdmin() || ownsAccount(uid) ||
+        (isCoordinator() && resource.data.get("coordinatorUid", "") == request.auth.uid) ||
+        (hasRole("supervisor") && resource.data.get("supervisorUid", "") == request.auth.uid);
 
       allow create, delete: if isAdmin();
 
@@ -174,37 +161,20 @@ service cloud.firestore {
           isCoordinator() &&
           resource.data.get("coordinatorUid", "") == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly([
-              "supervisorUid",
-              "supervisorName",
-              "supervisorSchoolYear",
-              "updatedAt"
-            ])
-        ) ||
-        (
+            .hasOnly(["supervisorUid", "supervisorName", "supervisorSchoolYear", "updatedAt"])
+        ) || (
           ownsAccount(uid) &&
           hasRole("student") &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly([
-              "email",
-              "phone",
-              "contactNumber",
-              "address",
-              "updatedAt"
-            ])
+            .hasOnly(["email", "phone", "contactNumber", "address", "updatedAt"])
         );
     }
-
-    // SCHOOL YEARS
 
     match /schoolYears/{yearId} {
       allow read: if isAdmin() || isCoordinator();
     }
 
-    // STUDENT ROSTER
-
     match /students/{studentId} {
-
       allow read: if isAdmin() ||
         (
           isCoordinator() &&
@@ -213,8 +183,7 @@ service cloud.firestore {
           resource.data.get("coordinatorUid", "") == request.auth.uid
         ) ||
         (hasRole("student") && request.auth.uid == studentId) ||
-        (hasRole("student") &&
-          resource.data.studentUid == request.auth.uid);
+        (hasRole("student") && resource.data.studentUid == request.auth.uid);
 
       allow create, delete: if isAdmin();
 
@@ -236,10 +205,7 @@ service cloud.firestore {
         );
     }
 
-    // ATTENDANCE
-
     match /attendance/{attendanceId} {
-
       allow read: if isAdmin() || isStaff() ||
         (
           isCoordinator() &&
@@ -254,46 +220,28 @@ service cloud.firestore {
           get(/databases/$(database)/documents/students/$(get(/databases/$(database)/documents/users/$(resource.data.studentUid)).data.studentRecordId)).data.get("departmentId", "") == coordinatorDepartment() &&
           get(/databases/$(database)/documents/students/$(get(/databases/$(database)/documents/users/$(resource.data.studentUid)).data.studentRecordId)).data.get("studentUid", "") == resource.data.studentUid
         ) ||
-        (hasRole("student") &&
-          resource.data.studentUid == request.auth.uid);
+        (hasRole("student") && resource.data.studentUid == request.auth.uid);
 
       allow create, update, delete: if isAdmin() || isStaff();
     }
 
-    // APPLICATIONS
-
     match /applications/{applicationId} {
-
       allow read: if isAdmin() || isCoordinator() || isStaff();
-
       allow create: if isAdmin() || isStaff();
-
       allow update: if isAdmin() || isCoordinator() || isStaff();
-
       allow delete: if isAdmin();
     }
-
-    // EVALUATIONS
 
     match /evaluations/{evaluationId} {
-
       allow read: if isAdmin() || isCoordinator() || isStaff();
-
       allow create, update: if isAdmin() || isCoordinator() || isStaff();
-
       allow delete: if isAdmin();
     }
 
-    // PARTNER COMPANIES
-
     match /partnerCompanies/{companyId} {
-
       allow read: if isAdmin() || isCoordinator() || isStaff();
-
       allow create, update, delete: if isAdmin();
     }
-
-    // DEFAULT DENY
 
     match /{document=**} {
       allow read, write: if false;

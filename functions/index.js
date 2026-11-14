@@ -234,20 +234,140 @@ async function assertSupervisorAssignment(supervisorUid, supervisorProfile, stud
   return { studentRecord, coordinatorUid };
 }
 
-function calculateHours(timeIn, timeOut) {
-  const parseTime = (value) => {
-    const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value || "");
-    if (!match) return null;
-    let hour = Number(match[1]) % 12;
-    if (match[3].toUpperCase() === "PM") hour += 12;
-    return hour * 60 + Number(match[2]);
-  };
+const attendancePeriods = {
+  amIn: "AM / IN",
+  amOut: "AM / OUT",
+  pmIn: "PM / IN",
+  pmOut: "PM / OUT",
+  otIn: "Overtime / IN",
+  otOut: "Overtime / OUT",
+};
+const periodFields = {
+  amIn: ["amIn", "morningTimeIn"],
+  amOut: ["amOut", "morningTimeOut"],
+  pmIn: ["pmIn", "afternoonTimeIn"],
+  pmOut: ["pmOut", "afternoonTimeOut"],
+  otIn: ["otIn", "overtimeIn", "overtimeTimeIn"],
+  otOut: ["otOut", "overtimeOut", "overtimeTimeOut"],
+};
 
-  const start = parseTime(timeIn);
-  const end = parseTime(timeOut);
+function parseAttendanceTime(value) {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value);
+  if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || Number(match[2]) > 59) {
+    return null;
+  }
+  let hour = Number(match[1]) % 12;
+  if (match[3].toUpperCase() === "PM") hour += 12;
+  return hour * 60 + Number(match[2]);
+}
+
+function calculateHours(timeIn, timeOut) {
+  const start = parseAttendanceTime(timeIn);
+  const end = parseAttendanceTime(timeOut);
   return start === null || end === null
     ? 0
     : Number((Math.max(0, end - start) / 60).toFixed(2));
+}
+
+function getAttendancePeriods(record) {
+  const periods = {};
+  for (const [period, fields] of Object.entries(periodFields)) {
+    const values = fields.map((field) => record[field]).filter((value) => value !== undefined && value !== null && value !== "");
+    if (values.some((value) => parseAttendanceTime(value) === null)) {
+      throw new HttpsError("failed-precondition", "An existing attendance time is invalid. Contact an administrator.");
+    }
+    if (values.some((value) => parseAttendanceTime(value) !== parseAttendanceTime(values[0]))) {
+      throw new HttpsError("failed-precondition", "Existing attendance times conflict. Contact an administrator.");
+    }
+    periods[period] = values[0] || "";
+  }
+
+  // Aggregate fields describe a single legacy session only when no period fields exist.
+  if (!Object.values(periods).some(Boolean)) {
+    periods.amIn = record.timeIn || "";
+    periods.amOut = record.timeOut || "";
+    if ((periods.amIn && parseAttendanceTime(periods.amIn) === null) ||
+        (periods.amOut && parseAttendanceTime(periods.amOut) === null)) {
+      throw new HttpsError("failed-precondition", "An existing attendance time is invalid. Contact an administrator.");
+    }
+  }
+  return periods;
+}
+
+function updateAttendancePeriods(previous, period, time, studentName, date) {
+  const periods = getAttendancePeriods(previous);
+  if (periods[period]) {
+    throw new HttpsError("failed-precondition", `${studentName} already has ${attendancePeriods[period]} recorded for ${date}.`);
+  }
+
+  const matchingPeriod = period.endsWith("Out")
+    ? period.replace("Out", "In")
+    : period.replace("In", "Out");
+  if (period.endsWith("Out") && !periods[matchingPeriod]) {
+    throw new HttpsError("failed-precondition", `${attendancePeriods[period]} requires a matching time-in first.`);
+  }
+  if (period.endsWith("In") && periods[matchingPeriod]) {
+    throw new HttpsError("failed-precondition", `${attendancePeriods[period]} cannot be recorded after its matching time-out.`);
+  }
+  if (period === "otIn" && !periods.pmOut) {
+    throw new HttpsError("failed-precondition", "Overtime / IN requires PM / OUT first.");
+  }
+  for (const [inField, outField] of [["amIn", "amOut"], ["pmIn", "pmOut"], ["otIn", "otOut"]]) {
+    if (periods[outField] &&
+        (!periods[inField] || parseAttendanceTime(periods[outField]) <= parseAttendanceTime(periods[inField]))) {
+      throw new HttpsError("failed-precondition", "An existing attendance session is invalid. Contact an administrator.");
+    }
+  }
+  if (periods.otIn && !periods.pmOut) {
+    throw new HttpsError("failed-precondition", "Existing overtime requires PM / OUT. Contact an administrator.");
+  }
+  const minutes = parseAttendanceTime(time);
+  if (minutes === null) {
+    throw new HttpsError("internal", "The server could not generate a valid attendance time.");
+  }
+  if (period.endsWith("Out") && minutes <= parseAttendanceTime(periods[matchingPeriod])) {
+    throw new HttpsError("failed-precondition", "Time-out must be later than its matching time-in.");
+  }
+  const order = Object.keys(attendancePeriods);
+  const index = order.indexOf(period);
+  let lastTime = -1;
+  for (const [otherIndex, field] of order.entries()) {
+    if (!periods[field]) continue;
+    const otherTime = parseAttendanceTime(periods[field]);
+    if (otherTime < lastTime) {
+      throw new HttpsError("failed-precondition", "Existing attendance times are out of order. Contact an administrator.");
+    }
+    lastTime = otherTime;
+    if ((otherIndex < index && minutes < otherTime) || (otherIndex > index && minutes > otherTime)) {
+      throw new HttpsError("failed-precondition", `${attendancePeriods[period]} conflicts with the order of existing attendance times.`);
+    }
+  }
+  periods[period] = time;
+  const totalHours = Number((
+    calculateHours(periods.amIn, periods.amOut) +
+    calculateHours(periods.pmIn, periods.pmOut) +
+    calculateHours(periods.otIn, periods.otOut)
+  ).toFixed(2));
+  return { periods, totalHours };
+}
+
+function findAttendanceRecord(snapshots, date, studentUid) {
+  const records = new Map();
+  for (const snapshot of snapshots) {
+    for (const document of snapshot.docs) {
+      const data = document.data();
+      if (data.date !== date) continue;
+      if (data.studentUid && data.studentUid !== studentUid) {
+        throw new HttpsError("failed-precondition", "The student ID matches another attendance record. Contact an administrator.");
+      }
+      records.set(document.ref.path, document);
+    }
+  }
+  if (records.size > 1) {
+    throw new HttpsError("failed-precondition", "Multiple attendance records exist for this student and date. Contact an administrator.");
+  }
+  return records.values().next().value;
 }
 
 exports.issueStudentAttendanceQrToken = onCall(
@@ -302,13 +422,8 @@ exports.scanStudentAttendanceQr = onCall(
     }
 
     const requestedPeriod = request.data?.period;
-    const attendancePeriods = {
-      amIn: "AM / IN",
-      amOut: "AM / OUT",
-      pmIn: "PM / IN",
-      pmOut: "PM / OUT",
-    };
-    if (requestedPeriod !== undefined && !Object.hasOwn(attendancePeriods, requestedPeriod)) {
+    if (requestedPeriod !== undefined &&
+        (typeof requestedPeriod !== "string" || !Object.hasOwn(attendancePeriods, requestedPeriod))) {
       throw new HttpsError("invalid-argument", "Select a valid attendance period.");
     }
 
@@ -367,9 +482,7 @@ exports.scanStudentAttendanceQr = onCall(
       const attendanceByNumber = await transaction.get(
         db.collection("attendance").where("studentId", "==", studentId),
       );
-      const existingRecord =
-        attendanceSnapshot.docs.find((document) => document.data().date === date) ||
-        attendanceByNumber.docs.find((document) => document.data().date === date);
+      const existingRecord = findAttendanceRecord([attendanceSnapshot, attendanceByNumber], date, studentUid);
       const attendanceRef = existingRecord?.ref || fallbackAttendanceRef;
       const attendanceDocument = existingRecord
         ? null
@@ -379,49 +492,18 @@ exports.scanStudentAttendanceQr = onCall(
         : attendanceDocument.exists
           ? attendanceDocument.data()
           : {};
+      if (attendanceDocument?.exists &&
+          (previousAttendance.date !== date ||
+           (previousAttendance.studentUid && previousAttendance.studentUid !== studentUid))) {
+        throw new HttpsError("failed-precondition", "The attendance document does not match this student and date. Contact an administrator.");
+      }
       let action;
       let totalHours;
       let attendance;
       if (requestedPeriod) {
-        if (previousAttendance[requestedPeriod]) {
-          throw new HttpsError(
-            "failed-precondition",
-            `${studentName} already has ${attendancePeriods[requestedPeriod]} recorded today.`,
-          );
-        }
-
-        const matchingTimeIn = requestedPeriod === "amOut"
-          ? previousAttendance.amIn || previousAttendance.morningTimeIn || previousAttendance.timeIn
-          : requestedPeriod === "pmOut"
-            ? previousAttendance.pmIn || previousAttendance.afternoonTimeIn
-            : null;
-        const matchingTimeOut = requestedPeriod === "amIn"
-          ? previousAttendance.amOut || previousAttendance.morningTimeOut
-          : requestedPeriod === "pmIn"
-            ? previousAttendance.pmOut || previousAttendance.afternoonTimeOut
-            : null;
-        if (requestedPeriod.endsWith("In") && matchingTimeOut) {
-          throw new HttpsError("failed-precondition", `${attendancePeriods[requestedPeriod]} cannot be recorded after its matching time-out.`);
-        }
-        if (requestedPeriod.endsWith("Out") && !matchingTimeIn) {
-          throw new HttpsError("failed-precondition", `${attendancePeriods[requestedPeriod]} requires a matching time-in first.`);
-        }
-        if (requestedPeriod.endsWith("Out") && calculateHours(matchingTimeIn, time) <= 0) {
-          throw new HttpsError("failed-precondition", "Time-out must be later than its matching time-in.");
-        }
-
-        const periods = {
-          ...previousAttendance,
-          [requestedPeriod]: time,
-        };
-        const amIn =
-          periods.amIn || periods.morningTimeIn || periods.timeIn || "";
-        const amOut = periods.amOut || periods.morningTimeOut || "";
-        const pmIn = periods.pmIn || periods.afternoonTimeIn || "";
-        const pmOut =
-          periods.pmOut || periods.afternoonTimeOut || periods.timeOut || "";
-        totalHours =
-          calculateHours(amIn, amOut) + calculateHours(pmIn, pmOut);
+        const result = updateAttendancePeriods(previousAttendance, requestedPeriod, time, studentName, date);
+        const { periods } = result;
+        totalHours = result.totalHours;
         action = attendancePeriods[requestedPeriod];
         attendance = {
           ...previousAttendance,
@@ -430,9 +512,9 @@ exports.scanStudentAttendanceQr = onCall(
           studentName,
           coordinatorUid: coordinatorUid || null,
           date,
-          [requestedPeriod]: time,
-          timeIn: amIn || pmIn || previousAttendance.timeIn || "",
-          timeOut: pmOut || amOut || previousAttendance.timeOut || "",
+          ...periods,
+          timeIn: periods.amIn || periods.pmIn || periods.otIn || "",
+          timeOut: periods.otOut || periods.pmOut || periods.amOut || "",
           totalHours,
           hours: totalHours,
           status: "Present",
@@ -444,6 +526,9 @@ exports.scanStudentAttendanceQr = onCall(
             : {}),
         };
       } else {
+        if (Object.values(periodFields).some((fields) => fields.some((field) => previousAttendance[field]))) {
+          throw new HttpsError("failed-precondition", "Select an attendance period for this record.");
+        }
         const currentTimeIn =
           previousAttendance.timeIn ||
           previousAttendance.morningTimeIn ||
@@ -465,6 +550,12 @@ exports.scanStudentAttendanceQr = onCall(
         action = currentTimeIn ? "Time-Out" : "Time-In";
         const nextTimeIn = currentTimeIn || (action === "Time-In" ? time : "");
         const nextTimeOut = currentTimeOut || (action === "Time-Out" ? time : "");
+        if (nextTimeIn && parseAttendanceTime(nextTimeIn) === null) {
+          throw new HttpsError("failed-precondition", "An existing attendance time is invalid. Contact an administrator.");
+        }
+        if (nextTimeOut && calculateHours(nextTimeIn, nextTimeOut) <= 0) {
+          throw new HttpsError("failed-precondition", "Time-out must be later than its matching time-in.");
+        }
         totalHours = calculateHours(nextTimeIn, nextTimeOut);
         attendance = {
           ...previousAttendance,
@@ -511,6 +602,7 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
 
   const supervisorUid = request.auth.uid;
   const supervisorProfile = await getUserProfile(supervisorUid);
+
   if (supervisorProfile?.role !== "supervisor") {
     throw new HttpsError("permission-denied", "Only supervisors can manually record attendance.");
   }
@@ -518,33 +610,67 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
   const studentId = typeof request.data?.studentId === "string"
     ? request.data.studentId.trim()
     : "";
+
   const requestedDate = request.data?.date;
-  const period = request.data?.period;
-  const serverNow = new Date();
-  const date = getLocalDate(serverNow);
-  const time = getLocalTime(serverNow);
-  const periodLabels = {
-    amIn: "AM / IN",
-    amOut: "AM / OUT",
-    pmIn: "PM / IN",
-    pmOut: "PM / OUT",
-  };
+  let period = request.data?.period;
+  const requestedTime = request.data?.time;
+
+  // Accept the existing frontend overtime field names.
+  if (period === "overtimeIn") period = "otIn";
+  if (period === "overtimeOut") period = "otOut";
+
   if (!studentId || studentId.length > 128) {
     throw new HttpsError("invalid-argument", "Enter a valid student ID number.");
   }
-  if (requestedDate !== date) {
-    throw new HttpsError("failed-precondition", "Manual attendance can only be recorded for today using the server time.");
+
+  // Validate date format and prevent future attendance entries.
+  if (
+    typeof requestedDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+  ) {
+    throw new HttpsError("invalid-argument", "Enter a valid attendance date.");
   }
-  if (!Object.hasOwn(periodLabels, period)) {
+
+  const [year, month, day] = requestedDate.split("-").map(Number);
+  const dateCheck = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    dateCheck.getUTCFullYear() !== year ||
+    dateCheck.getUTCMonth() !== month - 1 ||
+    dateCheck.getUTCDate() !== day
+  ) {
+    throw new HttpsError("invalid-argument", "The attendance date is invalid.");
+  }
+
+  if (requestedDate > getLocalDate(new Date())) {
+    throw new HttpsError("failed-precondition", "Attendance cannot be recorded for a future date.");
+  }
+
+  if (typeof period !== "string" || !Object.hasOwn(attendancePeriods, period)) {
     throw new HttpsError("invalid-argument", "Select a valid attendance period.");
   }
+
+  // Accept the HTML time input format: HH:mm.
+  if (
+    typeof requestedTime !== "string" ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(requestedTime)
+  ) {
+    throw new HttpsError("invalid-argument", "Enter a valid attendance time.");
+  }
+
+  const [hour, minute] = requestedTime.split(":").map(Number);
+  const time = `${String(hour % 12 || 12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
+
   const userCollection = db.collection("users");
+
   const matchingProfiles = await Promise.all(
     ["studentId", "studentID", "idNumber"].map((field) =>
-      userCollection.where(field, "==", studentId).limit(2).get(),
-    ),
+      userCollection.where(field, "==", studentId).limit(2).get()
+    )
   );
+
   const matchesByUid = new Map();
+
   matchingProfiles.forEach((snapshot) => {
     snapshot.docs.forEach((document) => {
       if (document.data().role === "student") {
@@ -553,13 +679,18 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
     });
   });
 
-  const studentSnapshot = await userCollection.doc(studentId).get();
-  if (studentSnapshot.exists && studentSnapshot.data().role === "student") {
+  const studentSnapshot = studentId.includes("/")
+    ? null
+    : await userCollection.doc(studentId).get();
+
+  if (studentSnapshot?.exists && studentSnapshot.data().role === "student") {
     matchesByUid.set(studentSnapshot.id, studentSnapshot);
   }
+
   if (matchesByUid.size === 0) {
     throw new HttpsError("not-found", "No student account matches that ID number.");
   }
+
   if (matchesByUid.size > 1) {
     throw new HttpsError("failed-precondition", "More than one student account matches that ID. Contact an administrator.");
   }
@@ -567,111 +698,99 @@ exports.recordManualStudentAttendance = onCall(async (request) => {
   const studentDocument = [...matchesByUid.values()][0];
   const studentUid = studentDocument.id;
   const studentProfile = studentDocument.data();
+  const canonicalStudentId = getStudentNumber(studentProfile, studentUid);
+
   const { coordinatorUid } = await assertSupervisorAssignment(
     supervisorUid,
     supervisorProfile,
     studentUid,
-    studentProfile,
+    studentProfile
   );
+
   const studentName = getStudentName(studentProfile);
-  const timeParts = time.split(":").map(Number);
-  const hour = timeParts[0] % 12 || 12;
-  const formattedTime = `${hour}:${String(timeParts[1]).padStart(2, "0")} ${timeParts[0] >= 12 ? "PM" : "AM"}`;
   const attendanceCollection = db.collection("attendance");
-  const attendanceByUid = attendanceCollection
-    .where("studentUid", "==", studentUid)
-    .limit(10);
-  const attendanceByNumber = attendanceCollection
-    .where("studentId", "==", studentId)
-    .limit(10);
+
+  const attendanceByUid = attendanceCollection.where("studentUid", "==", studentUid);
+  const attendanceByNumber = attendanceCollection.where("studentId", "==", studentId);
+  const attendanceQueries = [attendanceByUid, attendanceByNumber];
+  if (canonicalStudentId !== studentId) {
+    attendanceQueries.push(attendanceCollection.where("studentId", "==", canonicalStudentId));
+  }
 
   return db.runTransaction(async (transaction) => {
-    const [uidRecords, idRecords] = await Promise.all([
-      transaction.get(attendanceByUid),
-      transaction.get(attendanceByNumber),
-    ]);
-    const currentRecord =
-      uidRecords.docs.find((document) => document.data().date === date) ||
-      idRecords.docs.find((document) => document.data().date === date);
+    const records = await Promise.all(attendanceQueries.map((query) => transaction.get(query)));
+
+    const currentRecord = findAttendanceRecord(
+      records,
+      requestedDate,
+      studentUid
+    );
+
     const attendanceRef =
       currentRecord?.ref ||
-      attendanceCollection.doc(`${studentUid}_${date}`);
+      attendanceCollection.doc(`${studentUid}_${requestedDate}`);
+
     const fallbackDocument = currentRecord
       ? null
       : await transaction.get(attendanceRef);
+
     const previous = currentRecord
       ? currentRecord.data()
       : fallbackDocument.exists
         ? fallbackDocument.data()
         : {};
 
-    const existingPeriods = {
-      amIn: previous.amIn || previous.morningTimeIn || previous.timeIn || "",
-      amOut: previous.amOut || previous.morningTimeOut || "",
-      pmIn: previous.pmIn || previous.afternoonTimeIn || "",
-      pmOut: previous.pmOut || previous.afternoonTimeOut || previous.timeOut || "",
-    };
-    if (existingPeriods[period]) {
-      throw new HttpsError(
-        "failed-precondition",
-        `${studentName} already has ${periodLabels[period]} recorded for ${date}.`,
-      );
+    if (
+      fallbackDocument?.exists &&
+      (
+        previous.date !== requestedDate ||
+        (previous.studentUid && previous.studentUid !== studentUid)
+      )
+    ) {
+      throw new HttpsError("failed-precondition", "The attendance document does not match this student and date. Contact an administrator.");
     }
 
-    const matchingTimeIn = period === "amOut"
-      ? existingPeriods.amIn
-      : period === "pmOut"
-        ? existingPeriods.pmIn
-        : null;
-    const matchingTimeOut = period === "amIn"
-      ? existingPeriods.amOut
-      : period === "pmIn"
-        ? existingPeriods.pmOut
-        : null;
-    if (period.endsWith("In") && matchingTimeOut) {
-      throw new HttpsError("failed-precondition", `${periodLabels[period]} cannot be recorded after its matching time-out.`);
-    }
-    if (period.endsWith("Out") && !matchingTimeIn) {
-      throw new HttpsError("failed-precondition", `${periodLabels[period]} requires a matching time-in first.`);
-    }
-    if (period.endsWith("Out") && calculateHours(matchingTimeIn, formattedTime) <= 0) {
-      throw new HttpsError("failed-precondition", "Time-out must be later than its matching time-in.");
-    }
+    const { periods, totalHours } = updateAttendancePeriods(
+      previous,
+      period,
+      time,
+      studentName,
+      requestedDate
+    );
 
-    const periods = { ...existingPeriods, [period]: formattedTime };
-    const totalHours =
-      calculateHours(periods.amIn, periods.amOut) +
-      calculateHours(periods.pmIn, periods.pmOut);
     const attendance = {
       ...previous,
       studentUid,
-      studentId,
+      studentId: canonicalStudentId,
       studentName,
       coordinatorUid: coordinatorUid || null,
-      date,
+      date: requestedDate,
       ...periods,
-      timeIn: periods.amIn || periods.pmIn,
-      timeOut: periods.pmOut || periods.amOut,
+      timeIn: periods.amIn || periods.pmIn || periods.otIn || "",
+      timeOut: periods.otOut || periods.pmOut || periods.amOut || "",
       totalHours,
       hours: totalHours,
       status: "Present",
-      lastAttendanceAction: periodLabels[period],
+      lastAttendanceAction: attendancePeriods[period],
       manualEntry: true,
       supervisorId: supervisorUid,
+      manualEntryBy: supervisorUid,
+      manualEntryAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       ...(!currentRecord && !fallbackDocument.exists
         ? { createdAt: FieldValue.serverTimestamp() }
-        : {}),
+        : {})
     };
 
     transaction.set(attendanceRef, attendance);
+
     return {
-      studentId,
+      studentId: canonicalStudentId,
       studentName,
-      date,
-      period: periodLabels[period],
-      time: formattedTime,
-      totalHours,
+      date: requestedDate,
+      period: attendancePeriods[period],
+      time,
+      totalHours
     };
   });
 });
