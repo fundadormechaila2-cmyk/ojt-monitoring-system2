@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FileAxis3d,
   Settings,
+  UserRound,
   Menu,
 } from "lucide-react";
 
@@ -149,6 +150,23 @@ function AdminLayout() {
               </NavLink>
             </>
           ) : null}
+
+          {user?.role === "coordinator" && (
+            <NavLink
+              to={`${basePath}/supervisor`}
+              end
+              onClick={closeSidebarOnMobile}
+              className={({ isActive }) =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+              title="Supervisor"
+            >
+              <span className="nav-icon">
+                <UserRound size={18} />
+              </span>
+              <span className="nav-text">Supervisor</span>
+            </NavLink>
+          )}
           <NavLink
             to={`${basePath}/settings`}
             end

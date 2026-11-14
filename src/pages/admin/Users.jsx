@@ -5,9 +5,10 @@ import { db } from "../../services/firebase";
 import { useAuth } from "../../context/useAuth";
 import { COURSES, isApprovedCourse } from "../../constants/courses";
 import { createManagedUser } from "../../services/userManagementSevice";
+import { roleAccountRef, syncRoleAccount } from "../../services/accountCollections";
 import "../../styles/users-management.css";
 
-const roles = ["admin", "coordinator", "student"];
+const roles = ["admin", "coordinator", "supervisor", "student"];
 const statuses = ["ACTIVE", "INACTIVE"];
 const emptyForm = { firstName: "", lastName: "", email: "", role: "student", status: "ACTIVE", studentId: "", course: "", company: "" };
 
@@ -84,16 +85,14 @@ function Users() {
           email: data.email,
           role: data.role,
           createdBy: user?.uid || null,
-        });
-        await updateDoc(doc(db, "users", managedUser.uid), {
           studentId: data.studentId,
           course: data.course,
           company: data.company,
-          updatedAt: new Date().toISOString(),
         });
         alert(`User created. Temporary password: ${managedUser.temporaryPassword}`);
       } else {
         await updateDoc(doc(db, "users", modal.item.id), data);
+        await syncRoleAccount(modal.item.id, data);
         showNotice("User profile updated successfully.");
       }
       setModal(null);
@@ -106,14 +105,21 @@ function Users() {
   const toggleStatus = async (item) => {
     if (!window.confirm(`${item.status === "ACTIVE" ? "Deactivate" : "Activate"} ${item.name}?`)) return;
     try {
-      await updateDoc(doc(db, "users", item.id), { status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", updatedAt: new Date().toISOString() });
+      const changes = { status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", updatedAt: new Date().toISOString() };
+      await updateDoc(doc(db, "users", item.id), changes);
+      await syncRoleAccount(item.id, changes);
       showNotice(`User ${item.status === "ACTIVE" ? "deactivated" : "activated"} successfully.`);
     } catch (statusError) { console.error("Unable to change user status:", statusError); setError("Unable to update account status."); }
   };
   const deleteUser = async (item) => {
     if (item.id === user?.uid) { setError("You cannot delete your currently logged-in account."); return; }
     if (!window.confirm(`Delete ${item.name}? This removes the Firestore profile only; Firebase Authentication credentials are not deleted here.`)) return;
-    try { await deleteDoc(doc(db, "users", item.id)); showNotice("User profile deleted successfully."); } catch (deleteError) { console.error("Unable to delete user:", deleteError); setError("Unable to delete user profile."); }
+    try {
+      const roleRef = roleAccountRef(item.role, item.id);
+      await deleteDoc(doc(db, "users", item.id));
+      if (roleRef) await deleteDoc(roleRef);
+      showNotice("User profile deleted successfully.");
+    } catch (deleteError) { console.error("Unable to delete user:", deleteError); setError("Unable to delete user profile."); }
   };
 
   return (

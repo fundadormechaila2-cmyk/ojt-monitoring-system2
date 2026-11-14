@@ -11,6 +11,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { auth, db } from "../../services/firebase";
+import { roleAccountRef } from "../../services/accountCollections";
 import { useAuth } from "../../context/useAuth";
 import "../../styles/settings.css";
 
@@ -93,12 +94,20 @@ function Settings() {
     }
     setSaving(true);
     try {
-      await updateDoc(doc(db, "users", user.uid), {
+      const changes = {
         firstName: profile.firstName.trim(),
         lastName: profile.lastName.trim(),
         contactNumber: profile.contactNumber.trim(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      await updateDoc(doc(db, "users", user.uid), changes);
+      const roleRef = roleAccountRef(user.role, user.uid);
+      if (roleRef) {
+        // The role profile may not exist yet for older accounts; the users profile is authoritative.
+        await updateDoc(roleRef, changes).catch((roleError) =>
+          console.warn("Unable to update the role account profile:", roleError),
+        );
+      }
       showNotice("Settings saved successfully.");
     } catch (saveError) {
       console.error("Unable to save settings:", saveError);

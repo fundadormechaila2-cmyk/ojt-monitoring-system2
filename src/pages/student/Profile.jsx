@@ -117,13 +117,9 @@ function Profile() {
       };
       const batch = writeBatch(db);
       batch.update(doc(db, "users", user.uid), updates);
-      batch.set(
-        accountRef,
-        accountSnapshot.exists()
-          ? updates
-          : { ...user, ...updates, uid: user.uid, role: "student" },
-        { merge: true },
-      );
+      if (accountSnapshot.exists()) {
+        batch.set(accountRef, updates, { merge: true });
+      }
       if (studentRecord?.id) {
         batch.update(doc(db, "students", studentRecord.id), updates);
       }

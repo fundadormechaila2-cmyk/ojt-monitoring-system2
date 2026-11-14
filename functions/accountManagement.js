@@ -5,6 +5,7 @@ const logger = require("firebase-functions/logger");
 const { isAccountLive } = require("./accountState");
 const { recordDepartmentId, sameDepartment } = require("./departments");
 const { deleteStudentRelatedRecords } = require("./studentDeletion");
+const { roleAccountRef } = require("./roleAccounts");
 
 const ACTIONS = ["preview", "deactivate", "reactivate", "archive", "restore", "delete"];
 const TARGET_TYPES = ["user", "student"];
@@ -206,9 +207,7 @@ async function resolveTarget(db, data) {
     return {
       uid: targetId,
       userRef: snapshot.ref,
-      studentAccountRef: user?.role === "student"
-        ? db.collection("studentAccounts").doc(targetId)
-        : null,
+      roleAccountRef: roleAccountRef(db, user?.role, targetId),
       user,
       rosterRefs,
     };
@@ -224,9 +223,7 @@ async function resolveTarget(db, data) {
   return {
     uid,
     userRef: linkedUser ? db.collection("users").doc(linkedUid) : null,
-    studentAccountRef: linkedUser
-      ? db.collection("studentAccounts").doc(linkedUid)
-      : null,
+    roleAccountRef: linkedUser ? roleAccountRef(db, linkedUser.role, linkedUid) : null,
     user: linkedUser,
     roster,
     rosterRefs: [rosterSnapshot.ref],
@@ -358,9 +355,9 @@ async function applyLifecycle(db, target, kind, adminUid, warnings, extraUserFie
   if (target.userRef && target.user) {
     batch.update(target.userRef, { ...stateFields(kind, adminUid), ...extraUserFields });
   }
-  if (target.studentAccountRef && target.user?.role === "student") {
+  if (target.roleAccountRef && target.user) {
     batch.set(
-      target.studentAccountRef,
+      target.roleAccountRef,
       { ...stateFields(kind, adminUid), ...extraUserFields },
       { merge: true },
     );
@@ -481,7 +478,7 @@ async function permanentlyDeleteStudent(db, target, adminUid, auditBase, base, w
 
     phase = "student-account-profile";
     if (target.uid) {
-      await db.recursiveDelete(db.collection("studentAccounts").doc(target.uid));
+      await db.recursiveDelete(roleAccountRef(db, "student", target.uid));
     }
 
     phase = "user-profile";
@@ -642,6 +639,7 @@ async function handleManageAccount(request) {
       if (target.userRef && target.user) {
         try {
           await target.userRef.delete();
+          if (target.roleAccountRef) await target.roleAccountRef.delete();
         } catch (error) {
           await auditRef.update({ outcome: "profile_delete_failed", error: String(error.message || error) });
           throw error;

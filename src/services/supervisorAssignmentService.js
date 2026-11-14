@@ -8,7 +8,16 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { syncStudentAccount as syncStudentAccountProfile } from "./studentAccountService";
+import { syncRoleAccount } from "./accountCollections";
 import { recordDepartmentId, sameDepartment } from "../constants/departments";
+
+async function mirrorSupervisor(supervisorUid) {
+  try {
+    await syncRoleAccount(supervisorUid);
+  } catch (error) {
+    console.warn("Unable to sync the supervisor account profile:", error);
+  }
+}
 
 function personName(person) {
   return (
@@ -247,6 +256,7 @@ export async function assignStudentsToSupervisor({
       }),
     ),
   );
+  await mirrorSupervisor(supervisor.id);
   return ids.length;
 }
 
@@ -345,6 +355,7 @@ export async function archiveSupervisor({
       updatedAt: serverTimestamp(),
     });
   });
+  await mirrorSupervisor(supervisor.id);
 }
 
 export async function restoreSupervisor({
@@ -439,6 +450,7 @@ export async function restoreSupervisor({
       updatedAt: serverTimestamp(),
     });
   });
+  await mirrorSupervisor(supervisor.id);
 }
 
 // Removes one student from their supervisor without touching the supervisor account.

@@ -40,10 +40,15 @@ Related student records are removed only when their UID, roster ID, or unique
 student ID matches the selected student. If cleanup fails after the account is
 locked, retry deletion from the student list to finish the recorded operation.
 
-Student login profiles are also written to `studentAccounts/{uid}` so student
-accounts have a dedicated Firestore collection. The `users/{uid}` profile
-remains in place for role checks and backwards compatibility with existing
-screens. Only active administrators can create student accounts. Coordinators
+Account profiles are stored by role under the Firebase Auth UID:
+`coordinatorsAccount/{uid}`, `supervisorsAccount/{uid}` and
+`studentsAccount/{uid}`. A coordinator is never written to the supervisor or
+student collection, and so on. The `users/{uid}` profile remains in place for
+role checks and backwards compatibility with existing screens, and is the only
+place access state is authoritative. The `mirrorRoleAccount` trigger keeps the
+role collections in sync with `users/{uid}` (it also strips password fields), and
+`node scripts/syncRoleAccounts.js` backfills accounts that existed before. Only
+active administrators can create student accounts. Coordinators
 can manage their assigned OJT records but cannot create student logins.
 
 ## Coordinator account registration
@@ -60,7 +65,7 @@ does not use Cloud Functions, SMTP secrets, or require billing.
 
 The Admin Dashboard creates student Authentication accounts directly through
 the secondary Firebase Auth client and writes the linked `users/{uid}`,
-`studentAccounts/{uid}`, and roster documents under the existing administrator
+`studentsAccount/{uid}`, and roster documents under the existing administrator
 Firestore rules. It sends a Firebase Authentication password-reset email so
 the student can set their own password. The temporary initial password is
 never emailed or written to Firestore. Administrators can use **Resend password
@@ -72,11 +77,12 @@ The `createStudentAccount` and `resendStudentAccountNotification` callables
 remain in this folder for deployments that still use the legacy callable flow;
 the current Admin Dashboard no longer calls them.
 
-To copy existing student profiles into the new collection without overwriting
-documents already there, configure Firebase Admin credentials and run:
+To copy existing coordinator, supervisor and student profiles into their role
+collections without overwriting documents already there, configure Firebase
+Admin credentials and run:
 
 ```powershell
-node functions/scripts/syncStudentAccounts.js
+node functions/scripts/syncRoleAccounts.js
 ```
 
 Deploy Cloud Functions for account lifecycle operations with the command in

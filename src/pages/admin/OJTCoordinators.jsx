@@ -25,6 +25,7 @@ import {
   recordDepartmentId,
 } from "../../constants/departments";
 import { db } from "../../services/firebase";
+import { syncRoleAccount } from "../../services/accountCollections";
 import {
   createCoordinatorAccount,
   resendCoordinatorSetupEmail,
@@ -184,6 +185,7 @@ function OJTCoordinators() {
           ...departmentFields(form.department),
           updatedAt: serverTimestamp(),
         });
+        await syncRoleAccount(editingCoordinator.id);
         setEditingCoordinator(null);
         setForm(emptyForm);
         setNotice(

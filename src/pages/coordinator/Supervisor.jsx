@@ -34,6 +34,7 @@ import {
 } from "../../services/supervisorAssignmentService";
 import { withoutArchived } from "../../services/recordState";
 import { createManagedUser } from "../../services/userManagementSevice";
+import { syncRoleAccount } from "../../services/accountCollections";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import { recordDepartmentId } from "../../constants/departments";
 
@@ -51,7 +52,8 @@ const emptyForm = {
 
 function currentAcademicYear() {
   const now = new Date();
-  const startYear = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
+  const startYear =
+    now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
   return `${startYear}-${startYear + 1}`;
 }
 
@@ -65,19 +67,31 @@ function displayName(supervisor) {
 }
 
 function studentName(student) {
-  return student.name || student.fullName ||
+  return (
+    student.name ||
+    student.fullName ||
     `${student.firstName || ""} ${student.lastName || ""}`.trim() ||
-    student.email || student.studentId || student.id;
+    student.email ||
+    student.studentId ||
+    student.id
+  );
 }
 
 function companyName(company) {
-  return company.companyName || company.name || company.businessName ||
-    company.company || company.email || company.id;
+  return (
+    company.companyName ||
+    company.name ||
+    company.businessName ||
+    company.company ||
+    company.email ||
+    company.id
+  );
 }
 
 function formatDate(value) {
   if (!value) return "—";
-  const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
+  const date =
+    typeof value.toDate === "function" ? value.toDate() : new Date(value);
   return Number.isNaN(date.getTime())
     ? "—"
     : new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(date);
@@ -109,19 +123,23 @@ function Supervisor() {
   const [modalError, setModalError] = useState("");
 
   useEffect(() => {
-    if (user?.role !== "coordinator" || !user.uid || !user.department) {
+    if (user?.role !== "coordinator" || !user.uid || !departmentId) {
       return undefined;
     }
+    // Department strings vary across legacy records, so match by normalized department id.
     const supervisorsQuery = query(
       collection(db, "users"),
       where("role", "==", "supervisor"),
-      where("department", "==", user?.department || ""),
     );
 
     return onSnapshot(
       supervisorsQuery,
       (snapshot) => {
-        setSupervisors(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setSupervisors(
+          snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() }))
+            .filter((item) => recordDepartmentId(item) === departmentId),
+        );
         setLoading(false);
         setLoadError("");
       },
@@ -133,14 +151,16 @@ function Supervisor() {
         );
       },
     );
-  }, [user?.department, user?.role, user?.uid]);
+  }, [departmentId, user?.role, user?.uid]);
 
   useEffect(() => {
     if (user?.role !== "coordinator") return undefined;
     return onSnapshot(
       collection(db, "schoolYears"),
       (snapshot) => {
-        setSchoolYearRecords(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setSchoolYearRecords(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
       },
       (snapshotError) => {
         console.error("Unable to load school years:", snapshotError);
@@ -162,16 +182,26 @@ function Supervisor() {
       setReferenceLoading(!(studentsLoaded && companiesLoaded));
     };
     const unsubscribeStudents = onSnapshot(
-      query(collection(db, "students"), where("coordinatorUid", "==", user.uid), where("departmentId", "==", departmentId)),
+      query(
+        collection(db, "students"),
+        where("coordinatorUid", "==", user.uid),
+        where("departmentId", "==", departmentId),
+      ),
       (snapshot) => {
-        setStudents(withoutArchived(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+        setStudents(
+          withoutArchived(
+            snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+          ),
+        );
         studentsLoaded = true;
         updateReferenceLoading();
         setStudentLoadError("");
       },
       (snapshotError) => {
         console.error("Unable to load coordinator students:", snapshotError);
-        setStudentLoadError(`Assigned students could not be loaded (${snapshotError.code || "unknown error"}).`);
+        setStudentLoadError(
+          `Assigned students could not be loaded (${snapshotError.code || "unknown error"}).`,
+        );
         studentsLoaded = true;
         updateReferenceLoading();
       },
@@ -179,14 +209,18 @@ function Supervisor() {
     const unsubscribeCompanies = onSnapshot(
       collection(db, "partnerCompanies"),
       (snapshot) => {
-        setCompanies(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setCompanies(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        );
         companiesLoaded = true;
         updateReferenceLoading();
         setCompanyLoadError("");
       },
       (snapshotError) => {
         console.error("Unable to load partner companies:", snapshotError);
-        setCompanyLoadError(`Partner companies could not be loaded (${snapshotError.code || "unknown error"}).`);
+        setCompanyLoadError(
+          `Partner companies could not be loaded (${snapshotError.code || "unknown error"}).`,
+        );
         companiesLoaded = true;
         updateReferenceLoading();
       },
@@ -204,23 +238,25 @@ function Supervisor() {
   const hasSupervisorAssignment = (student) =>
     Boolean(
       student.supervisorUid &&
-        supervisorIds.has(student.supervisorUid) &&
-        (!student.schoolYear ||
-          student.supervisorSchoolYear === student.schoolYear ||
-          (!student.supervisorSchoolYear &&
-            supervisors.find((item) => item.id === student.supervisorUid)?.schoolYear ===
-              student.schoolYear)),
+      supervisorIds.has(student.supervisorUid) &&
+      (!student.schoolYear ||
+        student.supervisorSchoolYear === student.schoolYear ||
+        (!student.supervisorSchoolYear &&
+          supervisors.find((item) => item.id === student.supervisorUid)
+            ?.schoolYear === student.schoolYear)),
     );
   const studentsOf = (supervisor) =>
     students.filter((student) => student.supervisorUid === supervisor.id);
   const schoolYearOptions = useMemo(
     () =>
-      [...new Set([
-        ...schoolYearRecords.map((item) => item.name).filter(Boolean),
-        ...supervisors.map((item) => item.schoolYear).filter(Boolean),
-        ...students.map((item) => item.schoolYear).filter(Boolean),
-        currentAcademicYear(),
-      ])].sort((a, b) => b.localeCompare(a)),
+      [
+        ...new Set([
+          ...schoolYearRecords.map((item) => item.name).filter(Boolean),
+          ...supervisors.map((item) => item.schoolYear).filter(Boolean),
+          ...students.map((item) => item.schoolYear).filter(Boolean),
+          currentAcademicYear(),
+        ]),
+      ].sort((a, b) => b.localeCompare(a)),
     [schoolYearRecords, students, supervisors],
   );
   const activeSchoolYearOptions = useMemo(() => {
@@ -228,11 +264,13 @@ function Supervisor() {
       .filter((item) => item.active !== false)
       .map((item) => item.name)
       .filter(Boolean);
-    return [...new Set([
-      ...active,
-      ...supervisors.map((item) => item.schoolYear).filter(Boolean),
-      ...(!active.length ? [currentAcademicYear()] : []),
-    ])].sort((a, b) => b.localeCompare(a));
+    return [
+      ...new Set([
+        ...active,
+        ...supervisors.map((item) => item.schoolYear).filter(Boolean),
+        ...(!active.length ? [currentAcademicYear()] : []),
+      ]),
+    ].sort((a, b) => b.localeCompare(a));
   }, [schoolYearRecords, supervisors]);
   const currentSchoolYear =
     schoolYearRecords
@@ -244,7 +282,9 @@ function Supervisor() {
     students.filter(
       (student) =>
         !hasSupervisorAssignment(student) &&
-        (!schoolYear || !student.schoolYear || student.schoolYear === schoolYear),
+        (!schoolYear ||
+          !student.schoolYear ||
+          student.schoolYear === schoolYear),
     );
 
   const visibleSupervisors = useMemo(() => {
@@ -252,13 +292,14 @@ function Supervisor() {
     return supervisors
       .filter((supervisor) => {
         const fullName = displayName(supervisor);
-        const company = companies.find((item) => item.id === supervisor.partnerCompanyId);
+        const company = companies.find(
+          (item) => item.id === supervisor.partnerCompanyId,
+        );
         const companyLabel = company
           ? companyName(company)
           : supervisor.company || "";
         const matchesSearch =
-          !term ||
-          `${fullName} ${companyLabel}`.toLowerCase().includes(term);
+          !term || `${fullName} ${companyLabel}`.toLowerCase().includes(term);
         const status = String(supervisor.status || "ACTIVE").toUpperCase();
         const archived =
           supervisor.isArchived === true || status === "ARCHIVED";
@@ -275,11 +316,7 @@ function Supervisor() {
         const matchesSchoolYear =
           effectiveSchoolYearFilter === "all" ||
           (supervisor.schoolYear || "") === effectiveSchoolYearFilter;
-        return (
-          matchesSearch &&
-          matchesStatus &&
-          matchesSchoolYear
-        );
+        return matchesSearch && matchesStatus && matchesSchoolYear;
       })
       .sort((a, b) => displayName(a).localeCompare(displayName(b)));
   }, [companies, effectiveSchoolYearFilter, search, statusFilter, supervisors]);
@@ -291,7 +328,9 @@ function Supervisor() {
       String(supervisor.status || "ACTIVE").toUpperCase() === "ACTIVE",
   ).length;
   const referenceError = [
-    !departmentId ? "Your coordinator account has no recognized department. Ask an administrator to assign one in OJT Coordinators." : "",
+    !departmentId
+      ? "Your coordinator account has no recognized department. Ask an administrator to assign one in OJT Coordinators."
+      : "",
     studentLoadError,
     companyLoadError,
   ]
@@ -314,7 +353,8 @@ function Supervisor() {
       lastName: supervisor.lastName || "",
       phone: supervisor.phone || "",
       partnerCompanyId: supervisor.partnerCompanyId || "",
-      company: supervisor.company || (linkedCompany ? companyName(linkedCompany) : ""),
+      company:
+        supervisor.company || (linkedCompany ? companyName(linkedCompany) : ""),
       position: supervisor.position || "",
       schoolYear: supervisor.schoolYear || currentSchoolYear,
     });
@@ -351,7 +391,10 @@ function Supervisor() {
         schoolYear: supervisor.schoolYear || currentSchoolYear,
       });
       setManageSelection([]);
-      setNotice({ type: "success", text: `${count} student${count === 1 ? "" : "s"} assigned to ${displayName(supervisor)}.` });
+      setNotice({
+        type: "success",
+        text: `${count} student${count === 1 ? "" : "s"} assigned to ${displayName(supervisor)}.`,
+      });
     } catch (error) {
       console.error("Unable to assign students:", error);
       setModalError(error.message || "Students could not be assigned.");
@@ -366,7 +409,10 @@ function Supervisor() {
     setModalError("");
     try {
       await unassignStudent({ coordinator: user, student });
-      setNotice({ type: "success", text: `${studentName(student)} was removed from the supervisor.` });
+      setNotice({
+        type: "success",
+        text: `${studentName(student)} was removed from the supervisor.`,
+      });
     } catch (error) {
       console.error("Unable to remove the student assignment:", error);
       setModalError(error.message || "The student could not be removed.");
@@ -386,7 +432,10 @@ function Supervisor() {
         studentIds: [student.id],
         schoolYear: targetSupervisor.schoolYear || currentSchoolYear,
       });
-      setNotice({ type: "success", text: `${studentName(student)} was reassigned to ${displayName(targetSupervisor)}.` });
+      setNotice({
+        type: "success",
+        text: `${studentName(student)} was reassigned to ${displayName(targetSupervisor)}.`,
+      });
     } catch (error) {
       console.error("Unable to reassign the student:", error);
       setModalError(error.message || "The student could not be reassigned.");
@@ -407,7 +456,10 @@ function Supervisor() {
         await restoreSupervisor({
           coordinator: user,
           supervisor,
-          schoolYear: effectiveSchoolYearFilter === "all" ? currentSchoolYear : effectiveSchoolYearFilter,
+          schoolYear:
+            effectiveSchoolYearFilter === "all"
+              ? currentSchoolYear
+              : effectiveSchoolYearFilter,
           students: studentsOf(supervisor),
         });
         setNotice({
@@ -430,7 +482,8 @@ function Supervisor() {
       console.error("Unable to update supervisor archive status:", error);
       setNotice({
         type: "error",
-        text: error.message || "Supervisor archive status could not be updated.",
+        text:
+          error.message || "Supervisor archive status could not be updated.",
       });
     } finally {
       setBusy(false);
@@ -452,19 +505,34 @@ function Supervisor() {
       .filter(Boolean);
     const company = form.company.trim();
     const schoolYear = form.schoolYear.trim();
-    const matchedCompany = companies.find((item) =>
-      companyName(item).trim().toLowerCase() === company.toLowerCase(),
+    const matchedCompany = companies.find(
+      (item) =>
+        companyName(item).trim().toLowerCase() === company.toLowerCase(),
     );
-    if (!firstName || !lastName || !email || selected.length === 0 || !company || !schoolYear || !user?.department) {
-      setFormError("Complete the required fields, including School Year, and select at least one assigned student and a partner company.");
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      selected.length === 0 ||
+      !company ||
+      !schoolYear ||
+      !user?.department
+    ) {
+      setFormError(
+        "Complete the required fields, including School Year, and select at least one assigned student and a partner company.",
+      );
       return;
     }
     if (selected.some((student) => student.coordinatorUid !== user.uid)) {
-      setFormError("You can only assign supervisors to students in your department.");
+      setFormError(
+        "You can only assign supervisors to students in your department.",
+      );
       return;
     }
     if (selected.some(hasSupervisorAssignment)) {
-      setFormError("One of the selected students already has an assigned supervisor.");
+      setFormError(
+        "One of the selected students already has an assigned supervisor.",
+      );
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -475,7 +543,10 @@ function Supervisor() {
     setSaving(true);
     try {
       const existingSupervisor = supervisors.find(
-        (item) => String(item.email || "").trim().toLowerCase() === email,
+        (item) =>
+          String(item.email || "")
+            .trim()
+            .toLowerCase() === email,
       );
       if (existingSupervisor) {
         await assignStudentsToSupervisor({
@@ -485,7 +556,8 @@ function Supervisor() {
           schoolYear,
           restoreSupervisor:
             existingSupervisor.isArchived === true ||
-            String(existingSupervisor.status || "").toUpperCase() === "ARCHIVED",
+            String(existingSupervisor.status || "").toUpperCase() ===
+              "ARCHIVED",
         });
         setNotice({
           type: "success",
@@ -518,7 +590,10 @@ function Supervisor() {
       setForm(emptyForm);
     } catch (createError) {
       console.error("Unable to create supervisor account:", createError);
-      setFormError(createError.message || "Unable to create supervisor account and assignment.");
+      setFormError(
+        createError.message ||
+          "Unable to create supervisor account and assignment.",
+      );
     } finally {
       setSaving(false);
     }
@@ -543,7 +618,9 @@ function Supervisor() {
     const company = form.company.trim();
     const schoolYear = form.schoolYear.trim();
     if (!firstName || !lastName || !company || !schoolYear) {
-      setFormError("Enter the supervisor's name, partner company, and School Year.");
+      setFormError(
+        "Enter the supervisor's name, partner company, and School Year.",
+      );
       return;
     }
 
@@ -551,8 +628,7 @@ function Supervisor() {
       companies.find(
         (item) =>
           companyName(item).trim().toLowerCase() === company.toLowerCase(),
-      ) ||
-      companies.find((item) => item.id === form.partnerCompanyId);
+      ) || companies.find((item) => item.id === form.partnerCompanyId);
     const assignedStudents = studentsOf(supervisor);
     const supervisorName = `${firstName} ${lastName}`;
     setSaving(true);
@@ -605,6 +681,9 @@ function Supervisor() {
         });
       });
 
+      await syncRoleAccount(supervisor.id).catch((syncError) =>
+        console.warn("Unable to sync the supervisor account profile:", syncError),
+      );
       setModal(null);
       setNotice({
         type: "success",
@@ -682,7 +761,13 @@ function Supervisor() {
             role="status"
           >
             <span>{notice.text}</span>
-            <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}><X size={16} /></button>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => setNotice(null)}
+            >
+              <X size={16} />
+            </button>
           </section>
         )}
 
@@ -708,7 +793,8 @@ function Supervisor() {
                     </code>
                   </p>
                   <p className="mt-2 text-xs text-emerald-800">
-                    Share this password securely. The supervisor will be asked to change it after signing in.
+                    Share this password securely. The supervisor will be asked
+                    to change it after signing in.
                   </p>
                 </div>
               </div>
@@ -734,7 +820,10 @@ function Supervisor() {
           </div>
         )}
         {referenceError && (
-          <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">
+          <div
+            className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"
+            role="alert"
+          >
             {referenceError}
           </div>
         )}
@@ -752,7 +841,9 @@ function Supervisor() {
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               <label className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-400 transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 sm:w-72">
                 <Search size={17} aria-hidden="true" />
-                <span className="sr-only">Search supervisors by name or company</span>
+                <span className="sr-only">
+                  Search supervisors by name or company
+                </span>
                 <input
                   className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
                   type="search"
@@ -775,7 +866,10 @@ function Supervisor() {
                 <option value="inactive">Inactive</option>
                 <option value="archived">Archived</option>
               </select>
-              <label className="sr-only" htmlFor="supervisor-school-year-filter">
+              <label
+                className="sr-only"
+                htmlFor="supervisor-school-year-filter"
+              >
                 Filter supervisors by School Year
               </label>
               <select
@@ -787,7 +881,8 @@ function Supervisor() {
                 <option value="all">All School Years</option>
                 {schoolYearOptions.map((schoolYear) => (
                   <option key={schoolYear} value={schoolYear}>
-                    {schoolYear}{schoolYear === currentSchoolYear ? " (Current)" : ""}
+                    {schoolYear}
+                    {schoolYear === currentSchoolYear ? " (Current)" : ""}
                   </option>
                 ))}
               </select>
@@ -805,12 +900,16 @@ function Supervisor() {
                   <UserRound size={20} />
                 </span>
                 <p className="font-semibold text-slate-700">
-                  {search || statusFilter !== "all" || schoolYearFilter !== "all"
+                  {search ||
+                  statusFilter !== "all" ||
+                  schoolYearFilter !== "all"
                     ? "No supervisors match these filters"
                     : "No supervisors added yet"}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  {search || statusFilter !== "all" || schoolYearFilter !== "all"
+                  {search ||
+                  statusFilter !== "all" ||
+                  schoolYearFilter !== "all"
                     ? "Adjust the search or filters and try again."
                     : "Add a supervisor to create their system account."}
                 </p>
@@ -853,12 +952,15 @@ function Supervisor() {
                       .join("")
                       .slice(0, 2)
                       .toUpperCase();
-                    const status = String(supervisor.status || "ACTIVE").toUpperCase();
+                    const status = String(
+                      supervisor.status || "ACTIVE",
+                    ).toUpperCase();
                     const archived =
                       supervisor.isArchived === true || status === "ARCHIVED";
                     const assignedStudents = studentsOf(supervisor);
-                    const company =
-                      companies.find((item) => item.id === supervisor.partnerCompanyId);
+                    const company = companies.find(
+                      (item) => item.id === supervisor.partnerCompanyId,
+                    );
                     return (
                       <tr
                         className="border-t border-slate-100 transition hover:bg-slate-50/70"
@@ -873,9 +975,16 @@ function Supervisor() {
                               <strong className="block whitespace-nowrap text-sm font-semibold text-slate-800">
                                 {name}
                               </strong>
-                              {(supervisor.position || company || supervisor.company) && (
+                              {(supervisor.position ||
+                                company ||
+                                supervisor.company) && (
                                 <span className="mt-1 block max-w-48 truncate text-xs text-slate-500">
-                                  {[supervisor.position, company ? companyName(company) : supervisor.company]
+                                  {[
+                                    supervisor.position,
+                                    company
+                                      ? companyName(company)
+                                      : supervisor.company,
+                                  ]
                                     .filter(Boolean)
                                     .join(" · ")}
                                 </span>
@@ -888,8 +997,14 @@ function Supervisor() {
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">
                           <span className="inline-flex items-center gap-2">
-                            <Building2 size={15} className="shrink-0 text-slate-400" aria-hidden="true" />
-                            {company ? companyName(company) : supervisor.company || "—"}
+                            <Building2
+                              size={15}
+                              className="shrink-0 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            {company
+                              ? companyName(company)
+                              : supervisor.company || "—"}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">
@@ -898,16 +1013,22 @@ function Supervisor() {
                         <td className="px-6 py-3">
                           <div className="min-w-44">
                             <span className="mb-2 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                              {assignedStudents.length} student{assignedStudents.length === 1 ? "" : "s"}
+                              {assignedStudents.length} student
+                              {assignedStudents.length === 1 ? "" : "s"}
                             </span>
                             {assignedStudents.length > 0 ? (
                               <ul className="m-0 list-none space-y-1 p-0">
                                 {assignedStudents.slice(0, 2).map((student) => (
-                                  <li className="truncate text-xs text-slate-700" key={student.id}>
+                                  <li
+                                    className="truncate text-xs text-slate-700"
+                                    key={student.id}
+                                  >
                                     {studentName(student)}
                                     <span className="ml-1 text-slate-400">
                                       · {student.studentId || student.id} ·{" "}
-                                      {student.supervisorSchoolYear || student.schoolYear || "No School Year"}
+                                      {student.supervisorSchoolYear ||
+                                        student.schoolYear ||
+                                        "No School Year"}
                                     </span>
                                   </li>
                                 ))}
@@ -918,14 +1039,18 @@ function Supervisor() {
                                 )}
                               </ul>
                             ) : (
-                              <p className="m-0 text-xs text-slate-400">No students assigned</p>
+                              <p className="m-0 text-xs text-slate-400">
+                                No students assigned
+                              </p>
                             )}
                           </div>
                         </td>
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
-                              !archived && supervisor.isActive !== false && status === "ACTIVE"
+                              !archived &&
+                              supervisor.isActive !== false &&
+                              status === "ACTIVE"
                                 ? "bg-emerald-50 text-emerald-700 ring-emerald-600/15"
                                 : "bg-slate-100 text-slate-600 ring-slate-500/15"
                             }`}
@@ -943,7 +1068,9 @@ function Supervisor() {
                             <button
                               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
                               type="button"
-                              onClick={() => setModal({ type: "view", supervisor })}
+                              onClick={() =>
+                                setModal({ type: "view", supervisor })
+                              }
                               aria-label={`View profile for ${name}`}
                               title="View profile"
                             >
@@ -977,9 +1104,15 @@ function Supervisor() {
                                   : "border-slate-200 bg-white text-slate-700 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 focus:ring-amber-100"
                               }`}
                               type="button"
-                              onClick={() => toggleSupervisorArchive(supervisor)}
+                              onClick={() =>
+                                toggleSupervisorArchive(supervisor)
+                              }
                               aria-label={`${archived ? "Restore" : "Archive"} ${name}`}
-                              title={archived ? "Restore supervisor" : "Archive supervisor"}
+                              title={
+                                archived
+                                  ? "Restore supervisor"
+                                  : "Archive supervisor"
+                              }
                               disabled={busy}
                             >
                               {archived ? (
@@ -999,7 +1132,8 @@ function Supervisor() {
             </div>
           )}
           <footer className="border-t border-slate-100 px-6 py-3 text-xs text-slate-500">
-            Showing {visibleSupervisors.length} of {supervisors.length} supervisor
+            Showing {visibleSupervisors.length} of {supervisors.length}{" "}
+            supervisor
             {supervisors.length === 1 ? "" : "s"}
           </footer>
         </section>
@@ -1026,7 +1160,8 @@ function Supervisor() {
             />
             <form className="space-y-4 p-6" onSubmit={addSupervisor}>
               <p className="text-sm text-slate-500">
-                Create a new account or reassign an existing supervisor account. New accounts receive a temporary password.
+                Create a new account or reassign an existing supervisor account.
+                New accounts receive a temporary password.
               </p>
               {formError && (
                 <div
@@ -1079,17 +1214,28 @@ function Supervisor() {
                 }
                 autoComplete="tel"
               />
-              <label className="block text-sm font-medium text-slate-700" htmlFor="supervisor-position">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="supervisor-position"
+              >
                 Position
                 <input
                   className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   id="supervisor-position"
                   value={form.position}
-                  onChange={(event) => setForm((current) => ({ ...current, position: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      position: event.target.value,
+                    }))
+                  }
                   autoComplete="organization-title"
                 />
               </label>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="supervisor-company">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="supervisor-company"
+              >
                 Partner company <span className="text-rose-600">*</span>
                 <input
                   className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -1100,7 +1246,11 @@ function Supervisor() {
                   value={form.company}
                   onChange={(event) => {
                     const company = event.target.value;
-                    const matchedCompany = companies.find((item) => companyName(item).toLowerCase() === company.trim().toLowerCase());
+                    const matchedCompany = companies.find(
+                      (item) =>
+                        companyName(item).toLowerCase() ===
+                        company.trim().toLowerCase(),
+                    );
                     setForm((current) => ({
                       ...current,
                       company,
@@ -1110,10 +1260,15 @@ function Supervisor() {
                   placeholder="Type partner company"
                 />
                 <datalist id="partner-company-suggestions">
-                  {companies.map((company) => <option key={company.id} value={companyName(company)} />)}
+                  {companies.map((company) => (
+                    <option key={company.id} value={companyName(company)} />
+                  ))}
                 </datalist>
               </label>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="supervisor-school-year">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="supervisor-school-year"
+              >
                 School Year <span className="text-rose-600">*</span>
                 <select
                   className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -1130,15 +1285,31 @@ function Supervisor() {
                   }
                 >
                   {activeSchoolYearOptions.map((schoolYear) => (
-                    <option key={schoolYear} value={schoolYear}>{schoolYear}</option>
+                    <option key={schoolYear} value={schoolYear}>
+                      {schoolYear}
+                    </option>
                   ))}
                 </select>
               </label>
               <fieldset className="text-sm font-medium text-slate-700">
-                <legend>Assigned OJT students <span className="text-rose-600">*</span> <span className="font-normal text-slate-500">({form.studentRecordIds.length} selected)</span></legend>
+                <legend>
+                  Assigned OJT students <span className="text-rose-600">*</span>{" "}
+                  <span className="font-normal text-slate-500">
+                    ({form.studentRecordIds.length} selected)
+                  </span>
+                </legend>
                 <ul className="mt-1.5 max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-300">
-                  {referenceLoading && <li className="px-3 py-2 text-slate-500">Loading assigned students...</li>}
-                  {!referenceLoading && unassignedStudentsForYear(form.schoolYear).length === 0 && <li className="px-3 py-2 text-slate-500">No unassigned students available for this School Year.</li>}
+                  {referenceLoading && (
+                    <li className="px-3 py-2 text-slate-500">
+                      Loading assigned students...
+                    </li>
+                  )}
+                  {!referenceLoading &&
+                    unassignedStudentsForYear(form.schoolYear).length === 0 && (
+                      <li className="px-3 py-2 text-slate-500">
+                        No unassigned students available for this School Year.
+                      </li>
+                    )}
                   {unassignedStudentsForYear(form.schoolYear).map((student) => (
                     <li key={student.id}>
                       <label className="flex cursor-pointer items-center gap-3 px-3 py-2 font-normal">
@@ -1147,27 +1318,64 @@ function Supervisor() {
                           disabled={saving}
                           checked={form.studentRecordIds.includes(student.id)}
                           onChange={() => {
-                            const company = student.company || student.partnerCompany || student.companyName || "";
-                            const matchedCompany = companies.find((item) => companyName(item).toLowerCase() === company.trim().toLowerCase());
+                            const company =
+                              student.company ||
+                              student.partnerCompany ||
+                              student.companyName ||
+                              "";
+                            const matchedCompany = companies.find(
+                              (item) =>
+                                companyName(item).toLowerCase() ===
+                                company.trim().toLowerCase(),
+                            );
                             setForm((current) => ({
                               ...current,
-                              studentRecordIds: toggleId(current.studentRecordIds, student.id),
-                              ...(company && !current.company ? { company } : {}),
-                              ...(!current.company && company ? { partnerCompanyId: matchedCompany?.id || "" } : {}),
+                              studentRecordIds: toggleId(
+                                current.studentRecordIds,
+                                student.id,
+                              ),
+                              ...(company && !current.company
+                                ? { company }
+                                : {}),
+                              ...(!current.company && company
+                                ? { partnerCompanyId: matchedCompany?.id || "" }
+                                : {}),
                             }));
                           }}
                         />
-                        <span>{studentName(student)} <span className="text-xs text-slate-500">· {student.studentId || student.studentID || student.id}</span></span>
+                        <span>
+                          {studentName(student)}{" "}
+                          <span className="text-xs text-slate-500">
+                            ·{" "}
+                            {student.studentId ||
+                              student.studentID ||
+                              student.id}
+                          </span>
+                        </span>
                       </label>
                     </li>
                   ))}
                 </ul>
               </fieldset>
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="block font-medium text-slate-700">Department</span><DepartmentBadge value={user?.department || "Not assigned"} /></div>
-                <div><span className="block font-medium text-slate-700">Account status</span><span className="text-slate-500">Active</span></div>
+                <div>
+                  <span className="block font-medium text-slate-700">
+                    Department
+                  </span>
+                  <DepartmentBadge value={user?.department || "Not assigned"} />
+                </div>
+                <div>
+                  <span className="block font-medium text-slate-700">
+                    Account status
+                  </span>
+                  <span className="text-slate-500">Active</span>
+                </div>
               </div>
-              {referenceError && <p className="text-sm text-rose-700" role="alert">{referenceError}</p>}
+              {referenceError && (
+                <p className="text-sm text-rose-700" role="alert">
+                  {referenceError}
+                </p>
+              )}
               <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
                 <button
                   className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
@@ -1180,7 +1388,12 @@ function Supervisor() {
                 <button
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-wait disabled:opacity-60"
                   type="submit"
-                  disabled={saving || referenceLoading || Boolean(referenceError) || unassignedStudentsForYear(form.schoolYear).length === 0}
+                  disabled={
+                    saving ||
+                    referenceLoading ||
+                    Boolean(referenceError) ||
+                    unassignedStudentsForYear(form.schoolYear).length === 0
+                  }
                 >
                   <Plus size={16} />
                   {saving ? "Creating…" : "Create Supervisor"}
@@ -1212,7 +1425,9 @@ function Supervisor() {
             />
             <form className="space-y-4 p-6" onSubmit={updateSupervisor}>
               <p className="text-sm text-slate-500">
-                Update the supervisor profile and partner company. Assigned students will retain their supervisor and receive the updated company details.
+                Update the supervisor profile and partner company. Assigned
+                students will retain their supervisor and receive the updated
+                company details.
               </p>
               {formError && (
                 <div
@@ -1227,7 +1442,9 @@ function Supervisor() {
                   label="First name"
                   name="editSupervisorFirstName"
                   value={form.firstName}
-                  onChange={(value) => setForm((current) => ({ ...current, firstName: value }))}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, firstName: value }))
+                  }
                   required
                   autoComplete="given-name"
                 />
@@ -1235,22 +1452,31 @@ function Supervisor() {
                   label="Last name"
                   name="editSupervisorLastName"
                   value={form.lastName}
-                  onChange={(value) => setForm((current) => ({ ...current, lastName: value }))}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, lastName: value }))
+                  }
                   required
                   autoComplete="family-name"
                 />
               </div>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="edit-supervisor-email">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="edit-supervisor-email"
+              >
                 Email address
                 <input
                   className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500"
                   id="edit-supervisor-email"
                   type="email"
-                  value={supervisors.find((item) => item.id === modal.supervisorId)?.email || ""}
+                  value={
+                    supervisors.find((item) => item.id === modal.supervisorId)
+                      ?.email || ""
+                  }
                   readOnly
                 />
                 <span className="mt-1 block text-xs font-normal text-slate-500">
-                  Sign-in email changes require updating the Firebase Authentication account.
+                  Sign-in email changes require updating the Firebase
+                  Authentication account.
                 </span>
               </label>
               <FormField
@@ -1258,17 +1484,24 @@ function Supervisor() {
                 name="editSupervisorPhone"
                 type="tel"
                 value={form.phone}
-                onChange={(value) => setForm((current) => ({ ...current, phone: value }))}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, phone: value }))
+                }
                 autoComplete="tel"
               />
               <FormField
                 label="Position"
                 name="editSupervisorPosition"
                 value={form.position}
-                onChange={(value) => setForm((current) => ({ ...current, position: value }))}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, position: value }))
+                }
                 autoComplete="organization-title"
               />
-              <label className="block text-sm font-medium text-slate-700" htmlFor="edit-supervisor-company">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="edit-supervisor-company"
+              >
                 Partner company <span className="text-rose-600">*</span>
                 <input
                   className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -1298,7 +1531,10 @@ function Supervisor() {
                   ))}
                 </datalist>
               </label>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="edit-supervisor-school-year">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="edit-supervisor-school-year"
+              >
                 School Year <span className="text-rose-600">*</span>
                 <select
                   className="mt-1.5 block box-border min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -1307,13 +1543,24 @@ function Supervisor() {
                   disabled={saving}
                   value={form.schoolYear}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, schoolYear: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      schoolYear: event.target.value,
+                    }))
                   }
                 >
-                  {[...new Set([...activeSchoolYearOptions, form.schoolYear].filter(Boolean))]
+                  {[
+                    ...new Set(
+                      [...activeSchoolYearOptions, form.schoolYear].filter(
+                        Boolean,
+                      ),
+                    ),
+                  ]
                     .sort((a, b) => b.localeCompare(a))
                     .map((schoolYear) => (
-                      <option key={schoolYear} value={schoolYear}>{schoolYear}</option>
+                      <option key={schoolYear} value={schoolYear}>
+                        {schoolYear}
+                      </option>
                     ))}
                 </select>
               </label>
@@ -1353,19 +1600,13 @@ function Supervisor() {
             className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
             role="dialog"
           >
-            <ModalHeader
-              title="Supervisor Profile"
-              onClose={closeModal}
-            />
+            <ModalHeader title="Supervisor Profile" onClose={closeModal} />
             <dl className="grid gap-3 p-6 sm:grid-cols-2">
               <ProfileDetail
                 label="Name"
                 value={displayName(modal.supervisor)}
               />
-              <ProfileDetail
-                label="Role"
-                value="Supervisor"
-              />
+              <ProfileDetail label="Role" value="Supervisor" />
               <ProfileDetail
                 label="School Year"
                 value={modal.supervisor.schoolYear || "Not assigned"}
@@ -1384,7 +1625,11 @@ function Supervisor() {
               />
               <ProfileDetail
                 label="Department"
-                value={<DepartmentBadge value={modal.supervisor.department || "Not provided"} />}
+                value={
+                  <DepartmentBadge
+                    value={modal.supervisor.department || "Not provided"}
+                  />
+                }
               />
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:col-span-2">
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1401,7 +1646,18 @@ function Supervisor() {
                           {studentName(student)}
                         </strong>
                         <span className="mt-0.5 block text-xs text-slate-500">
-                          {student.studentId || student.id} · {student.supervisorSchoolYear || student.schoolYear || "No School Year"} · <DepartmentBadge value={student.course || student.department || "No course"} />
+                          {student.studentId || student.id} ·{" "}
+                          {student.supervisorSchoolYear ||
+                            student.schoolYear ||
+                            "No School Year"}{" "}
+                          ·{" "}
+                          <DepartmentBadge
+                            value={
+                              student.course ||
+                              student.department ||
+                              "No course"
+                            }
+                          />
                         </span>
                       </li>
                     ))}
@@ -1428,7 +1684,11 @@ function Supervisor() {
               />
               <ProfileDetail
                 label="Account status"
-                value={modal.supervisor.isArchived === true ? "archived" : String(modal.supervisor.status || "ACTIVE").toLowerCase()}
+                value={
+                  modal.supervisor.isArchived === true
+                    ? "archived"
+                    : String(modal.supervisor.status || "ACTIVE").toLowerCase()
+                }
               />
               <ProfileDetail
                 label="Date added"
@@ -1439,95 +1699,191 @@ function Supervisor() {
         </div>
       )}
 
-      {modal?.type === "manage" && (() => {
-        const supervisor = supervisors.find((item) => item.id === modal.supervisorId);
-        if (!supervisor) return null;
-        const assigned = studentsOf(supervisor);
-        const others = supervisors.filter(
-          (item) =>
-            item.id !== supervisor.id &&
-            item.isArchived !== true &&
-            item.status !== "ARCHIVED",
-        );
-        const availableForSupervisor = unassignedStudentsForYear(
-          supervisor.schoolYear || currentSchoolYear,
-        );
-        return (
-          <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]" role="presentation">
-            <section aria-modal="true" className="max-h-[90svh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl" role="dialog">
-              <ModalHeader title={`Students of ${displayName(supervisor)}`} onClose={closeModal} disabled={busy} />
-              <div className="space-y-5 p-6 text-sm">
-                {modalError && <p className="text-rose-700" role="alert">{modalError}</p>}
-                <div>
-                  <h3 className="mb-2 font-semibold text-slate-800">Assigned students ({assigned.length})</h3>
-                  {assigned.length === 0 ? (
-                    <p className="text-slate-500">No students assigned yet.</p>
-                  ) : (
-                    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
-                      {assigned.map((student) => (
-                        <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" key={student.id}>
-                          <span>
-                            <strong className="text-slate-800">{studentName(student)}</strong>
-                            <span className="block text-xs text-slate-500">{student.studentId || student.id} · {student.supervisorSchoolYear || student.schoolYear || "No School Year"} · <DepartmentBadge value={student.course || student.department || "No course"} /> · {student.company || supervisor.company || "No company"}</span>
-                          </span>
-                          <span className="flex items-center gap-2">
-                            {others.some(
-                              (item) =>
-                                !student.schoolYear ||
-                                item.schoolYear === student.schoolYear,
-                            ) && (
-                              <select
-                                aria-label={`Reassign ${studentName(student)}`}
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+      {modal?.type === "manage" &&
+        (() => {
+          const supervisor = supervisors.find(
+            (item) => item.id === modal.supervisorId,
+          );
+          if (!supervisor) return null;
+          const assigned = studentsOf(supervisor);
+          const others = supervisors.filter(
+            (item) =>
+              item.id !== supervisor.id &&
+              item.isArchived !== true &&
+              item.status !== "ARCHIVED",
+          );
+          const availableForSupervisor = unassignedStudentsForYear(
+            supervisor.schoolYear || currentSchoolYear,
+          );
+          return (
+            <div
+              className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
+              role="presentation"
+            >
+              <section
+                aria-modal="true"
+                className="max-h-[90svh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+                role="dialog"
+              >
+                <ModalHeader
+                  title={`Students of ${displayName(supervisor)}`}
+                  onClose={closeModal}
+                  disabled={busy}
+                />
+                <div className="space-y-5 p-6 text-sm">
+                  {modalError && (
+                    <p className="text-rose-700" role="alert">
+                      {modalError}
+                    </p>
+                  )}
+                  <div>
+                    <h3 className="mb-2 font-semibold text-slate-800">
+                      Assigned students ({assigned.length})
+                    </h3>
+                    {assigned.length === 0 ? (
+                      <p className="text-slate-500">
+                        No students assigned yet.
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                        {assigned.map((student) => (
+                          <li
+                            className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                            key={student.id}
+                          >
+                            <span>
+                              <strong className="text-slate-800">
+                                {studentName(student)}
+                              </strong>
+                              <span className="block text-xs text-slate-500">
+                                {student.studentId || student.id} ·{" "}
+                                {student.supervisorSchoolYear ||
+                                  student.schoolYear ||
+                                  "No School Year"}{" "}
+                                ·{" "}
+                                <DepartmentBadge
+                                  value={
+                                    student.course ||
+                                    student.department ||
+                                    "No course"
+                                  }
+                                />{" "}
+                                ·{" "}
+                                {student.company ||
+                                  supervisor.company ||
+                                  "No company"}
+                              </span>
+                            </span>
+                            <span className="flex items-center gap-2">
+                              {others.some(
+                                (item) =>
+                                  !student.schoolYear ||
+                                  item.schoolYear === student.schoolYear,
+                              ) && (
+                                <select
+                                  aria-label={`Reassign ${studentName(student)}`}
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                                  disabled={busy}
+                                  value=""
+                                  onChange={(event) =>
+                                    reassignStudent(
+                                      student,
+                                      others.find(
+                                        (item) =>
+                                          item.id === event.target.value,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <option value="">Reassign to…</option>
+                                  {others
+                                    .filter(
+                                      (item) =>
+                                        !student.schoolYear ||
+                                        item.schoolYear === student.schoolYear,
+                                    )
+                                    .map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {displayName(item)}
+                                      </option>
+                                    ))}
+                                </select>
+                              )}
+                              <button
+                                className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                                type="button"
                                 disabled={busy}
-                                value=""
-                                onChange={(event) => reassignStudent(student, others.find((item) => item.id === event.target.value))}
+                                onClick={() => removeStudent(student)}
                               >
-                                <option value="">Reassign to…</option>
-                                {others
-                                  .filter(
-                                    (item) =>
-                                      !student.schoolYear ||
-                                      item.schoolYear === student.schoolYear,
+                                Remove
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="mb-2 font-semibold text-slate-800">
+                      Add students
+                    </h3>
+                    {availableForSupervisor.length === 0 ? (
+                      <p className="text-slate-500">
+                        All of your students for this School Year already have a
+                        supervisor.
+                      </p>
+                    ) : (
+                      <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+                        {availableForSupervisor.map((student) => (
+                          <li key={student.id}>
+                            <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={manageSelection.includes(student.id)}
+                                disabled={busy}
+                                onChange={() =>
+                                  setManageSelection((current) =>
+                                    toggleId(current, student.id),
                                   )
-                                  .map((item) => <option key={item.id} value={item.id}>{displayName(item)}</option>)}
-                              </select>
-                            )}
-                            <button className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60" type="button" disabled={busy} onClick={() => removeStudent(student)}>Remove</button>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div>
-                  <h3 className="mb-2 font-semibold text-slate-800">Add students</h3>
-                  {availableForSupervisor.length === 0 ? (
-                    <p className="text-slate-500">All of your students for this School Year already have a supervisor.</p>
-                  ) : (
-                    <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-                      {availableForSupervisor.map((student) => (
-                        <li key={student.id}>
-                          <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
-                            <input type="checkbox" checked={manageSelection.includes(student.id)} disabled={busy} onChange={() => setManageSelection((current) => toggleId(current, student.id))} />
-                            <span>{studentName(student)} <span className="text-xs text-slate-500">· {student.studentId || student.id} · <DepartmentBadge value={student.course || student.department || "No course"} /></span></span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="mt-3 flex justify-end">
-                    <button className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60" type="button" disabled={busy || manageSelection.length === 0} onClick={() => addStudentsToSupervisor(supervisor)}>
-                      <Plus size={16} aria-hidden="true" />
-                      {busy ? "Saving…" : `Assign ${manageSelection.length || ""} selected`}
-                    </button>
+                                }
+                              />
+                              <span>
+                                {studentName(student)}{" "}
+                                <span className="text-xs text-slate-500">
+                                  · {student.studentId || student.id} ·{" "}
+                                  <DepartmentBadge
+                                    value={
+                                      student.course ||
+                                      student.department ||
+                                      "No course"
+                                    }
+                                  />
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                        type="button"
+                        disabled={busy || manageSelection.length === 0}
+                        onClick={() => addStudentsToSupervisor(supervisor)}
+                      >
+                        <Plus size={16} aria-hidden="true" />
+                        {busy
+                          ? "Saving…"
+                          : `Assign ${manageSelection.length || ""} selected`}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
-          </div>
-        );
-      })()}
+              </section>
+            </div>
+          );
+        })()}
     </main>
   );
 }
@@ -1539,7 +1895,9 @@ function SummaryCard({ icon: Icon, label, value, tone }) {
       : "bg-blue-50 text-blue-700";
   return (
     <article className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <span className={`grid size-11 place-items-center rounded-xl ${iconTone}`}>
+      <span
+        className={`grid size-11 place-items-center rounded-xl ${iconTone}`}
+      >
         <Icon size={20} aria-hidden="true" />
       </span>
       <div>
@@ -1581,7 +1939,9 @@ function FormField({
 
 function ModalHeader({ title, onClose, disabled = false }) {
   const titleId =
-    title === "Add Supervisor" ? "add-supervisor-title" : "supervisor-profile-title";
+    title === "Add Supervisor"
+      ? "add-supervisor-title"
+      : "supervisor-profile-title";
   return (
     <header className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
       <h2 className="m-0 text-xl font-bold text-slate-900" id={titleId}>

@@ -17,6 +17,7 @@ const {
 } = require("./studentRegistration");
 exports.createStudentAccount = createStudentAccount;
 exports.resendStudentAccountNotification = resendStudentAccountNotification;
+exports.mirrorRoleAccount = require("./roleAccountMirror").mirrorRoleAccount;
 
 const accountManagementOrigins = [
   "http://localhost:5173",

@@ -132,7 +132,7 @@ async function writeNotificationStatus(db, uid, studentRecordId, status) {
     updatedAt: timestamp,
   };
   batch.set(db.collection("users").doc(uid), changes, { merge: true });
-  batch.set(db.collection("studentAccounts").doc(uid), changes, { merge: true });
+  batch.set(db.collection("studentsAccount").doc(uid), changes, { merge: true });
   batch.set(db.collection("students").doc(studentRecordId), changes, { merge: true });
   await batch.commit();
 }
@@ -270,7 +270,7 @@ async function createStudentAccountHandler(request) {
         throw new HttpsError("already-exists", "This student record was linked to an account by another request.");
       }
       const userRef = db.collection("users").doc(createdUser.uid);
-      const studentAccountRef = db.collection("studentAccounts").doc(createdUser.uid);
+      const studentAccountRef = db.collection("studentsAccount").doc(createdUser.uid);
       transaction.create(userRef, profile);
       transaction.create(studentAccountRef, profile);
       transaction.update(rosterRef, {
@@ -348,7 +348,7 @@ async function resendStudentAccountNotificationHandler(request) {
   };
   const batch = db.batch();
   batch.set(userRef, pending, { merge: true });
-  batch.set(db.collection("studentAccounts").doc(uid), pending, { merge: true });
+  batch.set(db.collection("studentsAccount").doc(uid), pending, { merge: true });
   batch.set(db.collection("students").doc(studentRecordId), pending, { merge: true });
   await batch.commit();
   try {

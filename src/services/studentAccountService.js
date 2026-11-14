@@ -1,18 +1,12 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { updateDoc } from "firebase/firestore";
+import { roleAccountRef } from "./accountCollections";
 
 export function studentAccountRef(uid) {
-  return doc(db, "studentAccounts", uid);
+  return roleAccountRef("student", uid);
 }
 
+// Coordinators cannot read users/{studentUid}, so only the changed fields are written.
 export async function syncStudentAccount(uid, changes) {
   if (!uid) return;
-  const userSnapshot = await getDoc(doc(db, "users", uid));
-  if (!userSnapshot.exists() || userSnapshot.data().role !== "student") return;
-
-  await setDoc(
-    studentAccountRef(uid),
-    { ...userSnapshot.data(), ...changes, uid },
-    { merge: true },
-  );
+  await updateDoc(studentAccountRef(uid), changes);
 }
