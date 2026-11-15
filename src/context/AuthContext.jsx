@@ -5,6 +5,7 @@ import { auth, db } from "../services/firebase";
 import { getUserData } from "../services/userService";
 import { isAccountLive } from "../services/recordState";
 import { AuthContext } from "./AuthContextDefinition";
+import { logLoginDiagnostic } from "../services/temporaryLoginDiagnostics";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -18,7 +19,7 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        const userData = await getUserData(currentUser.uid);
+        const userData = await getUserData(currentUser.uid, "AuthProvider.onAuthStateChanged");
 
         if (userData && !isAccountLive(userData)) {
           setUser(null);
@@ -46,12 +47,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!signedInUid) return undefined;
     // Sign out immediately if an administrator deactivates or archives this account mid-session.
-    return onSnapshot(doc(db, "users", signedInUid), (snapshot) => {
+    const ref = doc(db, "users", signedInUid);
+    const request = { source: "AuthProvider account listener", path: ref.path, requestedUid: signedInUid };
+    logLoginDiagnostic({ ...request, stage: "listen-start" });
+    return onSnapshot(ref, (snapshot) => {
       if (snapshot.exists() && !isAccountLive(snapshot.data())) {
         setUser(null);
         signOut(auth).catch((error) => console.error("Unable to sign out a deactivated account:", error));
       }
-    }, () => {});
+    }, (error) => logLoginDiagnostic({ ...request, stage: "listen-error", error }));
   }, [signedInUid]);
 
   return (

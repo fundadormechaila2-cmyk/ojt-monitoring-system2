@@ -5,6 +5,7 @@ import { useAuth } from "../../context/useAuth";
 import { auth, db } from "../../services/firebase";
 import { recordDepartmentId } from "../../constants/departments";
 import { subscribeToCoordinatorAttendance } from "../../services/coordinatorAttendanceService";
+import { logLoginDiagnostic } from "../../services/temporaryLoginDiagnostics";
 import "../../styles/coordinator-module.css";
 
 const coordinatorSources = ["students", "attendance"];
@@ -20,13 +21,21 @@ export function useCoordinatorData() {
   useEffect(() => {
     if (!uid || !departmentId) return undefined;
     let active = true;
-    const subscribe = (source, onItems, onError) => source === "attendance"
-      ? subscribeToCoordinatorAttendance(uid, departmentId, onItems, onError)
-      : onSnapshot(
-          query(collection(db, source), where("coordinatorUid", "==", uid), where("departmentId", "==", departmentId)),
-          (snapshot) => onItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-          onError,
-        );
+    const subscribe = (source, onItems, onError) => {
+      if (source === "attendance") {
+        return subscribeToCoordinatorAttendance(uid, departmentId, onItems, onError);
+      }
+      const request = { source: "useCoordinatorData students query", path: source, requestedUid: uid };
+      logLoginDiagnostic({ ...request, stage: "listen-start" });
+      return onSnapshot(
+        query(collection(db, source), where("coordinatorUid", "==", uid), where("departmentId", "==", departmentId)),
+        (snapshot) => onItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
+        (error) => {
+          logLoginDiagnostic({ ...request, stage: "listen-error", error });
+          onError(error);
+        },
+      );
+    };
     const unsubscribers = coordinatorSources.map((source) =>
       subscribe(
         source,

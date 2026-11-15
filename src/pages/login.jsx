@@ -19,6 +19,7 @@ import { getUserData } from "../services/userService";
 import { isAccountLive } from "../services/recordState";
 import { completePasswordChange } from "../services/userManagementSevice";
 import { auth } from "../services/firebase";
+import { logLoginDiagnostic } from "../services/temporaryLoginDiagnostics";
 import schoolLogo from "../assets/school-logo.png";
 
 const ROLE_HOME = {
@@ -251,9 +252,12 @@ function Login() {
     }
 
     setLoading(true);
+    let requestedUid = null;
     try {
       const credential = await login(email, password);
-      const userData = await getUserData(credential.user.uid);
+      requestedUid = credential.user.uid;
+      logLoginDiagnostic({ stage: "auth-success", source: "Login.handleLogin", path: `users/${requestedUid}`, requestedUid });
+      const userData = await getUserData(credential.user.uid, "Login.handleLogin");
 
       if (!userData || !Object.hasOwn(ROLE_HOME, userData.role) || !isAccountLive(userData)) {
         await logout();
@@ -269,6 +273,7 @@ function Login() {
 
       navigate(ROLE_HOME[userData.role], { replace: true });
     } catch (err) {
+      logLoginDiagnostic({ stage: "login-error", source: "Login.handleLogin", requestedUid, error: err });
       const invalid = ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"];
       setError(invalid.includes(err.code) ? "Incorrect email or password." : err.message);
     } finally {
