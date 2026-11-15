@@ -89,6 +89,10 @@ records from before a reassignment. Merge the relevant local rules into the
 active rules after comparison and deploy the students `coordinatorUid` /
 `departmentId` composite index in `firestore.indexes.json` before relying on
 these queries.
+The coordinator supervisor directory queries the coordinator's exact stored
+`department` value, matching the live access rule and the `users` role /
+department index. An administrator must reconcile legacy supervisor department
+values that differ from their coordinator's value before they appear.
 The self-profile update rule in `firestore.rules` must be merged into the active
 rules before coordinators and supervisors can save profile changes. It permits
 only their own first name, last name, contact number, and update timestamp.
@@ -108,3 +112,9 @@ The frontend calls `manageAccountApi` with the current Firebase ID token in a
 Bearer authorization header. The endpoint verifies that token with Firebase
 Admin before invoking the account-management logic. The callable
 `manageAccount` remains available for compatibility.
+
+Student and coordinator creation uses Firebase Authentication password-setup
+emails and administrator Firestore permissions. Legacy accounts with a
+required temporary-password change still need a deployed Cloud Function. See
+[the Functions documentation](./functions/README.md#student-and-coordinator-registration)
+for configuration, deployment, recovery, and verification instructions.

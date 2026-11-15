@@ -7,11 +7,20 @@ const { ROLE_COLLECTIONS, roleCollectionFor, toRoleProfile } = require("./roleAc
 async function mirrorRoleAccount(db, uid, after) {
   const target = roleCollectionFor(after?.role);
   const batch = db.batch();
+  const supervisorRef = db.collection("supervisors").doc(uid);
+  const supervisor = await supervisorRef.get();
   Object.values(ROLE_COLLECTIONS)
     .filter((collectionName) => collectionName !== target)
     .forEach((collectionName) => batch.delete(db.collection(collectionName).doc(uid)));
   if (target && after) {
     batch.set(db.collection(target).doc(uid), toRoleProfile(after, uid));
+  }
+  if (supervisor.exists && supervisor.data().uid === uid && supervisor.data().role === "supervisor") {
+    if (after?.role === "supervisor") {
+      batch.set(supervisorRef, toRoleProfile(after, uid));
+    } else {
+      batch.delete(supervisorRef);
+    }
   }
   await batch.commit();
 }

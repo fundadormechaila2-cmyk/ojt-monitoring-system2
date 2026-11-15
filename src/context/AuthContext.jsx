@@ -54,6 +54,10 @@ export function AuthProvider({ children }) {
       if (snapshot.exists() && !isAccountLive(snapshot.data())) {
         setUser(null);
         signOut(auth).catch((error) => console.error("Unable to sign out a deactivated account:", error));
+      } else if (snapshot.exists()) {
+        setUser((current) => current?.uid === signedInUid
+          ? { ...current, ...snapshot.data(), uid: signedInUid }
+          : current);
       }
     }, (error) => logLoginDiagnostic({ ...request, stage: "listen-error", error }));
   }, [signedInUid]);

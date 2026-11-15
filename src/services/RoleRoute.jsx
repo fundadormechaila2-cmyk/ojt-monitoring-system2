@@ -9,6 +9,10 @@ function RoleRoute({ allowedRole, children }) {
         return <Navigate to="/" replace />;
     }
 
+    if (user.mustChangePassword) {
+        return <Navigate to="/" replace />;
+    }
+
     if (user.role !== allowedRole) {
         return <Navigate to="/" replace />;
     }

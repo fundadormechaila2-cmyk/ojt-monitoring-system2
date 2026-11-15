@@ -21,7 +21,7 @@ async function requireActor(db, request) {
   }
   const snapshot = await db.collection("users").doc(request.auth.uid).get();
   const profile = snapshot.exists ? snapshot.data() : null;
-  if (!profile || !isAccountLive(profile) || !["admin", "coordinator"].includes(profile.role)) {
+  if (!profile || !isAccountLive(profile) || profile.mustChangePassword || !["admin", "coordinator"].includes(profile.role)) {
     throw new HttpsError("permission-denied", "Only active administrators or coordinators can manage accounts.");
   }
   return profile;

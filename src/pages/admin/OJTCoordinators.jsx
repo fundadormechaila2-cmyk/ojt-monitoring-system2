@@ -205,12 +205,12 @@ function OJTCoordinators() {
       setForm(emptyForm);
       if (result.emailStatus === "Sent") {
         setNotice(
-          `Coordinator account created for ${form.fullName.trim()}. Password setup email sent to ${result.email}.`,
+          `Coordinator account created for ${form.fullName.trim()}. A password setup email was requested for ${result.email}.`,
         );
         window.setTimeout(() => setNotice(""), 5000);
       } else {
         setError(
-          `The coordinator account was created, but the password setup email could not be sent to ${result.email}. Use the resend email button in the table to try again.`,
+          `The coordinator account was created, but the password setup email could not be confirmed (status: ${result.emailStatus}). Use the resend email button to try again.`,
         );
       }
     } catch (createError) {
@@ -228,9 +228,9 @@ function OJTCoordinators() {
     try {
       const result = await resendCoordinatorSetupEmail(coordinator.id);
       if (result.emailStatus !== "Sent") {
-        throw new Error(`The password setup email could not be sent to ${result.email}.`);
+        throw new Error(`Email delivery to ${result.email} could not be confirmed (status: ${result.emailStatus}).`);
       }
-      setNotice(`Password setup email sent to ${result.email}.`);
+      setNotice(`Password setup email requested for ${result.email}.`);
       window.setTimeout(() => setNotice(""), 5000);
     } catch (resendError) {
       console.error("Unable to resend coordinator password setup email:", resendError);
@@ -516,7 +516,7 @@ function OJTCoordinators() {
               <p className="coordinators-form-note">
                 {editingCoordinator
                   ? "Email address is the coordinator's login and cannot be changed here."
-                  : "A Firebase password setup link will be sent to this email. The coordinator will choose a password before their first login."}
+                  : "A password setup link will be sent to this email. The coordinator must set a password before signing in."}
               </p>
               <footer>
                 <button type="button" className="coordinators-secondary" disabled={saving} onClick={closeForm}>Cancel</button>

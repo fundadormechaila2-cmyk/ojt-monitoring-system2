@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -13,7 +13,6 @@ import {
   Archive,
   ArchiveRestore,
   Building2,
-  Check,
   Eye,
   Pencil,
   Plus,
@@ -33,8 +32,12 @@ import {
   unassignStudent,
 } from "../../services/supervisorAssignmentService";
 import { withoutArchived } from "../../services/recordState";
-import { createManagedUser } from "../../services/userManagementSevice";
+import {
+  createSupervisorAccount,
+  resendSupervisorAccountNotification,
+} from "../../services/userManagementSevice";
 import { syncRoleAccount } from "../../services/accountCollections";
+import { supervisorDirectoryQuery } from "../../services/supervisorDirectoryQuery";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import { recordDepartmentId } from "../../constants/departments";
 
@@ -116,21 +119,17 @@ function Supervisor() {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [createdAccount, setCreatedAccount] = useState(null);
+  const creatingSupervisor = useRef(false);
   const [notice, setNotice] = useState(null);
   const [manageSelection, setManageSelection] = useState([]);
   const [busy, setBusy] = useState(false);
   const [modalError, setModalError] = useState("");
 
   useEffect(() => {
-    if (user?.role !== "coordinator" || !user.uid || !departmentId) {
+    if (user?.role !== "coordinator" || !user.uid || !departmentId || !user.department) {
       return undefined;
     }
-    // Department strings vary across legacy records, so match by normalized department id.
-    const supervisorsQuery = query(
-      collection(db, "users"),
-      where("role", "==", "supervisor"),
-    );
+    const supervisorsQuery = supervisorDirectoryQuery(db, user.department);
 
     return onSnapshot(
       supervisorsQuery,
@@ -151,7 +150,7 @@ function Supervisor() {
         );
       },
     );
-  }, [departmentId, user?.role, user?.uid]);
+  }, [departmentId, user?.department, user?.role, user?.uid]);
 
   useEffect(() => {
     if (user?.role !== "coordinator") return undefined;
@@ -490,11 +489,29 @@ function Supervisor() {
     }
   };
 
+  const resendCredentials = async (supervisor) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await resendSupervisorAccountNotification(supervisor.id);
+      setNotice({
+        type: result.emailStatus === "Sent" ? "success" : "error",
+        text: result.emailStatus === "Sent"
+          ? `Credentials email sent to ${result.email}.`
+          : `The credentials email ${result.emailStatus === "Failed" ? "could not be sent" : "could not be confirmed"}. Contact an administrator if retry is unavailable.`,
+      });
+    } catch (error) {
+      console.error("Unable to resend supervisor credentials:", error);
+      setNotice({ type: "error", text: error.message || "Unable to resend credentials." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addSupervisor = async (event) => {
     event.preventDefault();
-    if (saving) return;
+    if (saving || creatingSupervisor.current) return;
     setFormError("");
-    setCreatedAccount(null);
     setNotice(null);
 
     const firstName = form.firstName.trim();
@@ -535,11 +552,12 @@ function Supervisor() {
       );
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setFormError("Enter a valid email address.");
+    if (!/^[^\s@]+@gmail\.com$/.test(email)) {
+      setFormError("Enter a valid Gmail address.");
       return;
     }
 
+    creatingSupervisor.current = true;
     setSaving(true);
     try {
       const existingSupervisor = supervisors.find(
@@ -567,24 +585,22 @@ function Supervisor() {
         setForm(emptyForm);
         return;
       }
-      const account = await createManagedUser({
+      const account = await createSupervisorAccount({
         firstName,
         lastName,
         email,
         phone: form.phone.trim(),
-        role: "supervisor",
-        createdBy: user.uid,
-        department: user.department,
         assignedStudentRecordIds: selected.map((student) => student.id),
         partnerCompanyId: matchedCompany?.id || "",
         company,
         position: form.position,
         schoolYear,
       });
-      setCreatedAccount({
-        name: `${firstName} ${lastName}`,
-        email: account.email,
-        temporaryPassword: account.temporaryPassword,
+      setNotice({
+        type: account.emailStatus === "Sent" ? "success" : "error",
+        text: account.emailStatus === "Sent"
+          ? `Supervisor account created for ${firstName} ${lastName}. The credentials email was sent to ${account.email}.`
+          : `The supervisor account was created, but the credentials email ${account.emailStatus === "Failed" ? "could not be sent" : "could not be confirmed"}. Do not create another account; contact an administrator for assistance.`,
       });
       setModal(null);
       setForm(emptyForm);
@@ -595,6 +611,7 @@ function Supervisor() {
           "Unable to create supervisor account and assignment.",
       );
     } finally {
+      creatingSupervisor.current = false;
       setSaving(false);
     }
   };
@@ -768,45 +785,6 @@ function Supervisor() {
             >
               <X size={16} />
             </button>
-          </section>
-        )}
-
-        {createdAccount && (
-          <section
-            className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"
-            aria-live="polite"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <Check className="mt-0.5 shrink-0 text-emerald-700" size={18} />
-                <div>
-                  <p className="font-semibold">
-                    Supervisor account created for {createdAccount.name}.
-                  </p>
-                  <p className="mt-1">
-                    Sign-in email: <strong>{createdAccount.email}</strong>
-                  </p>
-                  <p className="mt-1">
-                    Temporary password:{" "}
-                    <code className="rounded bg-white/80 px-2 py-0.5 font-mono text-emerald-950">
-                      {createdAccount.temporaryPassword}
-                    </code>
-                  </p>
-                  <p className="mt-2 text-xs text-emerald-800">
-                    Share this password securely. The supervisor will be asked
-                    to change it after signing in.
-                  </p>
-                </div>
-              </div>
-              <button
-                className="rounded p-1 text-emerald-700 hover:bg-emerald-100"
-                type="button"
-                aria-label="Dismiss account created message"
-                onClick={() => setCreatedAccount(null)}
-              >
-                <X size={17} />
-              </button>
-            </div>
           </section>
         )}
 
@@ -1065,6 +1043,17 @@ function Supervisor() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="inline-flex gap-2">
+                            {supervisor.createdBy === user.uid && supervisor.mustChangePassword &&
+                              supervisor.accountNotificationStatus === "Failed" && (
+                              <button
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => resendCredentials(supervisor)}
+                              >
+                                Retry email
+                              </button>
+                            )}
                             <button
                               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
                               type="button"

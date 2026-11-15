@@ -12,7 +12,8 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return signedIn() && profile().data.role == role;
+      return signedIn() && profile().data.role == role &&
+        profile().data.get("mustChangePassword", false) != true;
     }
 
     function isAdmin() {
@@ -45,18 +46,6 @@ service cloud.firestore {
       return id != "" ? id : departmentCode(profile().data.get("department", ""));
     }
 
-    function coordinatorCreatesSupervisor() {
-      return isCoordinator() &&
-        request.resource.data.get("role", "") == "supervisor" &&
-        request.resource.data.get("createdBy", "") == request.auth.uid &&
-        departmentCode(
-          request.resource.data.get(
-            "departmentId",
-            request.resource.data.get("department", "")
-          )
-        ) == coordinatorDepartment();
-    }
-
     function validCoordinatorSupervisorAssignment() {
       let supervisorUid = request.resource.data.get("supervisorUid", "");
 
@@ -80,9 +69,10 @@ service cloud.firestore {
       allow read: if isAdmin() ||
         (signedIn() && request.auth.uid == userId) ||
         (isCoordinator() &&
-          resource.data.get("role", "") == "supervisor");
+          resource.data.role == "supervisor" &&
+          resource.data.department == profile().data.department);
 
-      allow create: if isAdmin() || coordinatorCreatesSupervisor();
+      allow create: if isAdmin();
 
       allow delete: if isAdmin();
 
@@ -133,7 +123,7 @@ service cloud.firestore {
     match /supervisorsAccount/{uid} {
       allow read: if isAdmin() || ownsAccount(uid) || isCoordinator();
 
-      allow create: if isAdmin() || coordinatorCreatesSupervisor();
+      allow create: if isAdmin();
 
       allow update: if isAdmin() ||
         (

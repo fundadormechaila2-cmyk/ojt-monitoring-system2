@@ -33,11 +33,12 @@ function escapeHtml(value) {
 
 function getLoginUrl() {
   return process.env.APP_LOGIN_URL ||
-    `https://${process.env.GCLOUD_PROJECT || "ojt-monitoringsystem2"}.web.app/login`;
+    `https://${process.env.GCLOUD_PROJECT || "ojt-monitoringsystem2"}.web.app/`;
 }
 
-function buildNotification({ email, fullName, password }) {
+function buildNotification({ email, fullName, password, role = "student" }) {
   const loginUrl = getLoginUrl();
+  const roleLabel = role === "coordinator" ? "Coordinator" : role === "supervisor" ? "Supervisor" : "Student";
   const safeName = escapeHtml(fullName);
   const safeEmail = escapeHtml(email);
   const safePassword = escapeHtml(password);
@@ -46,13 +47,15 @@ function buildNotification({ email, fullName, password }) {
   return {
     subject: "Your LCC I OJT Monitoring System account",
     text: [
-      `Welcome to the LCC I OJT Monitoring System, ${fullName}.`,
+      `Welcome to the La Consolacion College Isabela OJT Monitoring System, ${fullName}.`,
       "",
-      `Username: ${email}`,
+      `Full name: ${fullName}`,
+      `Registered email: ${email}`,
+      `Role: ${roleLabel}`,
       `Temporary password: ${password}`,
       `Login: ${loginUrl}`,
       "",
-      "Sign in with your registered email address and temporary password. You will be asked to create a new password before continuing. Keep your password private.",
+      "Sign in with your registered email address and temporary password. You must change this password before continuing. Keep your password private.",
     ].join("\n"),
     html: `<!doctype html>
 <html lang="en">
@@ -61,15 +64,16 @@ function buildNotification({ email, fullName, password }) {
       <tr><td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden">
           <tr><td style="padding:24px 32px;background:#143b64;color:#ffffff">
-            <div style="font-size:13px;font-weight:bold;letter-spacing:2px">LCC I</div>
+            <div style="font-size:13px;font-weight:bold;letter-spacing:2px">La Consolacion College Isabela</div>
             <div style="margin-top:8px;font-size:23px;font-weight:bold">OJT Monitoring System</div>
           </td></tr>
           <tr><td style="padding:32px">
             <h1 style="margin:0 0 16px;font-size:22px">Welcome, ${safeName}!</h1>
-            <p style="margin:0 0 22px;line-height:1.6">Your student account has been created. Use the credentials below to access your OJT Monitoring System account.</p>
+            <p style="margin:0 0 22px;line-height:1.6">Your ${roleLabel} account has been created. Use the credentials below to access your OJT Monitoring System account.</p>
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:24px;background:#f5f8fc;border:1px solid #dce5ef;border-radius:8px">
               <tr><td style="padding:16px 18px;font-size:14px;line-height:1.8">
                 <strong>Username</strong><br>${safeEmail}<br><br>
+                <strong>Role</strong><br>${roleLabel}<br><br>
                 <strong>Temporary password</strong><br><span style="font-family:monospace;font-size:16px">${safePassword}</span>
               </td></tr>
             </table>
@@ -95,6 +99,10 @@ async function sendAccountNotification(credentials) {
     host: SMTP_HOST.value(),
     port,
     secure: port === 465,
+    requireTLS: port !== 465,
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
     auth: { user: SMTP_USER.value(), pass: SMTP_PASSWORD.value() },
   });
   await transporter.sendMail({
@@ -106,13 +114,13 @@ async function sendAccountNotification(credentials) {
 
 async function requireAdministrator(request) {
   if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in as an administrator to manage student accounts.");
+    throw new HttpsError("unauthenticated", "Sign in as an administrator to manage accounts.");
   }
   const db = getFirestore();
   const snapshot = await db.collection("users").doc(request.auth.uid).get();
   const profile = snapshot.exists ? snapshot.data() : null;
-  if (!profile || profile.role !== "admin" || !isAccountLive(profile)) {
-    throw new HttpsError("permission-denied", "Only active administrators can create or resend student account notifications.");
+  if (!profile || profile.role !== "admin" || !isAccountLive(profile) || profile.mustChangePassword) {
+    throw new HttpsError("permission-denied", "Only active administrators can create or resend account notifications.");
   }
   return { db, adminUid: request.auth.uid };
 }
@@ -140,17 +148,26 @@ async function writeNotificationStatus(db, uid, studentRecordId, status) {
 async function deliverNotification(db, uid, studentRecordId, credentials) {
   try {
     await sendAccountNotification(credentials);
-    await writeNotificationStatus(db, uid, studentRecordId, "Sent");
-    return "Sent";
   } catch (error) {
     logger.error("Student account notification delivery failed", {
       uid,
       studentRecordId,
-      error: String(error.message || error),
+      code: error.code,
     });
-    await writeNotificationStatus(db, uid, studentRecordId, "Failed");
+    try {
+      await writeNotificationStatus(db, uid, studentRecordId, "Failed");
+    } catch (statusError) {
+      logger.error("Unable to record notification failure", { uid, error: String(statusError.message || statusError) });
+    }
     return "Failed";
   }
+  try {
+    await writeNotificationStatus(db, uid, studentRecordId, "Sent");
+  } catch (error) {
+    logger.error("Unable to record successful notification", { uid, error: String(error.message || error) });
+    return "StatusUnknown";
+  }
+  return "Sent";
 }
 
 async function createStudentAccountHandler(request) {
@@ -177,13 +194,7 @@ async function createStudentAccountHandler(request) {
   if (linkedUid) {
     const linkedProfile = await db.collection("users").doc(linkedUid).get();
     if (linkedProfile.exists && linkedProfile.data().role === "student") {
-      return {
-        uid: linkedUid,
-        email: linkedProfile.data().email || email,
-        role: "student",
-        alreadyExists: true,
-        emailStatus: linkedProfile.data().accountNotificationStatus || "Unknown",
-      };
+      throw new HttpsError("already-exists", "This student already has a linked login account.");
     }
     throw new HttpsError("failed-precondition", "This student record has an unresolved account link. Ask an administrator to review it.");
   }
@@ -232,7 +243,8 @@ async function createStudentAccountHandler(request) {
     if (error.code === "auth/invalid-email") {
       throw new HttpsError("invalid-argument", "Enter a valid student email address.");
     }
-    throw error;
+    logger.error("Student Auth creation failed", { code: error.code });
+    throw new HttpsError("internal", "The student login could not be created.");
   }
 
   const profile = {
@@ -280,6 +292,7 @@ async function createStudentAccountHandler(request) {
         email,
         accountEmail: email,
         studentUid: createdUser.uid,
+        mustChangePassword: true,
         accountNotificationStatus: "Pending",
         ...(coordinatorUid ? { coordinatorUid } : {}),
         ...(coordinatorName ? { coordinatorName } : {}),
@@ -287,12 +300,15 @@ async function createStudentAccountHandler(request) {
       });
     });
   } catch (error) {
-    await auth.deleteUser(createdUser.uid).catch((cleanupError) => {
+    try {
+      await auth.deleteUser(createdUser.uid);
+    } catch (cleanupError) {
       logger.error("Unable to remove an unlinked student Auth account", {
         uid: createdUser.uid,
-        error: String(cleanupError.message || cleanupError),
+        code: cleanupError.code,
       });
-    });
+      throw new HttpsError("internal", "Profile creation failed and the unlinked login could not be removed. Contact an administrator.");
+    }
     throw error;
   }
 
@@ -353,6 +369,7 @@ async function resendStudentAccountNotificationHandler(request) {
   await batch.commit();
   try {
     await getAuth().updateUser(uid, { password: temporaryPassword });
+    await getAuth().revokeRefreshTokens(uid);
   } catch (error) {
     logger.error("Unable to set a new temporary password for account notification", {
       uid,
@@ -381,3 +398,8 @@ exports.resendStudentAccountNotification = onCall(
 );
 exports.generateTemporaryPassword = generateTemporaryPassword;
 exports.buildNotification = buildNotification;
+exports.notificationSecrets = notificationSecrets;
+exports.requireAdministrator = requireAdministrator;
+exports.sendAccountNotification = sendAccountNotification;
+exports.createStudentAccountHandler = createStudentAccountHandler;
+exports.resendStudentAccountNotificationHandler = resendStudentAccountNotificationHandler;

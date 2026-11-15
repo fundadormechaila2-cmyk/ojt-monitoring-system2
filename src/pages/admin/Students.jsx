@@ -43,22 +43,6 @@ import "./Students.css";
 
 const avatarColors = ["blue", "green", "purple", "orange", "teal", "slate"];
 
-// Stops the form from staying disabled forever if the network or Firebase never responds.
-const withTimeout = (promise, label, ms = 30000) =>
-  Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new Error(
-              `${label} timed out. Check your internet connection and try again.`,
-            ),
-          ),
-        ms,
-      ),
-    ),
-  ]);
 const emptyNewStudent = {
   firstName: "",
   lastName: "",
@@ -725,13 +709,11 @@ function Students() {
         coordinatorName: coordName,
       });
 
-      setNotice(
-        managedUser.emailStatus === "Sent"
-          ? managedUser.notificationStatusSaved === false
-            ? `Login account created and a password setup link was sent to ${managedUser.email}, but the email status could not be saved. You can resend the link from the student row.`
-            : `Login account created for ${accountStudent.name}. A password setup link was sent to ${managedUser.email}.`
-          : `Login account created for ${accountStudent.name}, but the password setup email could not be sent. Use Resend notification to try again.`,
-      );
+      if (managedUser.emailStatus === "Sent") {
+        setNotice(`Login account created for ${accountStudent.name}. A password setup email was requested for ${managedUser.email}.`);
+      } else {
+        setError(`The account exists, but the password setup email could not be confirmed (status: ${managedUser.emailStatus}). Use Resend notification to try again.`);
+      }
       setAccountStudent(null);
     } catch (saveError) {
       console.error("Unable to create or link student account:", saveError);
@@ -750,13 +732,11 @@ function Students() {
     setError("");
     try {
       const result = await resendStudentAccountNotification(student.id);
-      setNotice(
-        result.emailStatus === "Sent"
-          ? result.notificationStatusSaved === false
-            ? `Password setup link sent to ${result.email}, but the email status could not be saved. You can resend the link from the student row.`
-            : `Password setup link sent to ${result.email}.`
-          : `The password setup email could not be sent to ${result.email}. Please try again.`,
-      );
+      if (result.emailStatus === "Sent") {
+        setNotice(`Password setup email requested for ${result.email}.`);
+      } else {
+        setError(`Email delivery to ${result.email} could not be confirmed (status: ${result.emailStatus}). Please retry.`);
+      }
       window.setTimeout(() => setNotice(""), 6000);
     } catch (resendError) {
       console.error("Unable to resend the student account notification:", resendError);
@@ -821,8 +801,7 @@ function Students() {
     const targetCoordinatorName = coordinatorDisplayName(targetCoordinator);
 
     try {
-      studentReference = await withTimeout(
-        addDoc(collection(db, "students"), {
+      studentReference = await addDoc(collection(db, "students"), {
           name,
           firstName: newStudent.firstName.trim(),
           lastName: newStudent.lastName.trim(),
@@ -845,12 +824,9 @@ function Students() {
           createdBy: user?.uid || null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        }),
-        "Saving the student record",
-      );
+        });
 
-      managedUser = await withTimeout(
-        createManagedUser({
+      managedUser = await createManagedUser({
           firstName: newStudent.firstName,
           lastName: newStudent.lastName,
           email,
@@ -864,17 +840,13 @@ function Students() {
           company: newStudent.company,
           coordinatorUid: targetCoordinatorUid,
           coordinatorName: targetCoordinatorName,
-        }),
-        "Creating the login account",
-      );
+        });
 
-      setNotice(
-        managedUser.emailStatus === "Sent"
-          ? managedUser.notificationStatusSaved === false
-            ? `Student and login account created for ${name}. A password setup link was sent to ${email}, but the email status could not be saved. You can resend the link from the student row.`
-            : `Student and login account created for ${name}. A password setup link was sent to ${email}.`
-          : `Student and login account created for ${name}, but the password setup email could not be sent. Use Resend notification to try again.`,
-      );
+      if (managedUser.emailStatus === "Sent") {
+        setNotice(`Student and login account created for ${name}. A password setup email was requested for ${email}.`);
+      } else {
+        setError(`The student account exists, but the password setup email could not be confirmed (status: ${managedUser.emailStatus}). Use Resend notification to try again.`);
+      }
       setAddingStudent(false);
       setNewStudent(emptyNewStudent);
     } catch (saveError) {
@@ -1249,8 +1221,8 @@ function Students() {
                           <button
                             type="button"
                             className="student-action"
-                            title="Send password setup email"
-                            aria-label={`Send password setup email to ${student.name}`}
+                            title="Resend password setup email"
+                            aria-label={`Resend password setup email to ${student.name}`}
                             disabled={saving}
                             onClick={() => resendStudentNotification(student)}
                           >

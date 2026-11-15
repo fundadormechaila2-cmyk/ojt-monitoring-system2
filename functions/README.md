@@ -7,8 +7,7 @@
 The existing `students` documents are roster records and their document IDs
 are referenced by assignments and attendance. Do not rename or delete them
 without resolving those references. `users/{uid}` remains the current source
-of role and account state; separate admin, coordinator, and supervisor
-profiles are not yet maintained by the current application.
+of role and account state.
 
 An emulator-only, read-only audit is available to identify missing role
 profiles, role mismatches, misplaced non-student roster entries, and
@@ -51,31 +50,89 @@ role collections in sync with `users/{uid}` (it also strips password fields), an
 active administrators can create student accounts. Coordinators
 can manage their assigned OJT records but cannot create student logins.
 
-## Coordinator account registration
+## Student and coordinator registration
 
-The OJT Coordinators page uses the secondary Firebase Authentication client
-to create coordinator accounts without signing the administrator out. It
-writes the `users/{uid}` profile under the existing administrator Firestore
-rules, then sends a Firebase Authentication password-setup email. Firebase
-generates the setup link; no temporary password is sent or saved. The page
-also provides an Admin-only action to resend the setup email. This process
-does not use Cloud Functions, SMTP secrets, or require billing.
+The Admin Dashboard uses a secondary Firebase Auth client to create student
+and coordinator logins while retaining the administrator's session. It writes
+`users/{uid}` and the matching `studentsAccount/{uid}` or
+`coordinatorsAccount/{uid}` profile, links the student roster when applicable,
+and requests a Firebase Authentication password-reset email. The recipient
+sets their password using that link before signing in. The generated initial
+password is not emailed, stored in Firestore, or shown in the UI.
 
-## Student account registration and email
+This flow requires Email/Password authentication and appropriate administrator
+Firestore rules, but does not require Cloud Functions or SMTP secrets. The
+dashboard reports email request failures separately from account creation; use
+the resend action to request another link. Resending does not immediately
+change an existing password. Firebase accepting a request does not guarantee
+that a message reaches the recipient's inbox.
 
-The Admin Dashboard creates student Authentication accounts directly through
-the secondary Firebase Auth client and writes the linked `users/{uid}`,
-`studentsAccount/{uid}`, and roster documents under the existing administrator
-Firestore rules. It sends a Firebase Authentication password-reset email so
-the student can set their own password. The temporary initial password is
-never emailed or written to Firestore. Administrators can use **Resend password
-setup email** to send another setup link. This student account creation and
-setup-email flow does not require Cloud Functions, SMTP secrets, or a billing
-plan that supports Cloud Functions.
+Firebase Auth sign-up itself is available to clients when Email/Password is
+enabled. Firestore rules must restrict profile creation and data access to
+authorized users; an Auth account alone must not grant an application role.
+The initial password is generated in the administrator's browser, so this is
+not equivalent to backend-only account creation or a server-enforced
+first-login password change.
 
-The `createStudentAccount` and `resendStudentAccountNotification` callables
-remain in this folder for deployments that still use the legacy callable flow;
-the current Admin Dashboard no longer calls them.
+Existing accounts with `mustChangePassword: true` still use the
+`completePasswordChange` Cloud Function and cannot be migrated merely by
+resending a reset link. This includes any legacy supervisor or student
+accounts using temporary passwords. Deploy that function and the compatible
+Firestore rules before relying on that legacy workflow; do not clear the flag
+without verifying the password change. The optional SMTP-based account
+registration functions in this folder are no longer called by the dashboard.
+
+Compare local and live Firestore rules before deployment; replacing the live
+rules with an older complete rules file can disrupt other features. After
+verifying the live rules allow administrators to create the account profiles,
+deploy the frontend:
+
+```powershell
+firebase deploy --only hosting --project ojt-monitoringsystem2
+```
+
+Test account creation and setup links with the Auth and Firestore emulators:
+
+```powershell
+firebase emulators:exec --project demo-account-setup --only "auth,firestore" "node --test tests\account-setup-emulator.test.js"
+```
+
+After deployment, verify both roles using real test mailboxes; emulator tests
+cannot establish production email delivery, permissions, or live rules.
+
+## Supervisor registration
+
+The coordinator dashboard calls `createSupervisorAccount` to create a
+supervisor login, write `users/{uid}`, `supervisorsAccount/{uid}`, and
+`supervisors/{uid}`, and assign selected students atomically. The backend
+generates the temporary password and emails it to the supervisor's Gmail
+address. `users/{uid}` remains authoritative; the role mirror updates the
+`supervisors` profile for accounts created by this flow. The credentials are
+never returned to the dashboard or stored in Firestore.
+
+An SMTP failure leaves the account and student assignments in place and shows
+an error. The creating coordinator can use **Retry email** for a failed
+notification; this generates a new temporary password and invalidates the old
+one. If delivery status cannot be recorded or a retry is interrupted, contact
+an administrator rather than creating a duplicate account. SMTP acceptance
+does not guarantee inbox delivery.
+
+This workflow is not live until the Firebase project has billing and the
+required Cloud Functions, Secret Manager and API permissions enabled. Configure
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` using
+`firebase functions:secrets:set` interactively; never put their values in source
+control or chat. Configure the optional `APP_LOGIN_URL` for the deployed
+function if the Hosting default is not the login URL. Deploy
+`createSupervisorAccount`, `resendSupervisorAccountNotification`,
+`completePasswordChange`, and `mirrorRoleAccount` before the frontend.
+
+The deployed Firestore rules must first be reviewed and narrowly updated:
+deny coordinator client creation of supervisor profiles, prevent users from
+clearing their own `mustChangePassword`, and gate all application data access
+for accounts with that flag while allowing access to their own `users/{uid}`
+profile for login. The repository rules differ from production and must not be
+deployed wholesale. Verify those changes with the emulator against the merged
+production rules and check the complete flow with a real test Gmail mailbox.
 
 To copy existing coordinator, supervisor and student profiles into their role
 collections without overwriting documents already there, configure Firebase

@@ -17,6 +17,11 @@ const {
 } = require("./studentRegistration");
 exports.createStudentAccount = createStudentAccount;
 exports.resendStudentAccountNotification = resendStudentAccountNotification;
+exports.createCoordinatorAccount = require("./coordinatorRegistration").createCoordinatorAccount;
+exports.resendCoordinatorAccountNotification = require("./coordinatorRegistration").resendCoordinatorAccountNotification;
+exports.completePasswordChange = require("./passwordChange").completePasswordChange;
+exports.createSupervisorAccount = require("./supervisorRegistration").createSupervisorAccount;
+exports.resendSupervisorAccountNotification = require("./supervisorRegistration").resendSupervisorAccountNotification;
 exports.mirrorRoleAccount = require("./roleAccountMirror").mirrorRoleAccount;
 
 const accountManagementOrigins = [
@@ -205,10 +210,10 @@ async function getStudentRecord(studentUid, profile) {
 }
 
 async function assertSupervisorAssignment(supervisorUid, supervisorProfile, studentUid, studentProfile) {
-  if (!isAccountLive(supervisorProfile)) {
+  if (!isAccountLive(supervisorProfile) || supervisorProfile.mustChangePassword) {
     throw new HttpsError("permission-denied", "This supervisor account is inactive.");
   }
-  if (!isAccountLive(studentProfile)) {
+  if (!isAccountLive(studentProfile) || studentProfile.mustChangePassword) {
     throw new HttpsError("failed-precondition", "This student account is inactive or archived.");
   }
 
