@@ -48,10 +48,11 @@ and user profile are removed; the student roster, attendance, OJT hours,
 evaluations, and applications remain in Firestore.
 
 To use the deployed Cloud Function instead, deploy it to the configured
-project:
+project. This deployment also includes `completePasswordChange`, which is
+required for accounts that must replace a temporary password at first sign-in:
 
 ```powershell
-firebase deploy --only functions:manageAccount,functions:manageAccountApi,hosting --project ojt-monitoringsystem2
+firebase deploy --only functions:manageAccount,functions:manageAccountApi,functions:completePasswordChange,hosting --project ojt-monitoringsystem2
 ```
 
 The first Cloud Functions deployment may require the project owner to enable
