@@ -1,15 +1,18 @@
-import { Construction } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
+import { PageHero } from "../../components/WorkspaceUI";
 
 function AdminPlaceholder({ title }) {
+  const { user } = useAuth();
+  const role = String(user?.role || "admin").toUpperCase();
+
   return (
-    <section className="admin-placeholder">
-      <div className="placeholder-icon">
-        <Construction size={22} />
-      </div>
-      <p className="dashboard-eyebrow">LCCI · OJT MONITORING SYSTEM</p>
-      <h1>{title}</h1>
-      <p>This section is not yet available.</p>
-    </section>
+    <main className="admin-placeholder-page">
+      <PageHero
+        eyebrow={`${role} WORKSPACE · ${title}`}
+        title={title}
+        subtitle="This section is not yet available."
+      />
+    </main>
   );
 }
 

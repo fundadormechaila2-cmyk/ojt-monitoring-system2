@@ -1,0 +1,136 @@
+.workspace-data-card.supervisor-directory {
+  overflow: visible;
+  padding: clamp(16px, 2.5vw, 24px);
+  border-color: var(--workspace-border);
+  background: var(--workspace-surface);
+  color: var(--workspace-ink);
+}
+
+.supervisor-directory-heading h2 {
+  margin: 0;
+  color: var(--workspace-ink);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.supervisor-directory-heading p {
+  margin: 6px 0 0;
+  color: var(--workspace-muted);
+  font-size: 13px;
+}
+
+.supervisor-directory-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.supervisor-directory-search,
+.supervisor-directory-select {
+  position: relative;
+  min-width: 0;
+  color: var(--workspace-muted);
+}
+
+.supervisor-directory-search {
+  grid-column: 1 / -1;
+}
+
+.supervisor-directory-search > svg,
+.supervisor-directory-select > svg {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.supervisor-directory-search > svg { left: 14px; }
+.supervisor-directory-select > svg { right: 12px; }
+
+.workspace-data-card .supervisor-directory-filters :is(input, select) {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--workspace-control-radius);
+  background: var(--workspace-surface-raised);
+  color: var(--workspace-ink);
+  font-size: 13px;
+}
+
+.workspace-data-card .supervisor-directory-search input { padding: 0 14px 0 42px; }
+.workspace-data-card .supervisor-directory-select select { appearance: none; padding: 0 34px 0 12px; }
+.workspace-data-card .supervisor-directory-search input::placeholder { color: var(--workspace-muted); }
+
+.workspace-data-card .supervisor-directory-filters :is(input, select):focus-visible,
+.supervisor-directory-retry:focus-visible {
+  outline: 2px solid var(--workspace-focus);
+  outline-offset: 2px;
+}
+
+.supervisor-directory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.supervisor-directory-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--workspace-card-radius);
+  background: var(--workspace-surface-raised);
+}
+
+.supervisor-directory-avatar {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--workspace-avatar-bg);
+  color: var(--workspace-avatar-ink);
+}
+
+.supervisor-directory-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.supervisor-directory-details { min-width: 0; flex: 1; }
+.supervisor-directory-details h3 { margin: 0; overflow-wrap: anywhere; color: var(--workspace-ink); font-size: 16px; font-weight: 700; }
+.supervisor-directory-details p { margin: 5px 0 10px; overflow-wrap: anywhere; color: var(--workspace-muted); font-size: 13px; }
+.supervisor-directory-details .workspace-pill-success { border-color: transparent; background: var(--workspace-success-bg); color: var(--workspace-success-ink); }
+.supervisor-directory-details .workspace-pill-neutral { border-color: transparent; background: var(--workspace-neutral-bg); color: var(--workspace-neutral-ink); }
+.supervisor-directory-retry { display: block; margin-top: 10px; color: var(--workspace-link); font-size: 12px; font-weight: 700; cursor: pointer; }
+.supervisor-directory-retry:disabled { opacity: 0.6; cursor: default; }
+
+.supervisor-directory-empty {
+  display: grid;
+  min-height: 180px;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: var(--workspace-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.supervisor-directory-footer { margin-top: 18px; color: var(--workspace-muted); font-size: 12px; }
+
+@media (min-width: 700px) {
+  .supervisor-directory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1050px) {
+  .supervisor-directory-filters { grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); }
+  .supervisor-directory-search { grid-column: auto; }
+  .supervisor-directory-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

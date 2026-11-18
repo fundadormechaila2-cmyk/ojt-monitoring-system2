@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckCircle2, CircleDashed, Clock3, TrendingUp } from "lucide-react";
 import { useMemo } from "react";
+import { PageHero } from "../../components/WorkspaceUI";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import "../../styles/student-portal.css";
 
@@ -37,18 +38,17 @@ function StudentsProgress() {
 
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
-        <div>
-          <p className="student-meta">Progress Overview</p>
-          <h1>OJT Progress</h1>
-        </div>
-        <div className="student-header-actions">
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · OJT PROGRESS"
+        title="OJT Progress"
+        subtitle="Track completed hours, upcoming milestones, and placement goals."
+        action={
           <button type="button" className="student-button secondary">
             <TrendingUp size={15} />
             Weekly Summary
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <section className="student-overview-grid">
         <div className="student-card student-stat-card">

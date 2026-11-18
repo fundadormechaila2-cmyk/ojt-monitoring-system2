@@ -10,9 +10,7 @@ import {
 } from "firebase/firestore";
 import {
   AlertCircle,
-  Archive,
-  ArchiveRestore,
-  Building2,
+  ChevronDown,
   Eye,
   Pencil,
   Plus,
@@ -23,12 +21,11 @@ import {
   X,
 } from "lucide-react";
 import "../../styles/tailwind.css";
+import "../../styles/supervisor-directory.css";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import {
-  archiveSupervisor,
   assignStudentsToSupervisor,
-  restoreSupervisor,
   unassignStudent,
 } from "../../services/supervisorAssignmentService";
 import { withoutArchived } from "../../services/recordState";
@@ -39,6 +36,8 @@ import {
 import { syncRoleAccount } from "../../services/accountCollections";
 import { supervisorDirectoryQuery } from "../../services/supervisorDirectoryQuery";
 import DepartmentBadge from "../../components/DepartmentBadge";
+import RowActionsMenu from "../../components/RowActionsMenu";
+import { DataCard, PageHero, StatusBadge } from "../../components/WorkspaceUI";
 import { recordDepartmentId } from "../../constants/departments";
 
 const emptyForm = {
@@ -116,6 +115,7 @@ function Supervisor() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [schoolYearFilter, setSchoolYearFilter] = useState("");
+  const [openActionsId, setOpenActionsId] = useState(null);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -310,8 +310,7 @@ function Supervisor() {
             status === "ACTIVE") ||
           (statusFilter === "inactive" &&
             !archived &&
-            (supervisor.isActive === false || status !== "ACTIVE")) ||
-          (statusFilter === "archived" && archived);
+            (supervisor.isActive === false || status !== "ACTIVE"));
         const matchesSchoolYear =
           effectiveSchoolYearFilter === "all" ||
           (supervisor.schoolYear || "") === effectiveSchoolYearFilter;
@@ -443,52 +442,6 @@ function Supervisor() {
     }
   };
 
-  const toggleSupervisorArchive = async (supervisor) => {
-    if (busy) return;
-    setBusy(true);
-    setModalError("");
-    try {
-      if (
-        supervisor.isArchived === true ||
-        String(supervisor.status || "").toUpperCase() === "ARCHIVED"
-      ) {
-        await restoreSupervisor({
-          coordinator: user,
-          supervisor,
-          schoolYear:
-            effectiveSchoolYearFilter === "all"
-              ? currentSchoolYear
-              : effectiveSchoolYearFilter,
-          students: studentsOf(supervisor),
-        });
-        setNotice({
-          type: "success",
-          text: `${displayName(supervisor)} was restored for School Year ${effectiveSchoolYearFilter === "all" ? currentSchoolYear : effectiveSchoolYearFilter}.`,
-        });
-      } else {
-        await archiveSupervisor({
-          coordinator: user,
-          supervisor,
-          students: studentsOf(supervisor),
-          schoolYear: supervisor.schoolYear || currentSchoolYear,
-        });
-        setNotice({
-          type: "success",
-          text: `${displayName(supervisor)} was archived. Their account and assignment history were preserved.`,
-        });
-      }
-    } catch (error) {
-      console.error("Unable to update supervisor archive status:", error);
-      setNotice({
-        type: "error",
-        text:
-          error.message || "Supervisor archive status could not be updated.",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const resendCredentials = async (supervisor) => {
     if (busy) return;
     setBusy(true);
@@ -497,12 +450,12 @@ function Supervisor() {
       setNotice({
         type: result.emailStatus === "Sent" ? "success" : "error",
         text: result.emailStatus === "Sent"
-          ? `Credentials email sent to ${result.email}.`
-          : `The credentials email ${result.emailStatus === "Failed" ? "could not be sent" : "could not be confirmed"}. Contact an administrator if retry is unavailable.`,
+          ? `Password setup email requested for ${result.email}.`
+          : `The password setup email ${result.emailStatus === "Failed" ? "could not be sent" : "could not be confirmed"}. Contact an administrator if retry is unavailable.`,
       });
     } catch (error) {
-      console.error("Unable to resend supervisor credentials:", error);
-      setNotice({ type: "error", text: error.message || "Unable to resend credentials." });
+      console.error("Unable to resend supervisor setup email:", error);
+      setNotice({ type: "error", text: error.message || "Unable to resend the setup email." });
     } finally {
       setBusy(false);
     }
@@ -599,8 +552,8 @@ function Supervisor() {
       setNotice({
         type: account.emailStatus === "Sent" ? "success" : "error",
         text: account.emailStatus === "Sent"
-          ? `Supervisor account created for ${firstName} ${lastName}. The credentials email was sent to ${account.email}.`
-          : `The supervisor account was created, but the credentials email ${account.emailStatus === "Failed" ? "could not be sent" : "could not be confirmed"}. Do not create another account; contact an administrator for assistance.`,
+          ? `Supervisor account created for ${firstName} ${lastName}. A password setup email was requested for ${account.email}.`
+          : `The supervisor account was created, but the password setup email ${account.emailStatus === "Failed" ? "could not be sent" : "could not be confirmed"}. Do not create another account; ${account.emailStatus === "Failed" ? "use Retry email in the directory" : "contact an administrator for assistance"}.`,
       });
       setModal(null);
       setForm(emptyForm);
@@ -719,6 +672,11 @@ function Supervisor() {
   if (user?.role !== "coordinator" || !user.department) {
     return (
       <main className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
+        <PageHero
+          eyebrow="COORDINATOR WORKSPACE · SUPERVISORS"
+          title="Supervisors"
+          subtitle="Manage supervisor accounts and student assignments."
+        />
         <p className="text-sm text-rose-700" role="alert">
           A coordinator profile with an assigned department is required.
         </p>
@@ -729,30 +687,21 @@ function Supervisor() {
   return (
     <main className="min-h-full bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-              LCCI · OJT Monitoring System
-            </p>
-            <h1 className="m-0 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Supervisors
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
-              Manage supervisor accounts and add supervisors to the system.
-            </p>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              Current School Year: {currentSchoolYear}
-            </p>
-          </div>
-          <button
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200"
-            type="button"
-            onClick={openAddModal}
-          >
-            <Plus size={17} aria-hidden="true" />
-            Add Supervisor
-          </button>
-        </header>
+        <PageHero
+          eyebrow="COORDINATOR WORKSPACE · SUPERVISORS"
+          title="Supervisors"
+          subtitle={`Manage supervisor accounts and student assignments. Current school year: ${currentSchoolYear}.`}
+          action={
+            <button
+              className="workspace-primary-button inline-flex w-fit items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-4 focus:ring-blue-200"
+              type="button"
+              onClick={openAddModal}
+            >
+              <Plus size={17} aria-hidden="true" />
+              Add Supervisor
+            </button>
+          }
+        />
 
         <section
           className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2"
@@ -806,326 +755,95 @@ function Supervisor() {
           </div>
         )}
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <div>
-              <h2 className="m-0 text-lg font-bold text-slate-900">
-                Supervisor Directory
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Supervisor user accounts registered in the system.
-              </p>
-            </div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <label className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-400 transition focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 sm:w-72">
-                <Search size={17} aria-hidden="true" />
-                <span className="sr-only">
-                  Search supervisors by name or company
-                </span>
-                <input
-                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search name or company"
-                />
-              </label>
-              <label className="sr-only" htmlFor="supervisor-status-filter">
-                Filter supervisors by status
-              </label>
-              <select
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
-                id="supervisor-status-filter"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
+        <DataCard className="supervisor-directory">
+          <div className="supervisor-directory-heading">
+            <h2>Supervisor Directory</h2>
+            <p>Supervisor user accounts registered in the system.</p>
+          </div>
+          <div className="supervisor-directory-filters">
+            <label className="supervisor-directory-search">
+              <Search size={18} aria-hidden="true" />
+              <span className="sr-only">Search supervisors by name or company</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search name or company"
+              />
+            </label>
+            <div className="supervisor-directory-select">
+              <label className="sr-only" htmlFor="supervisor-status-filter">Filter supervisors by status</label>
+              <select id="supervisor-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="all">All statuses</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
-                <option value="archived">Archived</option>
               </select>
-              <label
-                className="sr-only"
-                htmlFor="supervisor-school-year-filter"
-              >
-                Filter supervisors by School Year
-              </label>
-              <select
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
-                id="supervisor-school-year-filter"
-                value={effectiveSchoolYearFilter}
-                onChange={(event) => setSchoolYearFilter(event.target.value)}
-              >
+              <ChevronDown size={17} aria-hidden="true" />
+            </div>
+            <div className="supervisor-directory-select">
+              <label className="sr-only" htmlFor="supervisor-school-year-filter">Filter supervisors by School Year</label>
+              <select id="supervisor-school-year-filter" value={effectiveSchoolYearFilter} onChange={(event) => setSchoolYearFilter(event.target.value)}>
                 <option value="all">All School Years</option>
                 {schoolYearOptions.map((schoolYear) => (
                   <option key={schoolYear} value={schoolYear}>
-                    {schoolYear}
-                    {schoolYear === currentSchoolYear ? " (Current)" : ""}
+                    {schoolYear}{schoolYear === currentSchoolYear ? " (Current)" : ""}
                   </option>
                 ))}
               </select>
+              <ChevronDown size={17} aria-hidden="true" />
             </div>
           </div>
 
           {loading ? (
-            <div className="grid min-h-56 place-items-center px-6 text-sm text-slate-500">
-              Loading supervisors…
-            </div>
+            <div className="supervisor-directory-empty">Loading supervisors...</div>
           ) : visibleSupervisors.length === 0 ? (
-            <div className="grid min-h-56 place-items-center px-6 text-center">
-              <div>
-                <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-slate-100 text-slate-500">
-                  <UserRound size={20} />
-                </span>
-                <p className="font-semibold text-slate-700">
-                  {search ||
-                  statusFilter !== "all" ||
-                  schoolYearFilter !== "all"
-                    ? "No supervisors match these filters"
-                    : "No supervisors added yet"}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {search ||
-                  statusFilter !== "all" ||
-                  schoolYearFilter !== "all"
-                    ? "Adjust the search or filters and try again."
-                    : "Add a supervisor to create their system account."}
-                </p>
-              </div>
+            <div className="supervisor-directory-empty">
+              <UserRound size={24} aria-hidden="true" />
+              <strong>No supervisors match these filters</strong>
+              <span>Adjust the search or filters and try again.</span>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[940px] border-collapse text-left">
-                <thead>
-                  <tr className="bg-slate-50/80">
-                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Supervisor Name
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Email Address
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Partner Company
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      School Year
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Assigned Students
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleSupervisors.map((supervisor) => {
-                    const name = displayName(supervisor);
-                    const initials = name
-                      .split(/\s+/)
-                      .map((part) => part[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase();
-                    const status = String(
-                      supervisor.status || "ACTIVE",
-                    ).toUpperCase();
-                    const archived =
-                      supervisor.isArchived === true || status === "ARCHIVED";
-                    const assignedStudents = studentsOf(supervisor);
-                    const company = companies.find(
-                      (item) => item.id === supervisor.partnerCompanyId,
-                    );
-                    return (
-                      <tr
-                        className="border-t border-slate-100 transition hover:bg-slate-50/70"
-                        key={supervisor.id}
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-blue-50 text-sm font-bold text-blue-700">
-                              {initials}
-                            </span>
-                            <span className="min-w-0">
-                              <strong className="block whitespace-nowrap text-sm font-semibold text-slate-800">
-                                {name}
-                              </strong>
-                              {(supervisor.position ||
-                                company ||
-                                supervisor.company) && (
-                                <span className="mt-1 block max-w-48 truncate text-xs text-slate-500">
-                                  {[
-                                    supervisor.position,
-                                    company
-                                      ? companyName(company)
-                                      : supervisor.company,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {supervisor.email || "—"}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          <span className="inline-flex items-center gap-2">
-                            <Building2
-                              size={15}
-                              className="shrink-0 text-slate-400"
-                              aria-hidden="true"
-                            />
-                            {company
-                              ? companyName(company)
-                              : supervisor.company || "—"}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {supervisor.schoolYear || "—"}
-                        </td>
-                        <td className="px-6 py-3">
-                          <div className="min-w-44">
-                            <span className="mb-2 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                              {assignedStudents.length} student
-                              {assignedStudents.length === 1 ? "" : "s"}
-                            </span>
-                            {assignedStudents.length > 0 ? (
-                              <ul className="m-0 list-none space-y-1 p-0">
-                                {assignedStudents.slice(0, 2).map((student) => (
-                                  <li
-                                    className="truncate text-xs text-slate-700"
-                                    key={student.id}
-                                  >
-                                    {studentName(student)}
-                                    <span className="ml-1 text-slate-400">
-                                      · {student.studentId || student.id} ·{" "}
-                                      {student.supervisorSchoolYear ||
-                                        student.schoolYear ||
-                                        "No School Year"}
-                                    </span>
-                                  </li>
-                                ))}
-                                {assignedStudents.length > 2 && (
-                                  <li className="text-xs font-medium text-slate-500">
-                                    +{assignedStudents.length - 2} more
-                                  </li>
-                                )}
-                              </ul>
-                            ) : (
-                              <p className="m-0 text-xs text-slate-400">
-                                No students assigned
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
-                              !archived &&
-                              supervisor.isActive !== false &&
-                              status === "ACTIVE"
-                                ? "bg-emerald-50 text-emerald-700 ring-emerald-600/15"
-                                : "bg-slate-100 text-slate-600 ring-slate-500/15"
-                            }`}
-                          >
-                            <span className="size-1.5 rounded-full bg-current" />
-                            {archived
-                              ? "archived"
-                              : supervisor.isActive === false
-                                ? "inactive"
-                                : status.toLowerCase()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="inline-flex gap-2">
-                            {supervisor.createdBy === user.uid && supervisor.mustChangePassword &&
-                              supervisor.accountNotificationStatus === "Failed" && (
-                              <button
-                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50"
-                                type="button"
-                                disabled={busy}
-                                onClick={() => resendCredentials(supervisor)}
-                              >
-                                Retry email
-                              </button>
-                            )}
-                            <button
-                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                              type="button"
-                              onClick={() =>
-                                setModal({ type: "view", supervisor })
-                              }
-                              aria-label={`View profile for ${name}`}
-                              title="View profile"
-                            >
-                              <Eye size={15} aria-hidden="true" />
-                              View
-                            </button>
-                            <button
-                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                              type="button"
-                              onClick={() => openManageModal(supervisor)}
-                              aria-label={`Manage students of ${name}`}
-                              title="Manage assigned students"
-                            >
-                              <UsersRound size={15} aria-hidden="true" />
-                              Students
-                            </button>
-                            <button
-                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                              type="button"
-                              onClick={() => openEditModal(supervisor)}
-                              aria-label={`Edit ${name}`}
-                              title="Edit supervisor"
-                            >
-                              <Pencil size={14} aria-hidden="true" />
-                              Edit
-                            </button>
-                            <button
-                              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-2 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-4 ${
-                                archived
-                                  ? "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 focus:ring-emerald-100"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 focus:ring-amber-100"
-                              }`}
-                              type="button"
-                              onClick={() =>
-                                toggleSupervisorArchive(supervisor)
-                              }
-                              aria-label={`${archived ? "Restore" : "Archive"} ${name}`}
-                              title={
-                                archived
-                                  ? "Restore supervisor"
-                                  : "Archive supervisor"
-                              }
-                              disabled={busy}
-                            >
-                              {archived ? (
-                                <ArchiveRestore size={15} aria-hidden="true" />
-                              ) : (
-                                <Archive size={15} aria-hidden="true" />
-                              )}
-                              {archived ? "Restore" : "Archive"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="supervisor-directory-grid">
+              {visibleSupervisors.map((supervisor) => {
+                const name = displayName(supervisor);
+                const status = String(supervisor.status || "ACTIVE").toUpperCase();
+                const archived = supervisor.isArchived === true || status === "ARCHIVED";
+                const statusLabel = archived ? "Archived" : supervisor.isActive === false || status !== "ACTIVE" ? "Inactive" : "Active";
+                const company = companies.find((item) => item.id === supervisor.partnerCompanyId);
+                const photo = supervisor.photoURL || supervisor.photoUrl || supervisor.profilePhoto || supervisor.profileImage;
+                return (
+                  <article className="supervisor-directory-item" key={supervisor.id}>
+                    <span className="supervisor-directory-avatar">
+                      {photo ? <img src={photo} alt="" /> : <UserRound size={26} aria-hidden="true" />}
+                    </span>
+                    <div className="supervisor-directory-details">
+                      <h3>{name}</h3>
+                      <p>{company ? companyName(company) : supervisor.company || "No company assigned"}</p>
+                      <StatusBadge value={statusLabel} tone={statusLabel === "Active" ? "success" : "neutral"} />
+                      {supervisor.createdBy === user.uid && !supervisor.mustChangePassword && supervisor.accountNotificationStatus === "Failed" && (
+                        <button className="supervisor-directory-retry" type="button" disabled={busy} onClick={() => resendCredentials(supervisor)}>
+                          Retry email
+                        </button>
+                      )}
+                    </div>
+                    <RowActionsMenu
+                      open={openActionsId === supervisor.id}
+                      onOpenChange={(open) => setOpenActionsId(open ? supervisor.id : null)}
+                      actions={[
+                        { label: "View", icon: Eye, onSelect: () => setModal({ type: "view", supervisor }) },
+                        { label: "Students", icon: UsersRound, onSelect: () => openManageModal(supervisor) },
+                        { label: "Edit", icon: Pencil, onSelect: () => openEditModal(supervisor) },
+                      ]}
+                    />
+                  </article>
+                );
+              })}
             </div>
           )}
-          <footer className="border-t border-slate-100 px-6 py-3 text-xs text-slate-500">
-            Showing {visibleSupervisors.length} of {supervisors.length}{" "}
-            supervisor
-            {supervisors.length === 1 ? "" : "s"}
+          <footer className="supervisor-directory-footer">
+            Showing {visibleSupervisors.length} of {supervisors.length} supervisors
           </footer>
-        </section>
+        </DataCard>
       </div>
 
       {modal?.type === "add" && (
@@ -1150,7 +868,7 @@ function Supervisor() {
             <form className="space-y-4 p-6" onSubmit={addSupervisor}>
               <p className="text-sm text-slate-500">
                 Create a new account or reassign an existing supervisor account.
-                New accounts receive a temporary password.
+                New accounts receive a password setup link by email.
               </p>
               {formError && (
                 <div

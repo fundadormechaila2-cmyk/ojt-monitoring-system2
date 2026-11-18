@@ -1,18 +1,18 @@
 import { departmentIdFor } from "../constants/departments";
+import { Pill } from "./WorkspaceUI";
 
 function DepartmentBadge({ value, className = "" }) {
   const departmentId = departmentIdFor(value);
   const label = String(value || "").trim();
 
-  if (!label) return <span className={`department-badge ${className}`.trim()}>—</span>;
-
   return (
-    <span
+    <Pill
+      tone="course"
       className={`department-badge ${className}`.trim()}
       data-department={departmentId || "unknown"}
     >
-      {label}
-    </span>
+      {label || "—"}
+    </Pill>
   );
 }
 

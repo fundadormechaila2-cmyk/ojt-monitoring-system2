@@ -4,6 +4,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { ArrowRight, CalendarCheck, ClipboardCheck, Clock3, Users } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { PageHeader, StatCard, Status } from "./SupervisorComponents";
+import { DataCard } from "../../components/WorkspaceUI";
 import { db } from "../../services/firebase";
 import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
@@ -70,8 +71,7 @@ function Dashboard() {
 	return (
 		<div className="supervisor-page supervisor-dashboard-page">
 			<PageHeader
-				className="dashboard-hero"
-				eyebrow="LCCI · Supervisor workspace"
+				eyebrow="SUPERVISOR WORKSPACE · DASHBOARD"
 				title="Supervisor Dashboard"
 				description={`Welcome back, ${user?.firstName || user?.email || "Supervisor"}. Here is your current OJT monitoring overview.`}
 			/>
@@ -84,10 +84,10 @@ function Dashboard() {
 			</section>
 
 			<section className="supervisor-dashboard-grid" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-				<article className="supervisor-panel">
+				<DataCard as="article" className="supervisor-panel">
 					<div className="supervisor-panel-heading"><div><h2>Live attendance list</h2><p>Today's scans · {today}</p></div><button type="button" className="supervisor-action secondary" onClick={() => navigate("/supervisor/scan-student-qr")}>Scan student QR <ArrowRight size={14} /></button></div>
 					{attendanceError ? <p className="supervisor-error" role="alert">{attendanceError}</p> : attendanceLoading ? <p className="supervisor-muted">Loading attendance scans...</p> : attendance.length === 0 ? <p className="supervisor-muted">No student scans recorded today.</p> : <div className="supervisor-list">{attendance.slice(0, 6).map((record) => <div className="supervisor-list-item" key={record.id}><div><strong>{record.studentName || record.student || record.studentId || "Student"}</strong><span>{record.studentId || "Student ID unavailable"} · In {record.timeIn || record.morningTimeIn || "—"} · Out {record.timeOut || record.afternoonTimeOut || "—"}</span></div><Status value={record.timeOut || record.afternoonTimeOut ? "Complete" : "Time-In"} /></div>)}</div>}
-				</article>
+				</DataCard>
 			</section>
 		</div>
 	);

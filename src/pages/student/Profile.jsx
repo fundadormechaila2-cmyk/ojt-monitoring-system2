@@ -12,6 +12,7 @@ import {
 import { updateEmail } from "firebase/auth";
 import { X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import { auth, db } from "../../services/firebase";
 import { studentAccountRef } from "../../services/studentAccountService";
 import "../../styles/student-portal.css";
@@ -158,22 +159,21 @@ function Profile() {
     .toUpperCase() || "ST";
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
-        <div>
-          <p className="student-meta">Student profile</p>
-          <h1>My Profile</h1>
-        </div>
-        <div className="student-header-actions">
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · MY PROFILE"
+        title="My Profile"
+        subtitle="Review and update your personal and placement information."
+        action={
           <button type="button" className="student-button primary" onClick={openEdit}>
             Edit Profile
           </button>
-        </div>
-      </header>
+        }
+      />
 
       {notice && <div className="student-profile-notice" role="status">{notice}</div>}
       {error && <div className="student-profile-error" role="alert">{error}</div>}
 
-      <section className="student-card student-panel" style={{ padding: "28px 26px 18px", background: "#f3f5f8" }}>
+      <DataCard className="student-card student-panel">
         <div className="student-profile-summary" style={{ display: "flex", alignItems: "center", gap: 18, padding: 0, marginBottom: 18 }}>
           <div className="student-avatar" style={{ width: 52, height: 52, borderRadius: 14, fontSize: 24, background: "linear-gradient(135deg, #0a66d5, #0d4fb8)", color: "#fff" }}>{initials}</div>
           <div style={{ minWidth: 0 }}>
@@ -195,7 +195,7 @@ function Profile() {
           <ReadOnlyField label="Company Supervisor" value={profile.companySupervisor} />
           <ReadOnlyField label="Faculty Coordinator" value={profile.facultyCoordinator} />
         </div>
-      </section>
+      </DataCard>
 
       {isEditing && (
         <div

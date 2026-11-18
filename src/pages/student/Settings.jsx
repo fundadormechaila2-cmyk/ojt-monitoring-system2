@@ -6,6 +6,7 @@ import {
 } from "firebase/auth";
 import { Eye, EyeOff, Lock } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import { auth } from "../../services/firebase";
 import "../../styles/student-portal.css";
 
@@ -97,17 +98,16 @@ function Settings() {
 
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
-        <div>
-          <p className="student-meta">User preferences</p>
-          <h1>Settings</h1>
-        </div>
-      </header>
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · SETTINGS"
+        title="Settings"
+        subtitle="Manage your account security and preferences."
+      />
 
       {notice && <div className="student-profile-notice" role="status">{notice}</div>}
       {error && <div className="student-profile-error" role="alert">{error}</div>}
 
-      <section className="student-card student-panel student-security-panel">
+      <DataCard className="student-card student-panel student-security-panel">
         <div className="student-panel-header student-security-heading">
           <span className="student-security-card-icon">
             <Lock size={18} />
@@ -222,7 +222,7 @@ function Settings() {
             </button>
           </div>
         )}
-      </section>
+      </DataCard>
     </div>
   );
 }

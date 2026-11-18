@@ -16,6 +16,7 @@ import { useAuth } from "../../context/useAuth";
 import { scanStudentAttendanceQr } from "../../services/attendanceQrService";
 import { saveManualAttendance, SESSIONS, DEFAULT_SCHEDULE } from "../../services/manualAttendanceService";
 import { PageHeader } from "./SupervisorComponents";
+import { DataCard } from "../../components/WorkspaceUI";
 import "../../styles/tailwind.css";
 import "../../styles/supervisor-student-qr.css";
 
@@ -231,13 +232,13 @@ function ScanStudentQR() {
   return (
     <div className="supervisor-page supervisor-student-qr-page">
       <PageHeader
-        eyebrow="Supervisor workspace · Attendance"
+        eyebrow="SUPERVISOR WORKSPACE · ATTENDANCE"
         title="QR Attendance Scanner"
         description="Scan the QR code displayed in a student’s My Attendance page to record Time-In or Time-Out."
       />
 
       <section className="supervisor-student-qr-layout">
-        <article className="supervisor-panel supervisor-student-qr-panel">
+        <DataCard as="article" className="supervisor-panel supervisor-student-qr-panel">
           <div className="supervisor-student-qr-heading">
             <span className="supervisor-student-qr-icon"><ScanLine size={20} /></span>
             <div>
@@ -433,7 +434,7 @@ function ScanStudentQR() {
               </button>
             </form>
           </div>
-        </article>
+        </DataCard>
       </section>
     </div>
   );

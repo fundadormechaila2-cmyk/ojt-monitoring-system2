@@ -1,5 +1,6 @@
 import { Eye, Plus, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import { PageHero } from "../../components/WorkspaceUI";
 import "../../styles/student-portal.css";
 
 const defaultDocuments = [
@@ -115,17 +116,16 @@ function StudentsDocuments() {
 
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
-        <div>
-          <p className="student-meta">Document management</p>
-          <h1>Student Documents</h1>
-        </div>
-        <div className="student-header-actions">
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · DOCUMENTS"
+        title="Student Documents"
+        subtitle="Upload and track documents required for your OJT placement."
+        action={
           <button type="button" className="student-button primary">
             <Plus size={15} /> Upload Document
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <section className="student-overview-grid">
         <div className="student-card student-stat-card">

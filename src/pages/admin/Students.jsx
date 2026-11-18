@@ -31,6 +31,7 @@ import {
   studentDepartmentFields,
 } from "../../constants/departments";
 import { db } from "../../services/firebase";
+import { DataCard, PageHero, StatusBadge } from "../../components/WorkspaceUI";
 import { isAccountLive } from "../../services/recordState";
 import { studentAccountRef } from "../../services/studentAccountService";
 import {
@@ -955,68 +956,63 @@ function Students() {
   if (loading) {
     return (
       <main className="students-page students-state">
-        Loading enrolled students...
+        <PageHero
+          eyebrow="ADMIN WORKSPACE · STUDENTS"
+          title="Enrolled Students"
+          subtitle="Manage student accounts and placement assignments."
+        />
+        <p>Loading enrolled students...</p>
       </main>
     );
   }
 
   return (
     <main className="students-page">
-      <header className="students-header">
-        <div>
-          <p className="students-eyebrow">OJT management</p>
-          <h1>Enrolled Students</h1>
-          <p className="students-subtitle">
-            Create accounts for students ready to take practicum or internship.
-            The coordinator roster uses these same live student records.
-          </p>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          {unassignedMatchingStudents.length > 0 && (
+      <PageHero
+        eyebrow="ADMIN WORKSPACE · STUDENTS"
+        title="Enrolled Students"
+        subtitle="Create accounts for students ready to take practicum or internship. The coordinator roster uses these same live student records."
+        action={
+          <div className="students-header-actions">
+            {unassignedMatchingStudents.length > 0 && (
+              <button
+                type="button"
+                className="students-secondary"
+                disabled={batchAssigning}
+                onClick={autoAssignAllUnassigned}
+                title={`Automatically link ${unassignedMatchingStudents.length} student(s) to their department coordinator`}
+              >
+                {batchAssigning
+                  ? "Assigning..."
+                  : `Auto-Assign Coordinators (${unassignedMatchingStudents.length})`}
+              </button>
+            )}
             <button
               type="button"
               className="students-secondary"
-              disabled={batchAssigning}
-              onClick={autoAssignAllUnassigned}
-              title={`Automatically link ${unassignedMatchingStudents.length} student(s) to their department coordinator`}
+              onClick={() => {
+                setSchoolYearManagerError("");
+                setSchoolYearManagerOpen(true);
+              }}
             >
-              {batchAssigning
-                ? "Assigning..."
-                : `Auto-Assign Coordinators (${unassignedMatchingStudents.length})`}
+              Manage School Years
             </button>
-          )}
-          <button
-            type="button"
-            className="students-secondary"
-            onClick={() => {
-              setSchoolYearManagerError("");
-              setSchoolYearManagerOpen(true);
-            }}
-          >
-            Manage School Years
-          </button>
-          <button
-            type="button"
-            className="students-primary"
-            disabled={Boolean(sourceErrors.users)}
-            onClick={() => {
-              setNewStudent(emptyNewStudent);
-              setError("");
-              setSaving(false);
-              setAddingStudent(true);
-            }}
-          >
-            <Plus size={16} /> Add Student
-          </button>
-        </div>
-      </header>
+            <button
+              type="button"
+              className="students-primary"
+              disabled={Boolean(sourceErrors.users)}
+              onClick={() => {
+                setNewStudent(emptyNewStudent);
+                setError("");
+                setSaving(false);
+                setAddingStudent(true);
+              }}
+            >
+              <Plus size={16} /> Add Student
+            </button>
+          </div>
+        }
+      />
 
       {(error || schoolYearError || Object.values(sourceErrors).length > 0) && (
         <div className="students-error" role="alert">
@@ -1066,7 +1062,7 @@ function Students() {
         </article>
       </section>
 
-      <section className="students-panel">
+      <DataCard className="students-panel">
         <div className="students-toolbar">
           <label className="students-search">
             <Search size={17} />
@@ -1143,7 +1139,6 @@ function Students() {
             <tbody>
               {visibleStudents.map((student, index) => {
                 const account = accountForStudent(student, users);
-                const statusClass = student.status.toLowerCase().replace(/\s+/g, "-");
                 return (
                   <tr key={student.id}>
                     <td>
@@ -1181,9 +1176,7 @@ function Students() {
                     <td>{student.schoolYear || "—"}</td>
                     <td><DepartmentBadge value={student.course || student.department} /></td>
                     <td>
-                      <span className={`student-status ${statusClass}`}>
-                        {student.status}
-                      </span>
+                      <StatusBadge value={student.status} />
                     </td>
                     <td>
                       <div className="student-actions">
@@ -1292,7 +1285,7 @@ function Students() {
             </button>
           </div>
         </footer>
-      </section>
+      </DataCard>
 
       {selectedStudent && (
         <div

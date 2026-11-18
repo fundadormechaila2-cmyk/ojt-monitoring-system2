@@ -102,37 +102,35 @@ cannot establish production email delivery, permissions, or live rules.
 
 ## Supervisor registration
 
-The coordinator dashboard calls `createSupervisorAccount` to create a
-supervisor login, write `users/{uid}`, `supervisorsAccount/{uid}`, and
-`supervisors/{uid}`, and assign selected students atomically. The backend
-generates the temporary password and emails it to the supervisor's Gmail
-address. `users/{uid}` remains authoritative; the role mirror updates the
-`supervisors` profile for accounts created by this flow. The credentials are
-never returned to the dashboard or stored in Firestore.
+The coordinator dashboard creates a supervisor with a secondary Firebase Auth
+client, writes `users/{uid}`, `supervisorsAccount/{uid}`, and
+`supervisors/{uid}`, and assigns selected students in one Firestore transaction.
+It then requests a Firebase Authentication password-reset email. The supervisor
+uses the link to set a password before signing in. The generated initial
+password is not emailed, stored in Firestore, or shown in the UI.
 
-An SMTP failure leaves the account and student assignments in place and shows
-an error. The creating coordinator can use **Retry email** for a failed
-notification; this generates a new temporary password and invalidates the old
-one. If delivery status cannot be recorded or a retry is interrupted, contact
-an administrator rather than creating a duplicate account. SMTP acceptance
-does not guarantee inbox delivery.
+The creating coordinator can use **Retry email** after a failed request. A
+successful request does not guarantee inbox delivery. If notification status
+cannot be saved, contact an administrator instead of creating a duplicate
+account. Accounts from the older temporary-password workflow still require the
+password-change Cloud Function; retrying a setup link does not migrate them.
 
-This workflow is not live until the Firebase project has billing and the
-required Cloud Functions, Secret Manager and API permissions enabled. Configure
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` using
-`firebase functions:secrets:set` interactively; never put their values in source
-control or chat. Configure the optional `APP_LOGIN_URL` for the deployed
-function if the Hosting default is not the login URL. Deploy
-`createSupervisorAccount`, `resendSupervisorAccountNotification`,
-`completePasswordChange`, and `mirrorRoleAccount` before the frontend.
+The initial password is generated in the coordinator's browser. Unlike a
+trusted backend workflow, Firebase cannot enforce that the recipient changes
+it before first login or prevent the coordinator from inspecting it. This
+approach requires Email/Password authentication, the appropriate Firestore
+rules, and Firebase's email quota, but no SMTP secrets or Cloud Functions.
+Firebase Auth sign-up is available to clients, so Firestore rules must prevent
+unauthorized profile creation.
 
-The deployed Firestore rules must first be reviewed and narrowly updated:
-deny coordinator client creation of supervisor profiles, prevent users from
-clearing their own `mustChangePassword`, and gate all application data access
-for accounts with that flag while allowing access to their own `users/{uid}`
-profile for login. The repository rules differ from production and must not be
-deployed wholesale. Verify those changes with the emulator against the merged
-production rules and check the complete flow with a real test Gmail mailbox.
+The repository rules differ from production and must not be deployed wholesale.
+Merge and review the narrowly scoped supervisor setup rules against the current
+production rules before deploying. Verify both the emulator flow and delivery
+to a real test Gmail mailbox; emulator success does not prove inbox delivery.
+
+```powershell
+firebase emulators:exec --config firebase.account-setup-emulator.json --project demo-account-setup --only "auth,firestore" "node --test tests\supervisor-setup-emulator.test.js"
+```
 
 To copy existing coordinator, supervisor and student profiles into their role
 collections without overwriting documents already there, configure Firebase

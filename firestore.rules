@@ -64,19 +64,69 @@ service cloud.firestore {
         );
     }
 
+    function validNewSupervisor(userId) {
+      let data = request.resource.data;
+      return isCoordinator() && coordinatorDepartment() != "" &&
+        data.keys().hasOnly([
+          "uid", "email", "firstName", "lastName", "role", "phone", "position",
+          "department", "departmentId", "coordinatorUid", "createdBy", "company",
+          "partnerCompanyId", "schoolYear", "assignedStudentRecordId", "status",
+          "isActive", "isArchived", "mustChangePassword", "accountNotificationStatus",
+          "accountNotificationUpdatedAt", "createdAt", "updatedAt"
+        ]) &&
+        data.uid == userId && data.role == "supervisor" &&
+        data.createdBy == request.auth.uid && data.coordinatorUid == request.auth.uid &&
+        data.department == profile().data.department &&
+        data.departmentId == coordinatorDepartment() &&
+        data.email is string && data.email.matches("^[^\\s@]+@gmail\\.com$") &&
+        data.firstName is string && data.firstName.size() > 0 &&
+        data.lastName is string && data.lastName.size() > 0 &&
+        data.company is string && data.company.size() > 0 &&
+        data.schoolYear is string && data.schoolYear.size() > 0 &&
+        data.assignedStudentRecordId is string &&
+        data.status == "ACTIVE" && data.isActive == true && data.isArchived == false &&
+        data.mustChangePassword == false && data.accountNotificationStatus == "Pending" &&
+        data.createdAt == request.time && data.updatedAt == request.time &&
+        data.accountNotificationUpdatedAt == request.time;
+    }
+
+    function supervisorSetupStatusUpdate() {
+      return isCoordinator() &&
+        resource.data.get("role", "") == "supervisor" &&
+        resource.data.get("createdBy", "") == request.auth.uid &&
+        resource.data.get("departmentId", "") == coordinatorDepartment() &&
+        resource.data.get("mustChangePassword", true) == false &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "accountNotificationStatus", "accountNotificationUpdatedAt", "updatedAt"
+        ]) &&
+        request.resource.data.accountNotificationStatus in ["Pending", "Sent", "Failed"] &&
+        request.resource.data.accountNotificationUpdatedAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+    }
+
     match /users/{userId} {
 
       allow read: if isAdmin() ||
         (signedIn() && request.auth.uid == userId) ||
         (isCoordinator() &&
+          resource.data.get("role", "") == "student" &&
+          resource.data.get("coordinatorUid", "") == request.auth.uid) ||
+        (isCoordinator() &&
           resource.data.role == "supervisor" &&
           resource.data.department == profile().data.department);
 
-      allow create: if isAdmin();
+      allow create: if isAdmin() || validNewSupervisor(userId);
 
       allow delete: if isAdmin();
 
-      allow update: if isAdmin() || (
+      allow update: if isAdmin() || supervisorSetupStatusUpdate() || (
+        isCoordinator() &&
+        resource.data.get("role", "") == "student" &&
+        resource.data.get("coordinatorUid", "") == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["supervisorUid", "supervisorName", "supervisorSchoolYear", "updatedAt"]) &&
+        validCoordinatorSupervisorAssignment()
+      ) || (
         isCoordinator() &&
         resource.data.get("role", "") == "supervisor" &&
         resource.data.get("createdBy", "") == request.auth.uid &&
@@ -123,7 +173,11 @@ service cloud.firestore {
     match /supervisorsAccount/{uid} {
       allow read: if isAdmin() || ownsAccount(uid) || isCoordinator();
 
-      allow create: if isAdmin();
+      allow create: if isAdmin() || (
+        isCoordinator() &&
+        request.resource.data == getAfter(/databases/$(database)/documents/users/$(uid)).data &&
+        getAfter(/databases/$(database)/documents/users/$(uid)).data.createdBy == request.auth.uid
+      );
 
       allow update: if isAdmin() ||
         (
@@ -139,9 +193,21 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /supervisors/{uid} {
+      allow create: if isCoordinator() &&
+        request.resource.data == getAfter(/databases/$(database)/documents/users/$(uid)).data &&
+        getAfter(/databases/$(database)/documents/users/$(uid)).data.createdBy == request.auth.uid;
+      allow update: if supervisorSetupStatusUpdate();
+      allow read: if isAdmin() || (isCoordinator() && resource.data.get("createdBy", "") == request.auth.uid) || ownsAccount(uid);
+    }
+
     match /studentsAccount/{uid} {
       allow read: if isAdmin() || ownsAccount(uid) ||
         (isCoordinator() && resource.data.get("coordinatorUid", "") == request.auth.uid) ||
+        (isCoordinator() &&
+          exists(/databases/$(database)/documents/users/$(uid)) &&
+          get(/databases/$(database)/documents/users/$(uid)).data.get("role", "") == "student" &&
+          get(/databases/$(database)/documents/users/$(uid)).data.get("coordinatorUid", "") == request.auth.uid) ||
         (hasRole("supervisor") && resource.data.get("supervisorUid", "") == request.auth.uid);
 
       allow create, delete: if isAdmin();

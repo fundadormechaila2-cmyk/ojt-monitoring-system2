@@ -3,6 +3,7 @@ import { CalendarClock, Clock3, QrCode, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useAuth } from "../../context/useAuth";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import { issueStudentAttendanceQrToken } from "../../services/attendanceQrService";
 import { db } from "../../services/firebase";
 import AttendanceRecord from "../../components/AttendanceRecord";
@@ -190,16 +191,14 @@ function Attendance() {
 
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
-        <div>
-          <p className="student-meta">Daily attendance</p>
-          <h1>My Attendance</h1>
-          <p>Show your current QR code to your OJT supervisor to record attendance. Your assigned coordinator and supervisor can review your attendance history.</p>
-        </div>
-      </header>
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · MY ATTENDANCE"
+        title="My Attendance"
+        subtitle="Show your QR code to your OJT supervisor to record attendance."
+      />
 
       <section className="student-attendance-qr-layout">
-        <article className="student-card student-attendance-qr-card">
+        <DataCard as="article" className="student-card student-attendance-qr-card">
           <div className="student-attendance-qr-heading">
             <span className="student-attendance-qr-icon"><QrCode size={20} /></span>
             <div>
@@ -244,9 +243,9 @@ function Attendance() {
           <p className="student-attendance-qr-note">
             This code refreshes automatically. It is generated on your device and is not digitally signed.
           </p>
-        </article>
+        </DataCard>
 
-        <article className="student-card student-attendance-today-card">
+        <DataCard as="article" className="student-card student-attendance-today-card">
           <div className="student-panel-header">
             <div>
               <p className="student-panel-subtitle">Today · {formatAttendanceDate(getLocalDate())}</p>
@@ -298,7 +297,7 @@ function Attendance() {
             <span>Total recorded hours</span>
             <strong>{formatHoursMinutes(accumulatedHours)}</strong>
           </div>
-        </article>
+        </DataCard>
       </section>
 
       <AttendanceRecord

@@ -343,25 +343,26 @@ function Login() {
   return (
     <div className="login-container">
       <main className="login-card">
-        <header className="login-heading">
-          <img
-            className="login-logo"
-            src={schoolLogo}
-            alt="La Consolacion College Isabela logo"
-          />
-          <h1>La Consolacion College-Isabela</h1>
-          <p>OJT Monitoring System</p>
-        </header>
+        <div className="workspace-page-hero login-hero">
+          <header className="login-heading">
+            <img
+              className="login-logo"
+              src={schoolLogo}
+              alt="La Consolacion College Isabela logo"
+            />
+            <p className="login-brand-title">La Consolacion College-Isabela</p>
+            <p>OJT Monitoring System</p>
+          </header>
 
-        <div className="welcome">
-          <h2>Welcome back</h2>
-          <p>Sign in to continue to your account.</p>
+          <div className="welcome">
+            <h2>Welcome back</h2>
+            <p>Sign in to continue to your account.</p>
+          </div>
         </div>
 
         <div className="alert alert-info" role="note">
           <span>
             <strong>First time here?</strong> Follow the password setup link sent to your email.
-            If your administrator gave you a temporary password, sign in and change it when prompted.
           </span>
         </div>
 

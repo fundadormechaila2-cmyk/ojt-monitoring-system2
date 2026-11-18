@@ -8,7 +8,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   ArrowUpRight,
-  CalendarDays,
   CheckCircle2,
   ClipboardClock,
   Settings,
@@ -23,6 +22,7 @@ import {
 import { isAccountLive } from "../services/recordState";
 import { getStudentDeploymentStatus } from "../services/studentDeploymentStatus";
 import { useAuth } from "../context/useAuth";
+import { PageHero } from "../components/WorkspaceUI";
 import "../styles/admin-dashboard.css";
 
 const collectionNames = [
@@ -263,26 +263,11 @@ function Dashboard() {
 
   return (
     <div className="admin-dashboard">
-      <section className="dashboard-intro dashboard-hero">
-        <div>
-          <p className="dashboard-eyebrow">LCCI • OJT monitoring system</p>
-          <h1>Live Placement Overview</h1>
-          <p className="dashboard-subtitle">
-            Welcome back, {firstName}! Here is your live placement overview.
-          </p>
-        </div>
-      </section>
-
-      <div className="dashboard-date-button" aria-label="Today's date">
-        <CalendarDays size={18} />
-        <span>
-          {new Date().toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </span>
-      </div>
+      <PageHero
+        eyebrow="ADMIN WORKSPACE · DASHBOARD"
+        title="Live Placement Overview"
+        subtitle={`Welcome back, ${firstName}! Here is your live placement overview.`}
+      />
 
       {hasSourceErrors && (
         <div className="dashboard-error" role="alert">

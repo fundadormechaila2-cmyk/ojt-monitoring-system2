@@ -1,7 +1,5 @@
 import {
   Bell,
-  ArrowRight,
-  CalendarDays,
   CalendarClock,
   Clock3,
   FileText,
@@ -12,6 +10,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { PageHero, StatusBadge } from "../../components/WorkspaceUI";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import {
   formatHoursMinutes,
@@ -160,31 +159,17 @@ function StudentsDashboard() {
     <div className="student-portal-page student-dashboard-page">
       {loadError && <p className="student-empty-state" role="alert">{loadError}</p>}
       {loading && <p className="student-meta" role="status">Loading your OJT information...</p>}
-      <header className="student-page-header dashboard-hero">
-        <div>
-          <p className="student-meta">Student portal</p>
-          <h1>Welcome back, {name.split(" ")[0]}!</h1>
-          <p>Track your OJT progress, attendance, and required submissions.</p>
-          <div className="student-header-actions">
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · DASHBOARD"
+        title={`Welcome back, ${name.split(" ")[0]}!`}
+        subtitle="Track your OJT progress, attendance, and required submissions."
+        action={
             <button type="button" className="student-button primary" onClick={handleTimeIn}>
               <Clock3 size={15} />
               Record Attendance
             </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="dashboard-date-button" aria-label="Today's date">
-        <CalendarDays size={18} />
-        <span>
-          {new Date().toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </span>
-        <ArrowRight className="dashboard-date-arrow" size={18} aria-hidden="true" />
-      </div>
+        }
+      />
 
       <section className="student-overview-grid">
         {summaryStats.map((item) => (
@@ -202,7 +187,7 @@ function StudentsDashboard() {
           <div className="student-avatar">{name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
           <div>
             <div className="student-pills" style={{ marginBottom: "8px" }}>
-              <span className="status-badge active">{deploymentStatus}</span>
+              <StatusBadge value={deploymentStatus} />
             </div>
             <h2>{name}</h2>
             <p>{studentProfile.studentId || "Student ID unavailable"} • <DepartmentBadge value={studentProfile.course || studentProfile.program || studentProfile.department || "Program unavailable"} /></p>
@@ -330,11 +315,7 @@ function StudentsDashboard() {
                   <td>{getRecordPeriods(record).amIn || "—"}</td>
                   <td>{getRecordPeriods(record).overtimeOut || getRecordPeriods(record).pmOut || "—"}</td>
                   <td>
-                    <span className={
-                      summarizeAttendance(getRecordPeriods(record)).status === "Present" ? "status-badge active" : "status-badge pending"
-                    }>
-                      {summarizeAttendance(getRecordPeriods(record)).status}
-                    </span>
+                    <StatusBadge value={summarizeAttendance(getRecordPeriods(record)).status} />
                   </td>
                 </tr>
               ))}
@@ -374,7 +355,7 @@ function StudentsDashboard() {
                   <strong>{report.taskPerformed || "Journal report"}</strong>
                   <span>{formatDate(report.date)}</span>
                 </div>
-                <span className="status-badge active">Submitted</span>
+                <StatusBadge value="Submitted" />
               </li>
             ))}
             {!journalsLoading && !journalError && recentReports.length === 0 && (

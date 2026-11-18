@@ -6,6 +6,7 @@ import { sortAttendanceRecords, withAttendanceTimes } from "../../services/atten
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
 import AttendanceRecord from "../../components/AttendanceRecord";
+import { DataCard, PageHero, StatusBadge } from "../../components/WorkspaceUI";
 import { studentNameOf, useCoordinatorData } from "./coordinatorData";
 import { buildAttendanceRows } from "./attendanceRows";
 import "../../styles/attendance-management.css";
@@ -102,6 +103,11 @@ function Attendance() {
     const totalHours = studentRecords.reduce((total, record) => total + record.totalHours, 0);
     return (
       <div className="coordinator-dtr-view">
+        <PageHero
+          eyebrow="COORDINATOR WORKSPACE · ATTENDANCE"
+          title={`${studentNameOf(selectedStudent)} · Attendance`}
+          subtitle="Review this student's attendance history and recorded hours."
+        />
         <button type="button" className="attendance-management-secondary coordinator-dtr-back" onClick={() => setSelectedStudentId("")}>
           Back to attendance
         </button>
@@ -131,13 +137,11 @@ function Attendance() {
 
   return (
     <main className="attendance-management-page">
-      <header className="attendance-management-header">
-        <div>
-          <p className="attendance-management-eyebrow">LCCI · OJT MONITORING SYSTEM</p>
-          <h1>Attendance</h1>
-          <p>Review assigned students' attendance. Supervisors record and manage attendance.</p>
-        </div>
-      </header>
+      <PageHero
+        eyebrow="COORDINATOR WORKSPACE · ATTENDANCE"
+        title="Attendance"
+        subtitle="Review assigned students' attendance. Supervisors record and manage attendance."
+      />
 
       {error && <div className="attendance-management-error" role="alert">{error}</div>}
       {!loading && !error && (
@@ -149,7 +153,7 @@ function Attendance() {
         </section>
       )}
 
-      <section className="attendance-management-panel">
+      <DataCard className="attendance-management-panel">
         <div className="attendance-management-toolbar">
           <label className="attendance-management-search">
             <Search size={17} /><span className="sr-only">Search student attendance</span>
@@ -226,7 +230,7 @@ function Attendance() {
                     <td>{record?.pmIn || "—"}</td><td>{record?.pmOut || "—"}</td>
                     <td>{record?.overtimeIn || "—"}</td><td>{record?.overtimeOut || "—"}</td>
                     <td>{record ? formatHoursMinutes(record.totalHours) : "—"}</td>
-                    <td>{record ? <span className={`attendance-management-status ${record.status.toLowerCase()}`}>{record.status}</span> : "—"}</td>
+                    <td>{record ? <StatusBadge value={record.status} className="attendance-management-status" /> : "—"}</td>
                     <td>{record ? <div className="attendance-management-actions"><button type="button" title="View details" aria-label={`View attendance details for ${name}`} onClick={() => setSelectedId(record.id)}><Eye size={15} /></button></div> : "—"}</td>
                   </tr>
                 ))}
@@ -237,7 +241,7 @@ function Attendance() {
         {!loading && !error && visibleRows.length > 0 && (
           <footer className="attendance-management-footer">Showing {visibleRows.length} attendance {visibleRows.length === 1 ? "row" : "rows"}</footer>
         )}
-      </section>
+      </DataCard>
 
       {selectedRecord && (
         <div className="attendance-management-backdrop" role="presentation" onClick={(event) => {

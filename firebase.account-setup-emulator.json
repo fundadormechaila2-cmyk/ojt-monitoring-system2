@@ -1,0 +1,9 @@
+{
+  "firestore": { "rules": "firestore.rules" },
+  "emulators": {
+    "auth": { "port": 19099 },
+    "firestore": { "port": 18080 },
+    "hub": { "port": 14400 },
+    "ui": { "enabled": false }
+  }
+}

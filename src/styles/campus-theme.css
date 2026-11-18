@@ -902,3 +902,341 @@
     transition: none;
   }
 }
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  box-sizing: border-box;
+  min-height: 180px;
+  margin-bottom: 24px;
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 22px;
+  background: linear-gradient(110deg, #164982 0%, #2168ad 58%, #3983c4 100%);
+  box-shadow: 0 14px 30px rgba(24, 76, 134, 0.2);
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+)::before {
+  position: absolute;
+  z-index: 0;
+  top: -150px;
+  right: 7%;
+  width: 340px;
+  height: 340px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 22px rgba(255, 255, 255, 0.04),
+    0 0 0 48px rgba(255, 255, 255, 0.035);
+  content: "";
+  pointer-events: none;
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+)::after {
+  position: absolute;
+  z-index: 0;
+  right: 17%;
+  bottom: -180px;
+  left: 31%;
+  height: 280px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
+  content: "";
+  pointer-events: none;
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) > * {
+  position: relative;
+  z-index: 1;
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) > div:first-child {
+  max-width: 68%;
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) :is(h1, .dashboard-eyebrow, .supervisor-eyebrow, .student-meta) {
+  color: #fff;
+}
+
+:is(
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) > div:first-child > p:first-child {
+  margin: 0 0 8px;
+  color: #d7eaff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) h1 {
+  margin: 0 0 8px;
+  color: #fff;
+  font-size: clamp(28px, 3vw, 38px);
+  letter-spacing: -0.04em;
+}
+
+:is(
+  .dashboard-intro,
+  .coordinator-dashboard-header,
+  .supervisor-header,
+  .student-page-header,
+  .attendance-management-header,
+  .coordinators-header,
+  .settings-header,
+  .users-management-header,
+  .students-header,
+  .coordinator-data-header
+) > div:first-child > :is(p:last-child, span) {
+  color: rgba(240, 247, 255, 0.88);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.settings-header .settings-save-state {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+}
+
+.settings-header .settings-online-dot {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.admin-placeholder {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  box-sizing: border-box;
+  min-height: 180px;
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 22px;
+  background: linear-gradient(110deg, #164982 0%, #2168ad 58%, #3983c4 100%);
+  box-shadow: 0 14px 30px rgba(24, 76, 134, 0.2);
+  color: #fff;
+}
+
+.admin-placeholder::before,
+.admin-placeholder::after {
+  position: absolute;
+  z-index: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.admin-placeholder::before {
+  top: -150px;
+  right: 7%;
+  width: 340px;
+  height: 340px;
+  box-shadow:
+    0 0 0 22px rgba(255, 255, 255, 0.04),
+    0 0 0 48px rgba(255, 255, 255, 0.035);
+}
+
+.admin-placeholder::after {
+  right: 17%;
+  bottom: -180px;
+  left: 31%;
+  height: 280px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
+}
+
+.admin-placeholder > * {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-placeholder .dashboard-eyebrow {
+  color: #d7eaff;
+}
+
+.admin-placeholder h1,
+.admin-placeholder > p:last-child {
+  color: #fff;
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero {
+  min-height: 180px;
+  margin-bottom: 24px;
+  padding: clamp(24px, 3vw, 36px);
+  border-color: rgba(255, 255, 255, 0.2);
+  border-radius: 22px;
+  background: linear-gradient(110deg, #164982 0%, #2168ad 58%, #3983c4 100%);
+  box-shadow: 0 14px 30px rgba(24, 76, 134, 0.2);
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero::before {
+  z-index: 0;
+  top: -150px;
+  right: 7%;
+  width: 340px;
+  height: 340px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: none;
+  background-image: none;
+  box-shadow:
+    0 0 0 22px rgba(255, 255, 255, 0.04),
+    0 0 0 48px rgba(255, 255, 255, 0.035);
+  clip-path: none;
+  opacity: 1;
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero::after {
+  z-index: 0;
+  right: 17%;
+  bottom: -180px;
+  left: 31%;
+  width: auto;
+  height: 280px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero > * {
+  z-index: 1;
+}
+
+:is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero h1 {
+  color: #fff;
+}
+
+.dashboard-hero .dashboard-eyebrow,
+.dashboard-hero .supervisor-eyebrow,
+.dashboard-hero .student-meta {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.13);
+  color: #e3f1ff;
+}
+
+.dashboard-hero .dashboard-subtitle,
+.dashboard-hero > div:first-child > p:last-child {
+  color: rgba(240, 247, 255, 0.88);
+}
+
+@media (max-width: 760px) {
+  :is(
+    .dashboard-intro,
+    .coordinator-dashboard-header,
+    .supervisor-header,
+    .student-page-header,
+    .attendance-management-header,
+    .coordinators-header,
+    .settings-header,
+    .users-management-header,
+    .students-header,
+    .coordinator-data-header
+  ) {
+    min-height: 0;
+    padding: 24px;
+    border-radius: 18px;
+  }
+
+  :is(
+    .dashboard-intro,
+    .coordinator-dashboard-header,
+    .supervisor-header,
+    .student-page-header,
+    .attendance-management-header,
+    .coordinators-header,
+    .settings-header,
+    .users-management-header,
+    .students-header,
+    .coordinator-data-header
+  ) > div:first-child {
+    max-width: 100%;
+  }
+
+  :is(.admin-dashboard, .coordinator-dashboard, .supervisor-dashboard-page, .student-dashboard-page) .dashboard-hero {
+    min-height: 0;
+  }
+}

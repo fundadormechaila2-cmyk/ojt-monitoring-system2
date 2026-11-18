@@ -13,6 +13,7 @@ import {
 import { auth, db } from "../../services/firebase";
 import { roleAccountRef } from "../../services/accountCollections";
 import { useAuth } from "../../context/useAuth";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import "../../styles/settings.css";
 
 const defaultProfile = {
@@ -161,14 +162,26 @@ function Settings() {
     { id: "account", label: "Account settings", icon: KeyRound },
   ];
 
-  if (loading) return <main className="settings-page"><div className="settings-empty-state">Loading settings...</div></main>;
+  const pageEyebrow = `${role.toUpperCase()} WORKSPACE · SETTINGS`;
+  const pageSubtitle = "Manage your account, preferences, and system settings.";
+
+  if (loading) {
+    return (
+      <main className="settings-page">
+        <PageHero eyebrow={pageEyebrow} title="Settings" subtitle={pageSubtitle} />
+        <div className="settings-empty-state">Loading settings...</div>
+      </main>
+    );
+  }
 
   return (
     <main className="settings-page">
-      <header className="settings-header">
-        <div><p className="settings-eyebrow">LCCI · OJT MONITORING SYSTEM</p><h1>Settings</h1><p>Manage your account, preferences, and system settings.</p></div>
-        <div className="settings-save-state"><span className="settings-online-dot" /> Settings are synced to your account</div>
-      </header>
+      <PageHero
+        eyebrow={pageEyebrow}
+        title="Settings"
+        subtitle={pageSubtitle}
+        action={<div className="settings-save-state"><span className="settings-online-dot" /> Settings are synced to your account</div>}
+      />
       {notice && <div className="settings-alert success" role="status"><Check size={15} /> {notice}</div>}
       {error && <div className="settings-alert error" role="alert">{error}</div>}
       <div className="settings-layout">
@@ -177,10 +190,10 @@ function Settings() {
           {navItems.map(({ id, label, icon: Icon }) => <button type="button" key={id} className={activeSection === id ? "active" : ""} onClick={() => setActiveSection(id)}><Icon size={17} /><span>{label}</span>{activeSection === id && <ChevronRight size={15} />}</button>)}
         </aside>
         <div className="settings-content">
-          {activeSection === "profile" && <section className="settings-card"><SettingsHeading icon={UserRound} eyebrow="Personal details" title="Profile" description="Update the information associated with your OJT Monitoring System account." /><form onSubmit={saveChanges}><div className="profile-identity"><div className="profile-avatar">{initials}</div><div><h3>{fullName}</h3><p>{roleLabel}</p></div></div><div className="settings-form-grid"><TextField label="First Name" value={profile.firstName} onChange={(value) => updateField("firstName", value)} /><TextField label="Last Name" value={profile.lastName} onChange={(value) => updateField("lastName", value)} /><ReadOnlyField label="Email" value={email || "—"} /><TextField label="Contact Number" value={profile.contactNumber} onChange={(value) => updateField("contactNumber", value)} /></div><SettingsActions saving={saving} onReset={resetDefaults} /></form></section>}
+          {activeSection === "profile" && <DataCard className="settings-card"><SettingsHeading icon={UserRound} eyebrow="Personal details" title="Profile" description="Update the information associated with your OJT Monitoring System account." /><form onSubmit={saveChanges}><div className="profile-identity"><div className="profile-avatar">{initials}</div><div><h3>{fullName}</h3><p>{roleLabel}</p></div></div><div className="settings-form-grid"><TextField label="First Name" value={profile.firstName} onChange={(value) => updateField("firstName", value)} /><TextField label="Last Name" value={profile.lastName} onChange={(value) => updateField("lastName", value)} /><ReadOnlyField label="Email" value={email || "—"} /><TextField label="Contact Number" value={profile.contactNumber} onChange={(value) => updateField("contactNumber", value)} /></div><SettingsActions saving={saving} onReset={resetDefaults} /></form></DataCard>}
 
           {activeSection === "account" && (
-            <section className="settings-card">
+            <DataCard className="settings-card">
               <SettingsHeading
                 icon={ShieldCheck}
                 eyebrow="Account access and protection"
@@ -255,7 +268,7 @@ function Settings() {
                   Logout
                 </button>
               </div>
-            </section>
+            </DataCard>
           )}
         </div>
       </div>

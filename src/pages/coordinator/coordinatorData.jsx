@@ -2,6 +2,7 @@
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/useAuth";
+import { PageHero } from "../../components/WorkspaceUI";
 import { auth, db } from "../../services/firebase";
 import { recordDepartmentId } from "../../constants/departments";
 import { subscribeToCoordinatorAttendance } from "../../services/coordinatorAttendanceService";
@@ -163,11 +164,22 @@ export function normalizedStudents(students, attendance) {
     };
   });
 }
-export function CoordinatorState({ loading, error, children }) {
+export function CoordinatorState({
+  loading,
+  error,
+  children,
+  pageTitle = "Coordinator Workspace",
+  pageSubtitle = "Review your assigned OJT records.",
+}) {
   if (loading)
     return (
       <main className="coordinator-module-state">
-        Loading coordinator data...
+        <PageHero
+          eyebrow={`COORDINATOR WORKSPACE · ${pageTitle}`}
+          title={pageTitle}
+          subtitle={pageSubtitle}
+        />
+        <p>Loading coordinator data...</p>
       </main>
     );
   if (error)
@@ -176,6 +188,11 @@ export function CoordinatorState({ loading, error, children }) {
         className="coordinator-module-state coordinator-module-error"
         role="alert"
       >
+        <PageHero
+          eyebrow={`COORDINATOR WORKSPACE · ${pageTitle}`}
+          title={pageTitle}
+          subtitle={pageSubtitle}
+        />
         {error}
       </main>
     );

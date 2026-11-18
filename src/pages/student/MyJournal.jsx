@@ -13,6 +13,7 @@ import {
 import { PencilLine, Plus, Search, Trash2, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import "../../styles/student-portal.css";
 
 const journalCollection = "journals";
@@ -283,12 +284,11 @@ function StudentReports() {
 
   return (
     <div className="student-portal-page">
-      <header className="student-page-header">
-        <div>
-          <p className="student-meta">Reporting</p>
-          <h1>My Journal</h1>
-        </div>
-        <div className="student-header-actions">
+      <PageHero
+        eyebrow="STUDENT WORKSPACE · MY JOURNAL"
+        title="My Journal"
+        subtitle="Create and review your weekly OJT activity reports."
+        action={
           <button
             type="button"
             className="student-button primary"
@@ -300,10 +300,10 @@ function StudentReports() {
           >
             <Plus size={15} /> Add New
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      <section className="student-card student-panel">
+      <DataCard className="student-card student-panel">
         <div className="student-panel-header journal-panel-header">
           <div>
             <p className="student-panel-subtitle">Weekly tracking</p>
@@ -494,7 +494,7 @@ function StudentReports() {
             </tbody>
           </table>
         </div>
-      </section>
+      </DataCard>
 
       {isAddModalOpen && (
         <div

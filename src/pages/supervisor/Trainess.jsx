@@ -12,6 +12,7 @@ import { formatHoursMinutes } from "../../services/manualAttendanceService";
 import { withoutArchived } from "../../services/recordState";
 import { getStudentDeploymentStatus } from "../../services/studentDeploymentStatus";
 import { PageHeader, SearchBox, Status } from "./SupervisorComponents";
+import { DataCard } from "../../components/WorkspaceUI";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/supervisor-trainees.css";
 
@@ -118,10 +119,11 @@ function Trainess() {
   return (
     <div className="supervisor-page">
       <PageHeader
+        eyebrow="SUPERVISOR WORKSPACE · INTERNS"
         title="Student Interns"
         description="Monitor the trainees assigned to your supervision."
       />
-      <section className="supervisor-panel supervisor-table-panel">
+      <DataCard className="supervisor-panel supervisor-table-panel">
         <div className="supervisor-toolbar">
           <SearchBox
             value={query}
@@ -229,7 +231,7 @@ function Trainess() {
             </p>
           )}
         </div>
-      </section>
+      </DataCard>
 
       {selectedStudent && (
         <div

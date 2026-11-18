@@ -13,7 +13,7 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { db } from "../../services/firebase";
 import { withoutArchived } from "../../services/recordState";
-import { PageHeader } from "../supervisor/SupervisorComponents";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import { recordDepartmentId } from "../../constants/departments";
 import "../../styles/coordinator-journals.css";
@@ -259,17 +259,17 @@ function StudentJournals() {
 
   return (
     <main className="supervisor-page space-y-6 coordinator-journals-page">
-      <PageHeader
-        eyebrow="Coordinator workspace · Student journals"
+      <PageHero
+        eyebrow="COORDINATOR WORKSPACE · STUDENT JOURNALS"
         title={selectedStudent ? `${studentName(selectedStudent)} · Journals` : "Student Journals"}
-        description={
+        subtitle={
           selectedStudent
             ? "Review this student's submitted journal entries."
             : "Find a student assigned to you and review their submitted journals."
         }
       />
 
-      <section className="supervisor-panel supervisor-table-panel">
+      <DataCard className="supervisor-panel supervisor-table-panel">
         {selectedStudent ? (
           <>
             <div className="coordinator-journals-detail-toolbar">
@@ -418,7 +418,7 @@ function StudentJournals() {
             )}
           </>
         )}
-      </section>
+      </DataCard>
     </main>
   );
 }

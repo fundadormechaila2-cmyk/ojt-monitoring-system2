@@ -18,6 +18,7 @@ import {
   summarizeAttendance,
 } from "../../services/manualAttendanceService";
 import { PageHeader } from "./SupervisorComponents";
+import { DataCard } from "../../components/WorkspaceUI";
 import DepartmentBadge from "../../components/DepartmentBadge";
 import "../../styles/tailwind.css";
 import "../../styles/supervisor-dtr.css";
@@ -330,7 +331,7 @@ function Attendance() {
   return (
     <div className="supervisor-page space-y-5 supervisor-attendance-page">
       <PageHeader
-        eyebrow="Supervisor workspace · Attendance"
+        eyebrow="SUPERVISOR WORKSPACE · ATTENDANCE"
         title="Daily Time Records of Students"
         description="Review daily attendance and open a student's name to view their complete DTR."
       />
@@ -368,7 +369,7 @@ function Attendance() {
         </article>
       </section>
 
-      <section className="supervisor-panel supervisor-table-panel">
+      <DataCard className="supervisor-panel supervisor-table-panel">
         <div className="supervisor-toolbar flex-wrap">
           <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-slate-400">
             <Search size={16} />
@@ -496,7 +497,7 @@ function Attendance() {
             Total: <strong>{formatHoursMinutes(visibleHours)}</strong>
           </span>
         </footer>
-      </section>
+      </DataCard>
 
       {selectedDtr && (
         <div

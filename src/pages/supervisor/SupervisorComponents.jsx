@@ -1,21 +1,21 @@
-import { CalendarDays, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import { DataCard, PageHero, StatusBadge } from "../../components/WorkspaceUI";
 import "../../styles/supervisor.css";
 
-export function PageHeader({ eyebrow = "Supervisor workspace", title, description, action, className = "" }) {
+export function PageHeader({ eyebrow, title, description, action, className = "" }) {
   return (
-    <header className={`supervisor-header ${className}`.trim()}>
-      <div>
-        <p className="supervisor-eyebrow">{eyebrow}</p>
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </div>
-      {action || <span className="supervisor-date"><CalendarDays size={16} />{new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>}
-    </header>
+    <PageHero
+      eyebrow={eyebrow || `SUPERVISOR WORKSPACE · ${title}`}
+      title={title}
+      subtitle={description}
+      action={action}
+      className={className}
+    />
   );
 }
 
 export function StatCard({ icon: Icon, label, value, detail, tone = "" }) {
-  return <article className="supervisor-card"><div className={`supervisor-card-icon ${tone}`}><Icon size={19} /></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></article>;
+  return <DataCard as="article" className="supervisor-card"><div className={`supervisor-card-icon ${tone}`}><Icon size={19} /></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></DataCard>;
 }
 
 export function SearchBox({ value, onChange, placeholder = "Search records..." }) {
@@ -23,11 +23,5 @@ export function SearchBox({ value, onChange, placeholder = "Search records..." }
 }
 
 export function Status({ value }) {
-  const normalized = value.toLowerCase();
-  const tone = normalized.includes("pending") || normalized.includes("late")
-    ? "pending"
-    : normalized.includes("not deployed") || normalized.includes("absent") || normalized.includes("attention")
-      ? "warning"
-      : "";
-  return <span className={`supervisor-status ${tone}`}>{value}</span>;
+  return <StatusBadge value={value} className="supervisor-status" />;
 }

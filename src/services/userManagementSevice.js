@@ -19,7 +19,7 @@ import { httpsCallable } from "firebase/functions";
 import { auth, db, functions, firebaseConfig } from "./firebase";
 import { syncStudentAccount } from "./studentAccountService";
 import { roleAccountRef, toRoleProfile } from "./accountCollections";
-import { departmentFields, studentDepartmentFields } from "../constants/departments";
+import { departmentFields, recordDepartmentId, studentDepartmentFields } from "../constants/departments";
 import { accountFunctionError } from "./accountFunctionError";
 import { isAccountLive } from "./recordState";
 
@@ -30,14 +30,6 @@ async function callAccountFunction(name, data) {
   } catch (error) {
     throw accountFunctionError(error);
   }
-}
-
-export function createSupervisorAccount(data) {
-  return callAccountFunction("createSupervisorAccount", data);
-}
-
-export function resendSupervisorAccountNotification(uid) {
-  return callAccountFunction("resendSupervisorAccountNotification", { uid });
 }
 
 // GENERATE TEMPORARY PASSWORD
@@ -77,6 +69,7 @@ async function writeSetupStatus(uid, role, studentRecordId, status) {
   const batch = writeBatch(db);
   batch.update(doc(db, "users", uid), changes);
   batch.set(roleAccountRef(role, uid), changes, { merge: true });
+  if (role === "supervisor") batch.update(doc(db, "supervisors", uid), changes);
   if (studentRecordId) batch.update(doc(db, "students", studentRecordId), changes);
   await batch.commit();
 }
@@ -100,6 +93,149 @@ async function sendSetupNotification(uid, role, studentRecordId, email) {
     return "StatusUnknown";
   }
   return "Sent";
+}
+
+async function requireCoordinatorSession() {
+  const coordinator = auth.currentUser;
+  if (!coordinator) throw new Error("Sign in as a coordinator to manage supervisors.");
+  const snapshot = await getDoc(doc(db, "users", coordinator.uid));
+  const profile = snapshot.exists() ? snapshot.data() : null;
+  if (!isAccountLive(profile) || profile.role !== "coordinator" ||
+      profile.mustChangePassword || !profile.department || !recordDepartmentId(profile)) {
+    throw new Error("An active coordinator account with a department is required.");
+  }
+  return { uid: coordinator.uid, profile };
+}
+
+export async function createSupervisorAccount(data) {
+  const coordinator = await requireCoordinatorSession();
+  const firstName = String(data.firstName || "").trim();
+  const lastName = String(data.lastName || "").trim();
+  const email = String(data.email || "").trim().toLowerCase();
+  const company = String(data.company || "").trim();
+  const schoolYear = String(data.schoolYear || "").trim();
+  const partnerCompanyId = String(data.partnerCompanyId || "").trim();
+  const ids = Array.isArray(data.assignedStudentRecordIds)
+    ? [...new Set(data.assignedStudentRecordIds)] : [];
+  if (!firstName || !lastName || firstName.length > 120 || lastName.length > 120 ||
+      !/^[^\s@]+@gmail\.com$/.test(email) || email.length > 254 || !company ||
+      !schoolYear || !ids.length || ids.length > 165 ||
+      ids.some((id) => typeof id !== "string" || !id || id.includes("/")) ||
+      partnerCompanyId.includes("/")) {
+    throw new Error("Enter a valid name, Gmail address, company, school year, and assigned students.");
+  }
+
+  let firebaseUser;
+  let profileSaved = false;
+  try {
+    const credential = await createUserWithEmailAndPassword(
+      secondaryAuth, email, `Aa1!${generateTemporaryPassword(32)}`,
+    );
+    firebaseUser = credential.user;
+    await updateProfile(firebaseUser, { displayName: `${firstName} ${lastName}` });
+    const supervisorName = `${firstName} ${lastName}`;
+    const profile = {
+      uid: firebaseUser.uid, email, firstName, lastName, role: "supervisor",
+      phone: String(data.phone || "").trim(), position: String(data.position || "").trim(),
+      department: coordinator.profile.department, departmentId: recordDepartmentId(coordinator.profile),
+      coordinatorUid: coordinator.uid, createdBy: coordinator.uid,
+      company, partnerCompanyId: partnerCompanyId || null, schoolYear,
+      assignedStudentRecordId: ids[0],
+      status: "ACTIVE", isActive: true, isArchived: false,
+      mustChangePassword: false, accountNotificationStatus: "Pending",
+      accountNotificationUpdatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    };
+    await runTransaction(db, async (transaction) => {
+      const currentCoordinator = await transaction.get(doc(db, "users", coordinator.uid));
+      const actor = currentCoordinator.exists() ? currentCoordinator.data() : null;
+      if (!isAccountLive(actor) || actor.role !== "coordinator" || actor.mustChangePassword ||
+          actor.department !== profile.department || recordDepartmentId(actor) !== profile.departmentId) {
+        throw new Error("Your coordinator account or department changed. Please retry.");
+      }
+      if (partnerCompanyId) {
+        const partner = await transaction.get(doc(db, "partnerCompanies", partnerCompanyId));
+        if (!partner.exists()) throw new Error("The selected partner company no longer exists.");
+        const item = partner.data();
+        const name = item.companyName || item.name || item.businessName || item.company || item.email || partnerCompanyId;
+        if (String(name).trim().toLowerCase() !== company.toLowerCase()) {
+          throw new Error("The selected partner company has changed. Please select it again.");
+        }
+      }
+      const refs = ids.map((id) => doc(db, "students", id));
+      const snapshots = await Promise.all(refs.map((ref) => transaction.get(ref)));
+      const linked = [];
+      for (const snapshot of snapshots) {
+        const student = snapshot.exists() ? snapshot.data() : null;
+        if (!student || student.coordinatorUid !== coordinator.uid ||
+            recordDepartmentId(student) !== profile.departmentId || student.supervisorUid ||
+            student.isArchived === true || (student.schoolYear && student.schoolYear !== schoolYear)) {
+          throw new Error("A selected student is unavailable, already assigned, or outside your department or school year.");
+        }
+        if (student.studentUid) {
+          const userRef = doc(db, "users", student.studentUid);
+          const roleRef = doc(db, "studentsAccount", student.studentUid);
+          const [userSnapshot, roleSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(roleRef)]);
+          if (!userSnapshot.exists() || userSnapshot.data().role !== "student" ||
+              userSnapshot.data().coordinatorUid !== coordinator.uid ||
+              userSnapshot.data().studentRecordId !== snapshot.id) {
+            throw new Error("A selected student has an inconsistent account link. Ask an administrator to review it.");
+          }
+          linked.push({ userRef, roleRef, hasRole: roleSnapshot.exists() });
+        }
+      }
+      for (const collectionName of ["users", "supervisorsAccount", "supervisors"]) {
+        transaction.set(doc(db, collectionName, firebaseUser.uid), profile);
+      }
+      const assignment = {
+        supervisorUid: firebaseUser.uid, supervisorName, supervisorSchoolYear: schoolYear,
+        updatedAt: serverTimestamp(),
+      };
+      refs.forEach((ref) => transaction.update(ref, { ...assignment, partnerCompanyId: partnerCompanyId || null, company }));
+      linked.forEach(({ userRef, roleRef, hasRole }) => {
+        transaction.update(userRef, assignment);
+        if (hasRole) transaction.update(roleRef, assignment);
+      });
+    });
+    profileSaved = true;
+    const emailStatus = await sendSetupNotification(firebaseUser.uid, "supervisor", null, email);
+    return { uid: firebaseUser.uid, email, emailStatus };
+  } catch (error) {
+    if (firebaseUser && !profileSaved) {
+      try {
+        await deleteUser(firebaseUser);
+      } catch (cleanupError) {
+        console.error("Unable to remove the unlinked supervisor account:", cleanupError);
+        throw new Error("Account creation failed and the unlinked login could not be removed. Contact an administrator.", { cause: cleanupError });
+      }
+    }
+    if (error.code === "auth/email-already-in-use") {
+      throw new Error("This email address is already registered.", { cause: error });
+    }
+    throw error;
+  } finally {
+    try {
+      await signOut(secondaryAuth);
+    } catch (error) {
+      console.error("Unable to sign out the secondary account session:", error);
+    }
+  }
+}
+
+export async function resendSupervisorAccountNotification(uid) {
+  const coordinator = await requireCoordinatorSession();
+  if (!uid || uid.includes("/")) throw new Error("Select a supervisor account.");
+  const snapshot = await getDoc(doc(db, "users", uid));
+  const profile = snapshot.exists() ? snapshot.data() : null;
+  if (!isAccountLive(profile) || profile.role !== "supervisor" ||
+      profile.createdBy !== coordinator.uid || !profile.email) {
+    throw new Error("This supervisor account is unavailable for email retry.");
+  }
+  if (profile.mustChangePassword) {
+    throw new Error("This account uses the earlier temporary-password flow. Contact an administrator.");
+  }
+  await writeSetupStatus(uid, "supervisor", null, "Pending");
+  return { uid, email: profile.email, emailStatus: await sendSetupNotification(uid, "supervisor", null, profile.email) };
 }
 
 async function createSetupAccount(data, role) {

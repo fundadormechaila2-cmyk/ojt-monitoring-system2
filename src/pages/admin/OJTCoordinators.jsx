@@ -24,6 +24,7 @@ import {
   departmentLabel,
   recordDepartmentId,
 } from "../../constants/departments";
+import { DataCard, PageHero } from "../../components/WorkspaceUI";
 import { db } from "../../services/firebase";
 import { syncRoleAccount } from "../../services/accountCollections";
 import {
@@ -243,33 +244,36 @@ function OJTCoordinators() {
   if (loading) {
     return (
       <main className="coordinators-page coordinators-state">
-        Loading coordinator accounts...
+        <PageHero
+          eyebrow="ADMIN WORKSPACE · OJT COORDINATORS"
+          title="OJT Coordinators"
+          subtitle="Create and manage coordinator profiles and login access."
+        />
+        <p>Loading coordinator accounts...</p>
       </main>
     );
   }
 
   return (
     <main className="coordinators-page">
-      <header className="coordinators-header">
-        <div>
-          <p className="coordinators-eyebrow">OJT management</p>
-          <h1>OJT Coordinators</h1>
-          <p className="coordinators-subtitle">
-            Create and manage coordinator profiles and login access.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="coordinators-primary"
-          onClick={() => {
-            setForm(emptyForm);
-            setError("");
-            setAddingCoordinator(true);
-          }}
-        >
-          <Plus size={17} /> Add Coordinator
-        </button>
-      </header>
+      <PageHero
+        eyebrow="ADMIN WORKSPACE · OJT COORDINATORS"
+        title="OJT Coordinators"
+        subtitle="Create and manage coordinator profiles and login access."
+        action={
+          <button
+            type="button"
+            className="coordinators-primary"
+            onClick={() => {
+              setForm(emptyForm);
+              setError("");
+              setAddingCoordinator(true);
+            }}
+          >
+            <Plus size={17} /> Add Coordinator
+          </button>
+        }
+      />
 
       {(loadError || error) && (
         <div className="coordinators-alert" role="alert">
@@ -299,7 +303,7 @@ function OJTCoordinators() {
         </article>
       </section>
 
-      <section className="coordinators-panel">
+      <DataCard className="coordinators-panel">
         <div className="coordinators-toolbar">
           <label className="coordinators-search">
             <Search size={16} />
@@ -421,7 +425,7 @@ function OJTCoordinators() {
         <footer className="coordinators-footer">
           Showing {filteredCoordinators.length} of {coordinators.length} coordinators
         </footer>
-      </section>
+      </DataCard>
 
       {(addingCoordinator || editingCoordinator) && (
         <div
