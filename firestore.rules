@@ -155,6 +155,19 @@ service cloud.firestore {
         request.resource.data.contactNumber is string &&
         request.resource.data.updatedAt == request.time
       );
+
+      match /termsAcceptances/{acceptanceId} {
+        allow read: if ownsAccount(userId);
+
+        allow create: if ownsAccount(userId) &&
+          request.resource.data.keys().hasOnly(["version", "accepted", "acceptedAt"]) &&
+          request.resource.data.keys().hasAll(["version", "accepted", "acceptedAt"]) &&
+          request.resource.data.version == "lcc-ojt-2026-11-18-v1" &&
+          request.resource.data.accepted == true &&
+          request.resource.data.acceptedAt == request.time;
+
+        allow update, delete: if false;
+      }
     }
 
     match /coordinatorsAccount/{uid} {

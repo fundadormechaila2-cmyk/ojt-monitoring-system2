@@ -14,12 +14,18 @@ import {
   X,
 } from "lucide-react";
 import { login, logout, sendPasswordReset } from "../services/authService";
+import {
+  hasAcceptedTerms,
+  recordTermsAcceptance,
+  TERMS_VERSION,
+} from "../services/termsAcceptanceService";
 import { useAuth } from "../context/useAuth";
 import { getUserData } from "../services/userService";
 import { isAccountLive } from "../services/recordState";
 import { completePasswordChange } from "../services/userManagementSevice";
 import { auth } from "../services/firebase";
 import { logLoginDiagnostic } from "../services/temporaryLoginDiagnostics";
+import TermsModal from "../components/TermsModal";
 import schoolLogo from "../assets/school-logo.png";
 
 const ROLE_HOME = {
@@ -216,7 +222,7 @@ function ChangePasswordModal({ initialCurrent, onDone, onCancel }) {
 }
 
 function Login() {
-  const { user } = useAuth();
+  const { user, termsAccepted, termsStatusReady, markTermsAccepted, authError } = useAuth();
   const navigate = useNavigate();
   const emailInputRef = useRef(null);
   const [email, setEmail] = useState("");
@@ -231,19 +237,95 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [pendingRole, setPendingRole] = useState(null);
   const [tempPassword, setTempPassword] = useState("");
+  const [pendingTerms, setPendingTerms] = useState(null);
+  const [termsChecked, setTermsChecked] = useState(false);
+  const [termsError, setTermsError] = useState("");
 
   useEffect(() => {
     sessionStorage.removeItem("account-session-message");
   }, []);
 
-  // Also covers resuming an unfinished forced reset after a page refresh.
   const needsReset = Boolean(user?.mustChangePassword) || pendingRole !== null;
-
+  const activePendingTerms = pendingTerms || (
+    user && termsStatusReady && !termsAccepted
+      ? {
+          uid: user.uid,
+          role: user.role,
+          mustChangePassword: Boolean(user.mustChangePassword),
+          password: "",
+        }
+      : null
+  );
   useEffect(() => {
-    if (!user || needsReset || loading) return;
+    if (!user || !termsStatusReady || !termsAccepted || loading || pendingTerms) return;
+    if (needsReset) return;
     const home = ROLE_HOME[user.role];
     if (home) navigate(home, { replace: true });
-  }, [user, needsReset, loading, navigate]);
+  }, [
+    user,
+    termsAccepted,
+    termsStatusReady,
+    needsReset,
+    loading,
+    pendingTerms,
+    navigate,
+  ]);
+
+  const finishSignIn = ({ uid, role, mustChangePassword, password: signedInPassword }) => {
+    markTermsAccepted(uid);
+    setPendingTerms(null);
+    setTermsChecked(false);
+    setTermsError("");
+
+    if (mustChangePassword) {
+      setTempPassword(signedInPassword);
+      setPendingRole(role);
+      return;
+    }
+
+    navigate(ROLE_HOME[role], { replace: true });
+  };
+
+  const handleTermsAccept = async (e) => {
+    e.preventDefault();
+    setTermsError("");
+    if (!activePendingTerms || !termsChecked || loading) return;
+
+    if (auth.currentUser?.uid !== activePendingTerms.uid) {
+      setTermsError("Your sign-in session changed. Please sign out and sign in again.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const alreadyAccepted = await hasAcceptedTerms(activePendingTerms.uid, TERMS_VERSION);
+      if (!alreadyAccepted) {
+        await recordTermsAcceptance(activePendingTerms.uid, TERMS_VERSION);
+      }
+      finishSignIn(activePendingTerms);
+    } catch (err) {
+      console.error("Unable to save Terms and Conditions acceptance:", err);
+      setTermsError("We couldn't save your agreement. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTermsSignOut = async () => {
+    setLoading(true);
+    setTermsError("");
+    try {
+      await logout();
+      setPendingTerms(null);
+      setTermsChecked(false);
+      setPassword("");
+    } catch (err) {
+      console.error("Unable to sign out:", err);
+      setTermsError("We couldn't sign you out. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -266,21 +348,41 @@ function Login() {
 
       if (!userData || !Object.hasOwn(ROLE_HOME, userData.role) || !isAccountLive(userData)) {
         await logout();
+        setTermsChecked(false);
         setError("Your account profile is missing, inactive, or has an invalid role. Contact an administrator.");
         return;
       }
 
-      if (userData.mustChangePassword) {
-        setTempPassword(password);
-        setPendingRole(userData.role);
+      const alreadyAccepted = await hasAcceptedTerms(credential.user.uid, TERMS_VERSION);
+      if (!alreadyAccepted) {
+        setPendingTerms({
+          uid: credential.user.uid,
+          role: userData.role,
+          mustChangePassword: Boolean(userData.mustChangePassword),
+          password,
+        });
+        setTermsChecked(false);
         return;
       }
 
-      navigate(ROLE_HOME[userData.role], { replace: true });
+      finishSignIn({
+        uid: credential.user.uid,
+        role: userData.role,
+        mustChangePassword: Boolean(userData.mustChangePassword),
+        password,
+      });
     } catch (err) {
       logLoginDiagnostic({ stage: "login-error", source: "Login.handleLogin", requestedUid, error: err });
+      setTermsChecked(false);
+      if (requestedUid && auth.currentUser?.uid === requestedUid) {
+        try {
+          await logout();
+        } catch (signOutError) {
+          console.error("Unable to sign out after a login error:", signOutError);
+        }
+      }
       const invalid = ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"];
-      setError(invalid.includes(err.code) ? "Incorrect email or password." : err.message);
+      setError(invalid.includes(err.code) ? "Incorrect email or password." : "Unable to complete sign-in. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -441,10 +543,10 @@ function Login() {
             </div>
           )}
 
-          {error && (
+          {(error || authError) && (
             <div className="alert alert-error" role="alert">
               <AlertCircle size={16} aria-hidden="true" />
-              <span>{error}</span>
+              <span>{error || authError}</span>
             </div>
           )}
 
@@ -452,16 +554,30 @@ function Login() {
             {loading ? <Loader2 className="spin" size={16} /> : null}
             {loading ? "Signing in..." : "Sign in"}
           </button>
+          <p className="login-terms">By signing in, you agree to the Terms and Conditions.</p>
         </form>
 
         <p className="login-footer">Having trouble? Contact your OJT coordinator or administrator.</p>
       </main>
 
-      {needsReset && (
+      {needsReset && termsAccepted && !activePendingTerms && (
         <ChangePasswordModal
           initialCurrent={tempPassword}
           onDone={handlePasswordChanged}
           onCancel={handleCancelReset}
+        />
+      )}
+      {activePendingTerms && (
+        <TermsModal
+          checked={termsChecked}
+          onCheckedChange={(event) => {
+            setTermsChecked(event.target.checked);
+            setTermsError("");
+          }}
+          onAccept={handleTermsAccept}
+          onSignOut={handleTermsSignOut}
+          loading={loading}
+          error={termsError}
         />
       )}
     </div>

@@ -109,6 +109,17 @@ Run the attendance access checks with:
 firebase emulators:exec --project demo-settings --only firestore "node --test tests\attendance-rules.test.js"
 ```
 
+The login flow requires Terms acceptance once per version and stores an
+immutable, user-owned record under `users/{uid}/termsAcceptances`. Increment
+`TERMS_VERSION` in `src/services/termsAcceptanceService.js` and update its
+matching version in `firestore.rules` whenever the Terms change; deploy the
+hosting app and Firestore rules together so users are asked to accept the new
+version. Test the related Firestore rules with:
+
+```powershell
+firebase emulators:exec --project demo-settings --only firestore "node --test tests\terms-acceptance-rules.test.js"
+```
+
 The frontend calls `manageAccountApi` with the current Firebase ID token in a
 Bearer authorization header. The endpoint verifies that token with Firebase
 Admin before invoking the account-management logic. The callable

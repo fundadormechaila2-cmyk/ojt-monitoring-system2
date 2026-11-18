@@ -3,9 +3,13 @@ import { useAuth } from "../context/useAuth";
 
 function RoleRoute({ allowedRole, children }) {
 
-    const { user } = useAuth();
+    const { user, termsAccepted, termsStatusReady } = useAuth();
 
     if (!user) {
+        return <Navigate to="/" replace />;
+    }
+
+    if (!termsStatusReady || !termsAccepted) {
         return <Navigate to="/" replace />;
     }
 
