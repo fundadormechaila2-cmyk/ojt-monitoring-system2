@@ -36,7 +36,7 @@ test("Terms dialog requires agreement and shows all supplied sections", () => {
   assert.match(unchecked, /Last Updated: November 18, 2026/);
   for (const section of [
     "Acceptance of Terms", "User Accounts and Security", "Role-Based Access",
-    "QR Code Attendance Monitoring", "Attendance Accuracy and Honesty",
+    "QR Code Attendance Monitoring", "Provide accurate real time progress of interns.",
     "Manual Attendance Recording", "Internet Connection and System Access",
     "Data Privacy and Confidentiality", "Prohibited Activities",
     "System Maintenance and Availability", "Violations and Responsibilities",
@@ -44,6 +44,7 @@ test("Terms dialog requires agreement and shows all supplied sections", () => {
   ]) {
     assert.ok(unchecked.includes(section), section);
   }
+  assert.ok(!unchecked.includes("Attendance Accuracy and Honesty"));
   assert.match(render(true), /<button class="login-submit" type="submit">I Agree and Continue<\/button>/);
   assert.match(render(true, true), /disabled="">.*Saving agreement/);
 });

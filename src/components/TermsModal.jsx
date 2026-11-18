@@ -32,16 +32,15 @@ export default function TermsModal({ checked, onCheckedChange, onAccept, onSignO
             <li>The QR code automatically refreshes every 30 seconds for security purposes.</li>
             <li>Only authorized Supervisors are permitted to scan student QR codes.</li>
             <li>Students must ensure that their attendance is properly recorded.</li>
+            <li>Provide accurate real time progress of interns.</li>
           </ul>
-          <h3>5. Attendance Accuracy and Honesty</h3>
-          <p>Users must provide accurate and truthful attendance information. Falsifying attendance, manipulating records, or attempting to record attendance dishonestly is strictly prohibited.</p>
-          <h3>6. Manual Attendance Recording</h3>
+          <h3>5. Manual Attendance Recording</h3>
           <p>If a student forgets or cannot present their QR code, the authorized Supervisor may use the system’s manual attendance recording feature, subject to proper verification and school procedures.</p>
-          <h3>7. Internet Connection and System Access</h3>
+          <h3>6. Internet Connection and System Access</h3>
           <p>The system requires a stable internet connection to process and record attendance transactions. Attendance may not be recorded during internet interruptions or connectivity problems. Users should immediately inform the authorized Supervisor or Coordinator of any attendance-related issues.</p>
-          <h3>8. Data Privacy and Confidentiality</h3>
+          <h3>7. Data Privacy and Confidentiality</h3>
           <p>All users must respect the confidentiality of personal information and student records. Personal information collected through the system shall only be accessed and used for legitimate OJT monitoring purposes and handled in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173) and applicable institutional privacy policies.</p>
-          <h3>9. Prohibited Activities</h3>
+          <h3>8. Prohibited Activities</h3>
           <p>Users are prohibited from:</p>
           <ul>
             <li>Accessing accounts without authorization.</li>
@@ -50,13 +49,13 @@ export default function TermsModal({ checked, onCheckedChange, onAccept, onSignO
             <li>Falsifying attendance information.</li>
             <li>Misusing or attempting to compromise the system.</li>
           </ul>
-          <h3>10. System Maintenance and Availability</h3>
+          <h3>9. System Maintenance and Availability</h3>
           <p>The school may perform system maintenance, updates, and improvements. Temporary interruptions may occur during these activities.</p>
-          <h3>11. Violations and Responsibilities</h3>
+          <h3>10. Violations and Responsibilities</h3>
           <p>Any violation of these Terms and Conditions may result in appropriate action in accordance with the school’s existing rules, regulations, and policies.</p>
-          <h3>12. Changes to Terms and Conditions</h3>
+          <h3>11. Changes to Terms and Conditions</h3>
           <p>The school reserves the right to update or modify these Terms and Conditions when necessary. Users will be notified and may be required to review and accept the updated terms before continuing to use the system.</p>
-          <h3>13. Agreement</h3>
+          <h3>12. Agreement</h3>
           <p>By selecting “I Agree” or accepting these Terms and Conditions, you confirm that you have read, understood, and agreed to follow the rules and responsibilities stated above.</p>
           <p>Thank you for using the LCC I OJT Monitoring System.</p>
         </div>
