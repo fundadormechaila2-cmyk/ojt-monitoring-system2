@@ -65,8 +65,8 @@ export function majorLabel(course) {
 }
 
 export function sameDepartment(a, b) {
-  const left = departmentIdFor(a);
-  return Boolean(left) && left === departmentIdFor(b);
+  const left = recordDepartmentId(a);
+  return Boolean(left) && left === recordDepartmentId(b);
 }
 
 // Department identifier of a user/student/record, derived from the stored
