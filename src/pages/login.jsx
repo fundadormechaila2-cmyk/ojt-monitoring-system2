@@ -237,27 +237,17 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [pendingRole, setPendingRole] = useState(null);
   const [tempPassword, setTempPassword] = useState("");
-  const [pendingTerms, setPendingTerms] = useState(null);
   const [termsChecked, setTermsChecked] = useState(false);
   const [termsError, setTermsError] = useState("");
+  const [termsOpen, setTermsOpen] = useState(false);
 
   useEffect(() => {
     sessionStorage.removeItem("account-session-message");
   }, []);
 
   const needsReset = Boolean(user?.mustChangePassword) || pendingRole !== null;
-  const activePendingTerms = pendingTerms || (
-    user && termsStatusReady && !termsAccepted
-      ? {
-          uid: user.uid,
-          role: user.role,
-          mustChangePassword: Boolean(user.mustChangePassword),
-          password: "",
-        }
-      : null
-  );
   useEffect(() => {
-    if (!user || !termsStatusReady || !termsAccepted || loading || pendingTerms) return;
+    if (!user || !termsStatusReady || !termsAccepted || loading) return;
     if (needsReset) return;
     const home = ROLE_HOME[user.role];
     if (home) navigate(home, { replace: true });
@@ -267,13 +257,11 @@ function Login() {
     termsStatusReady,
     needsReset,
     loading,
-    pendingTerms,
     navigate,
   ]);
 
   const finishSignIn = ({ uid, role, mustChangePassword, password: signedInPassword }) => {
     markTermsAccepted(uid);
-    setPendingTerms(null);
     setTermsChecked(false);
     setTermsError("");
 
@@ -286,52 +274,17 @@ function Login() {
     navigate(ROLE_HOME[role], { replace: true });
   };
 
-  const handleTermsAccept = async (e) => {
-    e.preventDefault();
-    setTermsError("");
-    if (!activePendingTerms || !termsChecked || loading) return;
-
-    if (auth.currentUser?.uid !== activePendingTerms.uid) {
-      setTermsError("Your sign-in session changed. Please sign out and sign in again.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const alreadyAccepted = await hasAcceptedTerms(activePendingTerms.uid, TERMS_VERSION);
-      if (!alreadyAccepted) {
-        await recordTermsAcceptance(activePendingTerms.uid, TERMS_VERSION);
-      }
-      finishSignIn(activePendingTerms);
-    } catch (err) {
-      console.error("Unable to save Terms and Conditions acceptance:", err);
-      setTermsError("We couldn't save your agreement. Please check your connection and try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTermsSignOut = async () => {
-    setLoading(true);
-    setTermsError("");
-    try {
-      await logout();
-      setPendingTerms(null);
-      setTermsChecked(false);
-      setPassword("");
-    } catch (err) {
-      console.error("Unable to sign out:", err);
-      setTermsError("We couldn't sign you out. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setResetError("");
     setResetMessage("");
+
+    if (!termsChecked) {
+      setTermsError("Please agree to the Terms and Conditions to continue.");
+      return;
+    }
+    setTermsError("");
 
     if (!email.trim() || !password) {
       setError("Please enter your email and password.");
@@ -355,14 +308,7 @@ function Login() {
 
       const alreadyAccepted = await hasAcceptedTerms(credential.user.uid, TERMS_VERSION);
       if (!alreadyAccepted) {
-        setPendingTerms({
-          uid: credential.user.uid,
-          role: userData.role,
-          mustChangePassword: Boolean(userData.mustChangePassword),
-          password,
-        });
-        setTermsChecked(false);
-        return;
+        await recordTermsAcceptance(credential.user.uid, TERMS_VERSION);
       }
 
       finishSignIn({
@@ -550,36 +496,51 @@ function Login() {
             </div>
           )}
 
+          <div className="login-terms-control">
+            <input
+              id="login-terms-accepted"
+              type="checkbox"
+              checked={termsChecked}
+              onChange={(event) => {
+                setTermsChecked(event.target.checked);
+                setTermsError("");
+              }}
+              disabled={loading || resetLoading}
+              aria-describedby={termsError ? "login-terms-error" : undefined}
+            />
+            <label htmlFor="login-terms-accepted">I agree to the</label>
+            <button
+              className="login-terms-link"
+              type="button"
+              onClick={() => setTermsOpen(true)}
+            >
+              Terms and Conditions
+            </button>.
+          </div>
+          {termsError && (
+            <div className="alert alert-error" id="login-terms-error" role="alert">
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>{termsError}</span>
+            </div>
+          )}
+
           <button className="login-submit" type="submit" disabled={loading || resetLoading}>
             {loading ? <Loader2 className="spin" size={16} /> : null}
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Continuing..." : "Continue"}
           </button>
-          <p className="login-terms">By signing in, you agree to the Terms and Conditions.</p>
         </form>
 
         <p className="login-footer">Having trouble? Contact your OJT coordinator or administrator.</p>
       </main>
 
-      {needsReset && termsAccepted && !activePendingTerms && (
+      {needsReset && termsAccepted && (
         <ChangePasswordModal
           initialCurrent={tempPassword}
           onDone={handlePasswordChanged}
           onCancel={handleCancelReset}
         />
       )}
-      {activePendingTerms && (
-        <TermsModal
-          checked={termsChecked}
-          onCheckedChange={(event) => {
-            setTermsChecked(event.target.checked);
-            setTermsError("");
-          }}
-          onAccept={handleTermsAccept}
-          onSignOut={handleTermsSignOut}
-          loading={loading}
-          error={termsError}
-        />
-      )}
+      {termsOpen && <TermsModal onClose={() => setTermsOpen(false)} />}
     </div>
   );
 }

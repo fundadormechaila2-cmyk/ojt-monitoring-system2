@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { AlertCircle, Loader2, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
-export default function TermsModal({ checked, onCheckedChange, onAccept, onSignOut, loading, error }) {
+export default function TermsModal({ onClose }) {
   const contentRef = useRef(null);
   useEffect(() => {
     contentRef.current?.focus();
@@ -56,21 +56,10 @@ export default function TermsModal({ checked, onCheckedChange, onAccept, onSignO
           <h3>11. Changes to Terms and Conditions</h3>
           <p>The school reserves the right to update or modify these Terms and Conditions when necessary. Users will be notified and may be required to review and accept the updated terms before continuing to use the system.</p>
           <h3>12. Agreement</h3>
-          <p>By selecting “I Agree” or accepting these Terms and Conditions, you confirm that you have read, understood, and agreed to follow the rules and responsibilities stated above.</p>
+          <p>By checking the agreement checkbox, you confirm that you have read, understood, and agreed to follow the rules and responsibilities stated above.</p>
           <p>Thank you for using the LCC I OJT Monitoring System.</p>
         </div>
-        <form onSubmit={onAccept}>
-          <div className="login-terms-control">
-            <input id="terms-accepted" type="checkbox" checked={checked} onChange={onCheckedChange} disabled={loading} />
-            <label htmlFor="terms-accepted">I Agree</label>
-          </div>
-          {error && <div className="alert alert-error" role="alert"><AlertCircle size={16} aria-hidden="true" /><span>{error}</span></div>}
-          <button className="login-submit" type="submit" disabled={!checked || loading}>
-            {loading && <Loader2 className="spin" size={16} aria-hidden="true" />}
-            {loading ? "Saving agreement..." : "I Agree and Continue"}
-          </button>
-          <button className="link-button" type="button" onClick={onSignOut} disabled={loading}>Cancel and sign out</button>
-        </form>
+        <button className="link-button" type="button" onClick={onClose}>Close</button>
       </section>
     </div>
   );

@@ -271,6 +271,20 @@
     cursor: pointer;
 }
 
+.login-terms-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--lc-blue);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.login-terms-link:hover {
+    color: var(--lc-blue-dark);
+}
+
 .terms-modal {
     max-width: 560px;
 }
